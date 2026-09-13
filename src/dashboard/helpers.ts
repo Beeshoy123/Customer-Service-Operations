@@ -1,3 +1,6 @@
+// ==== Data parsing + metric helper logic ==== 
+// Quick scan: src/dashboard/helpers.ts for raw parsing, aggregation, and filtering
+
 import { METRIC_CONFIG, TARGETS } from './config';
 
 export const agentMatchesSearch = (a, queries) => {

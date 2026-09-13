@@ -51,6 +51,14 @@ if (typeof window !== 'undefined') {
 }
 var tailwind = typeof window !== 'undefined' ? window.tailwind : { config: {} };
 
+// ==== App entry + shared UI shell ==== 
+// Source scan order: src/App.tsx -> src/features/dashboard/* -> src/components/*
+// Quick app map:
+// 1) TopNavbar / shell + global overlay
+// 2) MainStatsRow + FloorHeader + tab content blocks
+// 3) AI modal / AskAiContent / MainModal
+// 4) data logic: src/dashboard/hooks.ts + metrics.ts + helpers.ts
+// 5) reusable UI: src/components/shared.tsx + menus.tsx
 
 const UploadStatus = ({ uploadStatus }) => {
   if (!uploadStatus) return null;
@@ -63,6 +71,8 @@ const UploadStatus = ({ uploadStatus }) => {
 };
 
 
+// ==== AI chart action modal ==== 
+// Source: src/App.tsx -> ChartActionPlanModal
 const ChartActionPlanModal = () => {
   const { aiTools, uiState } = useDashboard();
   if (!aiTools.loadingChartActionPlan && !aiTools.chartActionPlan) return null;
@@ -99,6 +109,8 @@ const ChartActionPlanModal = () => {
 };
 
 
+// ==== Top navigation / global actions ==== 
+// Source: src/App.tsx
 const TopNavbar = React.memo(() => {
   const { dashData, uiState, uiHandlers } = useDashboard();
   const menuRef = useRef(null);
@@ -232,6 +244,8 @@ const TopNavbar = React.memo(() => {
 });
 
 
+// ==== KPI summary row ==== 
+// Source: src/App.tsx -> MainStatsRow
 const MainStatsRow = React.memo(() => {
   const { dashData, metrics, uiState } = useDashboard();
   const spotterPrefix = dashData.activeTimeframe === 'monthly' ? 'Monthly Spotter' : dashData.activeTimeframe === 'weekly' ? 'Weekly Spotter' : dashData.activeTimeframe === 'dow' ? 'Day of Week' : 'Daily Spotter';
@@ -327,6 +341,8 @@ const MainStatsRow = React.memo(() => {
 });
 
 
+// ==== Floor header + selector bar ==== 
+// Source: src/App.tsx -> FloorHeader
 const FloorHeader = React.memo(() => {
   const { dashData, uiState, uiHandlers } = useDashboard();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -455,6 +471,8 @@ const DropZone = () => {
 };
 
 
+// ==== Floor roster tab ==== 
+// Source: src/App.tsx -> FloorRosterTab
 const FloorRosterTab = () => {
   const { dashData, metrics, aiTools, uiState, uiHandlers } = useDashboard();
   return (
@@ -600,6 +618,8 @@ const FloorRosterTab = () => {
 };
 
 
+// ==== Outliers tab ==== 
+// Source: src/App.tsx -> FloorOutliersTab
 const FloorOutliersTab = () => {
   const { metrics, uiState, uiHandlers, aiTools } = useDashboard();
   const handleOutlierClick = (item, sortKey, sortDir) => {
@@ -678,6 +698,8 @@ const FloorOutliersTab = () => {
 };
 
 
+// ==== Apprentice tab ==== 
+// Source: src/App.tsx -> FloorApprenticeTab
 const FloorApprenticeTab = () => {
   const { dashData, metrics, aiTools, uiState, uiHandlers } = useDashboard();
   const isCoding = uiState.apprenticeViewMode === 'coding';
@@ -838,6 +860,8 @@ const FloorApprenticeTab = () => {
 };
 
 
+// ==== Analysis tab ==== 
+// Source: src/App.tsx -> FloorAnalysisTab
 const FloorAnalysisTab = () => {
   const { dashData, aiTools, uiState, uiHandlers } = useDashboard();
   useEffect(() => {
@@ -868,6 +892,8 @@ const FloorAnalysisTab = () => {
 };
 
 
+// ==== Trends tab ==== 
+// Source: src/App.tsx -> FloorTrendsTab
 const FloorTrendsTab = () => {
   const { dashData, metrics, aiTools, uiState, uiHandlers } = useDashboard();
   return (
@@ -927,6 +953,8 @@ const FloorTrendsTab = () => {
 };
 
 
+// ==== Correlation tab ==== 
+// Source: src/App.tsx -> FloorCorrelationTab
 const FloorCorrelationTab = () => {
   const { dashData, aiTools, uiState, uiHandlers } = useDashboard();
   useEffect(() => {
@@ -961,6 +989,8 @@ const FloorCorrelationTab = () => {
 };
 
 
+// ==== Burnout tab ==== 
+// Source: src/App.tsx -> FloorBurnoutTab
 const FloorBurnoutTab = () => {
   const { metrics, uiState, uiHandlers } = useDashboard();
   return (
@@ -1038,6 +1068,8 @@ const FloorBurnoutTab = () => {
 };
 
 
+// ==== Day-of-week tab ==== 
+// Source: src/App.tsx -> FloorDowTab
 const FloorDowTab = () => {
   const { dashData, metrics, aiTools, uiState, uiHandlers } = useDashboard();
   useEffect(() => {
@@ -1118,6 +1150,10 @@ const FloorDowTab = () => {
 };
 
 
+// ==== AI assistant content ==== 
+// Source: src/App.tsx -> AskAiContent
+// ==== Ask AI modal content ==== 
+// Source: src/App.tsx -> AskAiContent
 const AskAiContent = ({ aiTools, uiState, uiHandlers }) => {
   const smartChips = [
     "🔍 Why did 3DR drop yesterday?",
@@ -1216,9 +1252,9 @@ const SupervisorModalContent = () => {
 
 
   return (
-    <div className="flex flex-col gap-6 mt-2">
+    <div className="flex flex-col gap-6 mt-2 w-full min-w-0">
       {uiState.supTab === 'roster' && (
-        <div className="flex flex-col gap-6 animate-slide-down">
+        <div className="flex flex-col gap-6 animate-slide-down w-full min-w-0">
           <div className="p-5 bg-slate-50 rounded-xl border border-slate-200">
             <div className="text-sm font-extrabold text-slate-900 uppercase mb-4 border-b border-slate-200 pb-2 flex items-center gap-2">
                <span className="text-xl">📊</span> Team KPIs
@@ -1253,8 +1289,8 @@ const SupervisorModalContent = () => {
           </div>
 
 
-          <div className="border border-slate-200 rounded-xl overflow-hidden overflow-x-auto shadow-sm">
-            <table className="roster-table" style={{ minWidth: '100%', margin: 0 }}>
+          <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm w-full min-w-0">
+            <table className="roster-table" style={{ minWidth: 0, width: '100%', margin: 0 }}>
               <thead className="bg-slate-900">
                 <tr>
                   <th className="bg-slate-900 text-white border-b-2 border-slate-800 cursor-pointer select-none" onClick={() => uiHandlers.handleAgentSortChange('name')}>
@@ -1474,6 +1510,8 @@ const SupervisorModalContent = () => {
 };
 
 
+// ==== Main modal shell ==== 
+// Source: src/App.tsx -> MainModal
 const MainModal = React.memo(() => {
   const { dashData, metrics, aiTools, uiState, uiHandlers } = useDashboard();
   if (!uiState.activeModal) return null;
@@ -1520,7 +1558,7 @@ const MainModal = React.memo(() => {
 
 
 const DASHBOARD_STYLES = `
-.analyst-dashboard{min-height:100vh;width:100%;background-color:#f5f2eb;color:#0b0f19;font-family:'Inter',Helvetica,sans-serif;position:relative}@keyframes slideDown{from{transform:translate(-50%,-20px);opacity:0}to{transform:translate(-50%,0);opacity:1}}.top-navbar{background-color:#0b0f19;border-bottom:1px solid #111827;padding:16px 24px;z-index:40}.top-navbar-inner{width:100%;max-width:1100px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px}.header-info{display:flex;align-items:center;gap:16px}.badge{background:linear-gradient(135deg,rgba(59,130,246,.15) 0,rgba(30,58,138,.2) 100%);color:#93c5fd;border:1px solid rgba(96,165,250,.15);padding:6px 16px;border-radius:20px;font-size:.75rem;font-weight:700;letter-spacing:.5px;display:flex;align-items:center;gap:6px;box-shadow:0 2px 10px rgba(0,0,0,.2)}.action-buttons{display:flex;gap:12px;flex-wrap:wrap;align-items:center}.column-menu-container{position:relative}.column-menu-btn{padding:8px 12px;background:#0b0f19;border:1px solid #111827;border-radius:6px;font-size:1.2rem;color:#94a3b8;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s}.column-menu-btn:hover{color:#fff;background:#111827;border-color:#1e293b}.glass-panel{background:rgba(255,255,255,0.85);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.8);box-shadow:0 10px 40px -10px rgba(0,0,0,0.15)}.column-menu-dropdown{position:absolute;top:100%;right:0;margin-top:12px;background:rgba(255,255,255,0.85);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.8);border-radius:16px;box-shadow:0 10px 40px -10px rgba(0,0,0,0.15);width:300px;padding:20px;z-index:100;display:flex;flex-direction:column;gap:12px}.column-menu-dropdown label{display:flex;align-items:center;gap:10px;font-size:.85rem;cursor:pointer;color:#334155}.main-workspace{padding:32px 24px;max-width:1100px;margin:0 auto;width:100%;display:flex;flex-direction:column;gap:32px}.stats-row{display:grid;grid-template-columns:1fr 1fr;gap:24px}@media (max-width:850px){.stats-row{grid-template-columns:1fr}}.roster-container{position:relative;z-index:10;background:#fff;border-radius:12px;display:flex;flex-direction:column;box-shadow:0 4px 6px rgba(0,0,0,.05);margin-bottom:60px;border:1px solid #e2e8f0;overflow:hidden}.roster-header{position:relative;z-index:50;padding:0 0 16px 0;background-color:transparent;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px}.search-input{padding:8px 16px;border:1px solid #cbd5e1;background-color:#fff;color:#0b0f19;border-radius:6px;font-size:.9rem;width:250px;outline:0;transition:border-color .2s}.search-input:focus{border-color:#3b82f6}.search-input::placeholder{color:#94a3b8}.table-scroll-area{overflow-x:auto}.roster-table{width:100%;border-collapse:collapse;text-align:left;min-width:800px}.roster-table th{position:sticky;top:0;background-color:#0b0f19;padding:12px 24px;font-size:.75rem;text-transform:uppercase;color:#fff;font-weight:700;border-bottom:2px solid #111827;z-index:10;cursor:pointer;user-select:none;transition:background-color .2s}.roster-table th:hover{background-color:#111827;color:#fff}.sort-icon{display:inline-block;margin-left:6px;color:#3b82f6;font-size:.8rem}.roster-table td{padding:16px 24px;border-bottom:1px solid #e2e8f0;color:#334155;font-size:.95rem;vertical-align:middle}.roster-row{cursor:pointer;transition:background-color .2s}.roster-row:nth-child(even){background-color:#f8fafc}.roster-row:nth-child(odd){background-color:#fff}.roster-table tbody tr.roster-row:hover{background-color:#f1f5f9}.roster-table tbody tr.roster-row.active{background-color:#eff6ff}.metric-card{background:#0b0f19;border:1px solid #111827;border-radius:12px;padding:24px;position:relative;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,.1)}.metric-card.clickable-card{cursor:pointer;transition:transform .2s}.metric-card.clickable-card:hover{transform:translateY(-2px);border-color:#334155}.metric-card::after{content:"";position:absolute;top:0;left:0;bottom:0;width:4px}.card-daily::after{background:#3b82f6}.card-mtd::after{background:#1e40af}.gemini-btn{background:linear-gradient(135deg,#3b82f6 0,#1d4ed8 100%);color:#fff;border:none;padding:10px 18px;border-radius:6px;font-weight:700;font-size:.85rem;cursor:pointer;transition:transform .2s,box-shadow .2s;box-shadow:0 4px 12px rgba(59,130,246,.2);display:flex;align-items:center;justify-content:center;gap:8px;text-transform:uppercase;letter-spacing:.5px}.gemini-btn:hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(59,130,246,.3)}.gemini-btn:disabled{opacity:.7;cursor:not-allowed;transform:none}.btn-alt{background:transparent;border:1px solid #3b82f6;color:#3b82f6;box-shadow:none}.btn-alt:hover{background:rgba(59,130,246,.05);box-shadow:none}.btn-dark{background:#0b0f19;border:1px solid #111827;color:#fff;box-shadow:none}.btn-dark:hover{background:#111827;border-color:#1e293b}.btn-red-dark{background:#450a0a;color:#fca5a5;border:1px solid #991b1b}.btn-red-dark:hover{background:#7f1d1d}.modal-backdrop{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(11,15,25,.75);backdrop-filter:blur(4px);z-index:90;display:flex;justify-content:flex-start;align-items:stretch;opacity:0;pointer-events:none;transition:opacity .3s ease}.modal-backdrop.open{opacity:1;pointer-events:all}.main-modal{width:95%;max-width:1100px;background:#fff;border-radius:0 24px 24px 0;overflow-y:auto;box-shadow:15px 0 50px -12px rgba(0,0,0,.3);display:flex;flex-direction:column;transform:translateX(-100%);transition:transform .3s cubic-bezier(.16,1,.3,1)}.modal-backdrop.open .main-modal{transform:translateX(0)}.main-modal-header{position:sticky;top:0;background:#fff;z-index:20;padding:24px 32px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center}.main-modal-content{padding:32px;flex:1;display:flex;flex-direction:column}.close-btn{background:#f1f5f9;border:none;padding:8px 16px;border-radius:6px;color:#475569;font-weight:700;cursor:pointer;transition:all .2s}.close-btn:hover{background:#e2e8f0;color:#0b0f19}::-webkit-scrollbar{width:8px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px}::-webkit-scrollbar-thumb:hover{background:#94a3b8}.report-body{font-size:16px;line-height:1.9;color:#334155;white-space:pre-wrap;margin-top:16px}.submetrics-panel{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:12px;margin-bottom:24px;padding:20px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0}.sub-val-main{font-size:1.1rem;font-weight:700;color:#0b0f19}.ai-output-box{margin-bottom:24px;background:#f8fafc;border:1px solid #3b82f6;border-radius:8px;padding:20px;position:relative}.chat-container{background:#0b0f19;border:1px solid #111827;border-radius:12px;padding:24px;margin-top:16px;box-shadow:inset 0 2px 4px rgba(0,0,0,.05)}.chat-messages{display:flex;flex-direction:column;gap:16px;max-height:350px;overflow-y:auto;margin-bottom:20px;padding-right:8px}.message-bubble{max-width:80%;padding:12px 16px;border-radius:12px;font-size:.95rem;line-height:1.5}.bubble-bot{align-self:flex-start;background-color:#27272a;color:#f4f4f5;border-left:4px solid #3b82f6}.bubble-user{align-self:flex-end;background-color:#3b82f6;color:#fff}.chat-input-area{display:flex;gap:12px}.chat-input{flex:1;background-color:#111827;border:1px solid #1e293b;color:#fff;padding:12px 16px;border-radius:8px;font-size:.95rem;outline:0}.chat-input:focus{border-color:#3b82f6}.loader-spin{animation:spin 1s linear infinite}@keyframes spin{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}.heatmap-table{width:100%;border-collapse:collapse;margin-top:16px;font-size:.85rem}.heatmap-table th,.heatmap-table td{padding:12px;border:1px solid #e2e8f0;text-align:center}.heatmap-table th{background:#f8fafc;color:#475569;font-weight:700}.range-slider{-webkit-appearance:none;width:100%;height:6px;border-radius:4px;background:#e2e8f0;outline:0}.range-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:18px;height:18px;border-radius:50%;background:#3b82f6;cursor:pointer}
+.analyst-dashboard{min-height:100vh;width:100%;min-width:0;box-sizing:border-box;background-color:#f5f2eb;color:#0b0f19;font-family:'Inter',Helvetica,sans-serif;position:relative;overflow-x:hidden}@keyframes slideDown{from{transform:translate(-50%,-20px);opacity:0}to{transform:translate(-50%,0);opacity:1}}.top-navbar{background-color:#0b0f19;border-bottom:1px solid #111827;padding:16px 24px;z-index:40}.top-navbar-inner{width:100%;max-width:1100px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;box-sizing:border-box}.header-info{display:flex;align-items:center;gap:16px}.badge{background:linear-gradient(135deg,rgba(59,130,246,.15) 0,rgba(30,58,138,.2) 100%);color:#93c5fd;border:1px solid rgba(96,165,250,.15);padding:6px 16px;border-radius:20px;font-size:.75rem;font-weight:700;letter-spacing:.5px;display:flex;align-items:center;gap:6px;box-shadow:0 2px 10px rgba(0,0,0,.2)}.action-buttons{display:flex;gap:12px;flex-wrap:wrap;align-items:center}.column-menu-container{position:relative}.column-menu-btn{padding:8px 12px;background:#0b0f19;border:1px solid #111827;border-radius:6px;font-size:1.2rem;color:#94a3b8;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s}.column-menu-btn:hover{color:#fff;background:#111827;border-color:#1e293b}.glass-panel{background:rgba(15,23,42,0.96);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(148,163,184,0.2);box-shadow:0 10px 40px -10px rgba(2,6,23,0.8)}.column-menu-dropdown{position:absolute;top:100%;right:0;margin-top:12px;background:rgba(15,23,42,0.96);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(148,163,184,0.22);border-radius:16px;box-shadow:0 10px 40px -10px rgba(2,6,23,0.8);width:300px;padding:20px;z-index:100;display:flex;flex-direction:column;gap:12px;color:#e2e8f0}.column-menu-dropdown label{display:flex;align-items:center;gap:10px;font-size:.85rem;cursor:pointer;color:#e2e8f0}.column-menu-dropdown select,.column-menu-dropdown input{color:#f8fafc;background:#0f172a;border-color:#334155}.column-menu-dropdown option{background:#0f172a;color:#f8fafc}.main-workspace{padding:32px 24px;max-width:1100px;margin:0 auto;width:100%;display:flex;flex-direction:column;gap:32px;box-sizing:border-box;min-width:0}.stats-row{display:grid;grid-template-columns:1fr 1fr;gap:24px}@media (max-width:850px){.stats-row{grid-template-columns:1fr}}.roster-container{position:relative;z-index:10;background:#fff;border-radius:12px;display:flex;flex-direction:column;box-shadow:0 4px 6px rgba(0,0,0,.05);margin-bottom:60px;border:1px solid #e2e8f0;overflow:hidden}.roster-header{position:relative;z-index:50;padding:0 0 16px 0;background-color:transparent;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px}.search-input{padding:8px 16px;border:1px solid #cbd5e1;background-color:#fff;color:#0b0f19;border-radius:6px;font-size:.9rem;width:250px;outline:0;transition:border-color .2s}.search-input:focus{border-color:#3b82f6}.search-input::placeholder{color:#94a3b8}.table-scroll-area{overflow-x:auto}.roster-table{width:100%;border-collapse:collapse;text-align:left;min-width:800px}.roster-table th{position:sticky;top:0;background-color:#0b0f19;padding:12px 24px;font-size:.75rem;text-transform:uppercase;color:#fff;font-weight:700;border-bottom:2px solid #111827;z-index:10;cursor:pointer;user-select:none;transition:background-color .2s}.roster-table th:hover{background-color:#111827;color:#fff}.sort-icon{display:inline-block;margin-left:6px;color:#3b82f6;font-size:.8rem}.roster-table td{padding:16px 24px;border-bottom:1px solid #e2e8f0;color:#334155;font-size:.95rem;vertical-align:middle}.roster-row{cursor:pointer;transition:background-color .2s}.roster-row:nth-child(even){background-color:#f8fafc}.roster-row:nth-child(odd){background-color:#fff}.roster-table tbody tr.roster-row:hover{background-color:#f1f5f9}.roster-table tbody tr.roster-row.active{background-color:#eff6ff}.metric-card{background:#0b0f19;border:1px solid #111827;border-radius:12px;padding:24px;position:relative;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,.1)}.metric-card.clickable-card{cursor:pointer;transition:transform .2s}.metric-card.clickable-card:hover{transform:translateY(-2px);border-color:#334155}.metric-card::after{content:"";position:absolute;top:0;left:0;bottom:0;width:4px}.card-daily::after{background:#3b82f6}.card-mtd::after{background:#1e40af}.gemini-btn{background:linear-gradient(135deg,#3b82f6 0,#1d4ed8 100%);color:#fff;border:none;padding:10px 18px;border-radius:6px;font-weight:700;font-size:.85rem;cursor:pointer;transition:transform .2s,box-shadow .2s;box-shadow:0 4px 12px rgba(59,130,246,.2);display:flex;align-items:center;justify-content:center;gap:8px;text-transform:uppercase;letter-spacing:.5px}.gemini-btn:hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(59,130,246,.3)}.gemini-btn:disabled{opacity:.7;cursor:not-allowed;transform:none}.btn-alt{background:transparent;border:1px solid #3b82f6;color:#3b82f6;box-shadow:none}.btn-alt:hover{background:rgba(59,130,246,.05);box-shadow:none}.btn-dark{background:#0b0f19;border:1px solid #111827;color:#fff;box-shadow:none}.btn-dark:hover{background:#111827;border-color:#1e293b}.btn-red-dark{background:#450a0a;color:#fca5a5;border:1px solid #991b1b}.btn-red-dark:hover{background:#7f1d1d}.modal-backdrop{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(11,15,25,.75);backdrop-filter:blur(4px);z-index:90;display:flex;justify-content:flex-start;align-items:stretch;opacity:0;pointer-events:none;transition:opacity .3s ease}.modal-backdrop.open{opacity:1;pointer-events:all}.main-modal{width:95%;max-width:1100px;background:#fff;border-radius:0 24px 24px 0;overflow-y:auto;box-shadow:15px 0 50px -12px rgba(0,0,0,.3);display:flex;flex-direction:column;transform:translateX(-100%);transition:transform .3s cubic-bezier(.16,1,.3,1)}.modal-backdrop.open .main-modal{transform:translateX(0)}.main-modal-header{position:sticky;top:0;background:#fff;z-index:20;padding:24px 32px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center}.main-modal-content{padding:32px;flex:1;display:flex;flex-direction:column}.close-btn{background:#f1f5f9;border:none;padding:8px 16px;border-radius:6px;color:#475569;font-weight:700;cursor:pointer;transition:all .2s}.close-btn:hover{background:#e2e8f0;color:#0b0f19}::-webkit-scrollbar{width:8px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px}::-webkit-scrollbar-thumb:hover{background:#94a3b8}.report-body{font-size:16px;line-height:1.9;color:#334155;white-space:pre-wrap;margin-top:16px}.submetrics-panel{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:12px;margin-bottom:24px;padding:20px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0}.sub-val-main{font-size:1.1rem;font-weight:700;color:#0b0f19}.ai-output-box{margin-bottom:24px;background:#f8fafc;border:1px solid #3b82f6;border-radius:8px;padding:20px;position:relative}.chat-container{background:#0b0f19;border:1px solid #111827;border-radius:12px;padding:24px;margin-top:16px;box-shadow:inset 0 2px 4px rgba(0,0,0,.05)}.chat-messages{display:flex;flex-direction:column;gap:16px;max-height:350px;overflow-y:auto;margin-bottom:20px;padding-right:8px}.message-bubble{max-width:80%;padding:12px 16px;border-radius:12px;font-size:.95rem;line-height:1.5}.bubble-bot{align-self:flex-start;background-color:#27272a;color:#f4f4f5;border-left:4px solid #3b82f6}.bubble-user{align-self:flex-end;background-color:#3b82f6;color:#fff}.chat-input-area{display:flex;gap:12px}.chat-input{flex:1;background-color:#111827;border:1px solid #1e293b;color:#fff;padding:12px 16px;border-radius:8px;font-size:.95rem;outline:0}.chat-input:focus{border-color:#3b82f6}.loader-spin{animation:spin 1s linear infinite}@keyframes spin{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}.heatmap-table{width:100%;border-collapse:collapse;margin-top:16px;font-size:.85rem}.heatmap-table th,.heatmap-table td{padding:12px;border:1px solid #e2e8f0;text-align:center}.heatmap-table th{background:#f8fafc;color:#475569;font-weight:700}.range-slider{-webkit-appearance:none;width:100%;height:6px;border-radius:4px;background:#e2e8f0;outline:0}.range-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:18px;height:18px;border-radius:50%;background:#3b82f6;cursor:pointer}
 
 
 /* UTILITIES */
@@ -1722,20 +1760,27 @@ export default function App() {
 
   return (
     <DashboardContext.Provider value={ctxValue}>
-      <div className="analyst-dashboard">
+      <div className="analyst-dashboard" style={{ width: '100%', minWidth: 0, overflowX: 'hidden' }}>
         <style dangerouslySetInnerHTML={{ __html: DASHBOARD_STYLES }} />
+
+        {/* ==== Overlay + modal layer ==== */}
         <UploadStatus uploadStatus={dashData.uploadStatus} />
         <ChartActionPlanModal />
+
+        {/* ==== Header / shell navigation ==== */}
         <TopNavbar />
 
-
-        <div className="main-workspace">
+        {/* ==== Dashboard body shell ==== */}
+        <div className="main-workspace" style={{ width: '100%', maxWidth: '1100px', minWidth: 0, margin: '0 auto', padding: '32px 24px' }}>
+          {/* ==== KPI summary row ==== */}
           <MainStatsRow />
 
-
+          {/* ==== Floor board / roster content ==== */}
           <div className="flex flex-col gap-4 mb-16">
+            {/* ==== Header area for floor selection ==== */}
             <FloorHeader />
-            
+
+            {/* ==== Tab content switcher ==== */}
             <div className="roster-container">
               {mainTab === 'roster'      && <FloorRosterTab />}
               {mainTab === 'outliers'    && <FloorOutliersTab />}
@@ -1749,7 +1794,7 @@ export default function App() {
           </div>
         </div>
 
-
+        {/* ==== Detail modal / AI modal layer ==== */}
         <MainModal />
       </div>
     </DashboardContext.Provider>

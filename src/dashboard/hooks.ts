@@ -24,6 +24,9 @@ import {
   shortenManagerName,
 } from './helpers';
 
+// ==== Dashboard state + data lifecycle ==== 
+// Quick scan: src/dashboard/hooks.ts for upload flow, state, and app wiring
+
 export const DashboardContext = createContext(null);
 export const useDashboard = () => useContext(DashboardContext);
 

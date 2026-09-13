@@ -1,3 +1,6 @@
+// ==== Derived dashboard metrics + summaries ==== 
+// Quick scan: src/dashboard/metrics.ts for rolled-up KPI, leader, heatmap, and burnout logic
+
 import { useMemo } from 'react';
 import { CHART_COLORS, COL_DEFINITIONS, DAYS_OF_WEEK, TARGETS } from './config';
 import {

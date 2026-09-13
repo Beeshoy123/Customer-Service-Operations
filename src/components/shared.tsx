@@ -1,3 +1,6 @@
+// ==== Shared dashboard UI primitives ==== 
+// Quick scan: src/components/shared.tsx for cards, charts, and view formatting
+
 import React from 'react';
 import { getDynamicTarget, METRIC_CONFIG } from '../dashboard/config';
 

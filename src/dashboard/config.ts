@@ -1,3 +1,6 @@
+// ==== Dashboard configuration + KPI targets ==== 
+// Quick scan: src/dashboard/config.ts for targets, labels, and metric definitions
+
 export const getYesterdayDateString = () => {
   const d = new Date();
   d.setDate(d.getDate() - 1);
