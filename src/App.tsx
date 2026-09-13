@@ -42,6 +42,7 @@ import {
 } from './features/dashboard/hooks';
 import { useDashboardMetrics } from './features/dashboard/metrics';
 import { SettingsMenu, TimeframeMenu } from './components/menus';
+import { ImportPreviewModal } from './features/dashboard/import';
 
 if (typeof window !== 'undefined') {
   window.tailwind = window.tailwind || { config: {} };
@@ -1924,6 +1925,13 @@ export default function App() {
 
           {/* ==== Detail modal / AI modal layer ==== */}
           <MainModal />
+          <ImportPreviewModal
+            isOpen={Boolean(dashData.importPreview?.isOpen)}
+            sheets={dashData.importPreview?.sheets || []}
+            fileName={dashData.importPreview?.fileName}
+            onConfirm={dashData.confirmImportPreview}
+            onCancel={dashData.closeImportPreview}
+          />
         </div>
       </DashboardContext.Provider>
     </ErrorBoundary>

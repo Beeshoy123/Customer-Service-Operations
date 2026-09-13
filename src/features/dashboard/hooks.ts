@@ -27,6 +27,7 @@ import {
   validateNormalizedRows,
   mergeNormalizedRows,
   normalizeCellValue,
+  normalizeHeaderToField,
 } from './import';
 import type { SheetTable, SheetGranularity, ImportResult } from './import/types';
 import { detectFileType } from './import/fileTypeDetector';
@@ -279,6 +280,114 @@ export const useDashboardData = (onDataReset = null) => {
     setTimeout(() => setUploadStatus(null), 5000);
   }, [agents, batchImportSummary, historicalData, setActiveTimeframe, setAgents, setHasUploadedData, setHistoricalData, setSelectedDate, setSupervisors, supervisors]);
 
+  const confirmImportPreview = useCallback(
+    async (config) => {
+      if (!importPreview?.sheets || !importPreview.sheets.length) {
+        closeImportPreview();
+        return;
+      }
+
+      setUploadStatus({ type: 'info', message: 'Applying imported sheets to dashboard...' });
+
+      try {
+        const sheetConfigs = config?.sheetConfigs || {};
+        const allNormalizedRows = [];
+        const warnings = [];
+
+        // 1. Column mapping with user overrides & 2. aggregateTransactions for transaction-classified sheets
+        for (let sheetIdx = 0; sheetIdx < importPreview.sheets.length; sheetIdx += 1) {
+          const sheet = importPreview.sheets[sheetIdx];
+          const sheetConfig = sheetConfigs[sheet.sheetName] || sheetConfigs[sheetIdx];
+          const userMappings = sheetConfig?.columnMappings || {};
+          const headers = sheet.headerRow ?? [];
+          const rows = sheet.rows ?? [];
+
+          const rawMappedRows = [];
+          for (const rawRow of rows) {
+            const mappedRow = {};
+            for (let colIdx = 0; colIdx < headers.length; colIdx += 1) {
+              const rawHeader = headers[colIdx];
+              const headerStr = String(rawHeader ?? '').trim();
+
+              let mappedField = undefined;
+              if (Object.prototype.hasOwnProperty.call(userMappings, headerStr)) {
+                mappedField = userMappings[headerStr];
+              } else if (Object.prototype.hasOwnProperty.call(userMappings, rawHeader)) {
+                mappedField = userMappings[rawHeader];
+              } else {
+                mappedField = normalizeHeaderToField(headerStr);
+              }
+
+              if (!mappedField) continue;
+
+              const val = rawRow?.[colIdx];
+              mappedRow[mappedField] = normalizeCellValue(val, mappedField);
+            }
+
+            if (Object.keys(mappedRow).length > 0) {
+              mappedRow.sourceFile = sheet.workbookName || importPreview.fileName || 'Upload';
+              mappedRow.sourceSheet = sheet.sheetName || 'CSV';
+              rawMappedRows.push(mappedRow);
+            }
+          }
+
+          // Pass user's SELECTED granularity (target.selectedGranularity) into aggregation
+          const selectedGranularity = sheetConfig?.granularity || 'aggregate';
+          const sheetRows =
+            selectedGranularity === 'transaction'
+              ? aggregateTransactions(rawMappedRows)
+              : rawMappedRows;
+
+          allNormalizedRows.push(...sheetRows);
+        }
+
+        // 3. validateNormalizedRows
+        const fileName = importPreview.fileName || 'Import';
+        const validated = validateNormalizedRows(allNormalizedRows, fileName);
+        warnings.push(...(validated.warnings || []));
+
+        if (!validated.rows.length) {
+          setUploadStatus({
+            type: 'error',
+            message: 'No valid rows found after validation. Please check column mappings.',
+          });
+          setTimeout(() => setUploadStatus(null), 5000);
+          closeImportPreview();
+          return;
+        }
+
+        // 4. mergeNormalizedRows
+        const mergedRows = mergeNormalizedRows(validated.rows);
+
+        const summary = {
+          files: new Set(importPreview.sheets.map((s) => s.workbookName || fileName)).size || 1,
+          sheets: importPreview.sheets.length,
+          rows: mergedRows,
+          warnings,
+          errors: [],
+          sources: importPreview.sheets.map((s) => ({
+            fileName: s.workbookName || fileName,
+            sheetName: s.sheetName,
+            rowCount: s.rowCount,
+          })),
+        };
+
+        // 5. applyBatchImport
+        setBatchImportSummary(summary);
+        await applyBatchImport(null, summary);
+        closeImportPreview();
+      } catch (error) {
+        console.error('Failed to confirm import preview:', error);
+        setUploadStatus({
+          type: 'error',
+          message: 'Failed to process and import the sheets.',
+        });
+        setTimeout(() => setUploadStatus(null), 5000);
+      }
+    },
+    [importPreview, closeImportPreview, setUploadStatus, setBatchImportSummary, applyBatchImport]
+  );
+
   const handleWorkbookImport = useCallback(async (file) => {
     if (!file) return;
 
@@ -488,6 +597,7 @@ export const useDashboardData = (onDataReset = null) => {
   return {
     agents, supervisors, oamName, historicalData, hasUploadedData, uploadStatus, batchImportSummary,
     handleFileUpload, handleFileDrop, applyBatchImport,
+    importPreview, openImportPreview, closeImportPreview, confirmImportPreview,
     activeTimeframe, setActiveTimeframe, selectedWeek, setSelectedWeek, selectedDate, setSelectedDate,
     selectedDow, setSelectedDow,
     getAgentDataForTimeframe, handleDateChange, getTopHeadlineMonth,
