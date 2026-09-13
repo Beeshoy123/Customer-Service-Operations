@@ -32,9 +32,16 @@ import {
 import type { SheetTable, SheetGranularity, ImportResult } from './import/types';
 import { detectFileType } from './import/fileTypeDetector';
 
-// ==== Dashboard state + data lifecycle ==== 
-// Quick scan: src/features/dashboard/hooks.ts for upload flow, state, and app wiring
+// ============================================================================
+// FILE STRUCTURE:
+// ├── Local Storage Persistence Helpers
+// ├── Dashboard Context & Hook
+// ├── Dashboard Data Management Hook
+// ├── AI Network & Resilience Helpers
+// └── AI Assistant Tools Hook
+// ============================================================================
 
+// ─── Local Storage Persistence Helpers ──────────────────────────────────────
 const DASHBOARD_STORAGE_KEY = 'customer-service-dashboard-state-v1';
 
 const readPersistedDashboardState = () => {
@@ -52,9 +59,11 @@ const readPersistedDashboardState = () => {
   }
 };
 
+// ─── Dashboard Context & Hook ──────────────────────────────────────
 export const DashboardContext = createContext(null);
 export const useDashboard = () => useContext(DashboardContext);
 
+// ─── Dashboard Data Management Hook ──────────────────────────────────────
 export const useDashboardData = (onDataReset = null) => {
   const persistedState = useMemo(() => readPersistedDashboardState(), []);
 
@@ -242,30 +251,44 @@ export const useDashboardData = (onDataReset = null) => {
       const resolve2hrValue = toNumber(row.resolve2hr);
       const resolve3dValue = toNumber(row.resolve3d);
 
+      // Read every recognized metric field off the normalized row.
+      // toNumber() returns 0 for missing/null, so we preserve null for truly absent
+      // fields by checking row[field] explicitly before converting.
+      const toNumberOrNull = (value) => {
+        if (value === null || value === undefined || value === '') return null;
+        return toNumber(value);
+      };
+
+      // resolveTotalContacts: use imported value when present, fall back to callsValue
+      const resolveTotalContactsValue =
+        row.resolveTotalContacts != null && row.resolveTotalContacts !== ''
+          ? toNumber(row.resolveTotalContacts)
+          : callsValue;
+
       newHistory[targetAgent.ccms][rawDate] = {
         isOff: callsValue === 0,
         calls: callsValue,
-        resolveTotalContacts3d: null,
-        resolveTotalContacts2hr: null,
-        resolveTotalContacts: callsValue,
-        surveys: null,
-        promoters: null,
+        resolveTotalContacts: resolveTotalContactsValue,
+        resolveTotalContacts2hr: toNumberOrNull(row.resolveTotalContacts2hr),
+        resolveTotalContacts3d: toNumberOrNull(row.resolveTotalContacts3d),
+        surveys: toNumberOrNull(row.surveys),
+        promoters: toNumberOrNull(row.promoters),
         vxs: vxsValue,
         resolve3d: resolve3dValue,
-        handoffs: null,
-        handoffsCount: null,
+        handoffs: toNumberOrNull(row.handoffs),
+        handoffsCount: toNumberOrNull(row.handoffsCount),
         resolve2hr: resolve2hrValue,
         aht: ahtValue,
-        hold: null,
-        dpc: null,
-        viewTogether: null,
-        vtt: null,
-        vttSent: null,
-        vttTransacted: null,
-        netOcc: null,
-        creditFreq: null,
-        phoneAdds: null,
-        vhi: null,
+        hold: toNumberOrNull(row.hold),
+        dpc: toNumberOrNull(row.dpc),
+        viewTogether: toNumberOrNull(row.viewTogether),
+        vtt: toNumberOrNull(row.vtt),
+        vttSent: toNumberOrNull(row.vttSent),
+        vttTransacted: toNumberOrNull(row.vttTransacted),
+        netOcc: toNumberOrNull(row.netOcc),
+        creditFreq: toNumberOrNull(row.creditFreq),
+        phoneAdds: toNumberOrNull(row.phoneAdds),
+        vhi: toNumberOrNull(row.vhi),
       };
     }
 
@@ -604,6 +627,7 @@ export const useDashboardData = (onDataReset = null) => {
   };
 };
 
+// ─── AI Network & Resilience Helpers ──────────────────────────────────────
 const _aiControllers = new Map();
 
 const delayForRetry = (attempt) => new Promise((resolve) => setTimeout(resolve, 1000 * 2 ** attempt));
@@ -688,6 +712,7 @@ const executeGeminiAction = async (context, systemPrompt, setStatusFn, setLoadin
   }
 };
 
+// ─── AI Assistant Tools Hook ──────────────────────────────────────
 export const AI_INITIAL = {
   report: null,
   loading: false,

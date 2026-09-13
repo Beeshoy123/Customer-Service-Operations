@@ -1,10 +1,19 @@
 // @ts-nocheck
-// ==== Shared dashboard UI primitives ==== 
-// Quick scan: src/components/shared.tsx for cards, charts, and view formatting
+// ============================================================================
+// FILE STRUCTURE:
+// ├── Loading Spinner Component
+// ├── Formatted Text Renderer
+// ├── Sub-Metric Card Component
+// ├── Donut Gauge Chart
+// ├── Table Metric Cell
+// ├── Pareto Ranking Column
+// └── Performance Heatmap Grid
+// ============================================================================
 
 import React from 'react';
 import { getDynamicTarget, METRIC_CONFIG } from '../features/dashboard/config';
 
+// ─── Loading Spinner Component ──────────────────────────────────────
 export const GeminiLoader = ({ message = 'Cooking it up...', color = '#3b82f6', icon = '✨' }) => (
   <div className="flex flex-col items-center justify-center p-8 gap-4">
     <div className="flex items-center justify-center">
@@ -22,6 +31,7 @@ export const GeminiLoader = ({ message = 'Cooking it up...', color = '#3b82f6', 
   </div>
 );
 
+// ─── Formatted Text Renderer ──────────────────────────────────────
 export const FormattedText = ({ text, linkedEntities, onEntityClick }) => {
   if (!text || typeof text !== 'string') return null;
 
@@ -116,6 +126,7 @@ export const FormattedText = ({ text, linkedEntities, onEntityClick }) => {
   );
 };
 
+// ─── Sub-Metric Card Component ──────────────────────────────────────
 export const SubMetricCard = ({ label, val, metricKey, agentCount, decimals = 2, prefix = '', suffix = '' }) => {
   const isMissing = val === null || val === undefined || isNaN(val) || val === '';
   const tgt = getDynamicTarget(metricKey, agentCount);
@@ -139,6 +150,7 @@ export const SubMetricCard = ({ label, val, metricKey, agentCount, decimals = 2,
   );
 };
 
+// ─── Donut Gauge Chart ──────────────────────────────────────
 export const DonutChart = ({ value, target, label, format = '', reverse = false, max = 100, isInteger = false }) => {
   const isMissing = value === null || value === undefined || value === '' || isNaN(value);
   const isGood = reverse ? value <= target : value >= target;
@@ -166,6 +178,7 @@ export const DonutChart = ({ value, target, label, format = '', reverse = false,
   );
 };
 
+// ─── Table Metric Cell ──────────────────────────────────────
 export const MetricCell = ({ value, target, format = '', reverse = false, isOff = false, isInteger = false }) => {
   const isMissing = value === null || value === undefined || value === '' || isNaN(value);
   if (isOff || isMissing) return <div className="text-center w-full"><span className="font-medium italic text-slate-500">-</span></div>;
@@ -179,6 +192,7 @@ export const MetricCell = ({ value, target, format = '', reverse = false, isOff 
   );
 };
 
+// ─── Pareto Ranking Column ──────────────────────────────────────
 export const ParetoColumn = ({ title, icon, data, colorObj, valKey, labelFn, onItemClick }) => (
   <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col gap-3 transition-all duration-300 hover:-translate-y-1 hover:shadow-md">
     <div className="text-sm font-extrabold uppercase mb-2 flex items-center gap-2" style={{ color: colorObj.dark }}>
@@ -207,6 +221,7 @@ export const ParetoColumn = ({ title, icon, data, colorObj, valKey, labelFn, onI
   </div>
 );
 
+// ─── Performance Heatmap Grid ──────────────────────────────────────
 export const PerformanceHeatmap = ({ activeDates, chartData, metricConfig, baseTarget, onCellClick }) => {
   if (!chartData || chartData.length === 0) return <div className="text-slate-500 text-sm mt-4">No data available for trend chart.</div>;
 

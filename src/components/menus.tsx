@@ -1,10 +1,14 @@
 // @ts-nocheck
-// ==== Shared dashboard menus ==== 
-// Quick scan: src/components/menus.tsx for timeframe and settings controls
+// ============================================================================
+// FILE STRUCTURE:
+// ├── Timeframe Selection Menu
+// └── Column Visibility Settings Menu
+// ============================================================================
 
 import React from 'react';
 import { COL_DEFINITIONS } from '../features/dashboard/config';
 
+// ─── Timeframe Selection Menu ──────────────────────────────────────
 export const TimeframeMenu = ({
   activeTimeframe,
   setActiveTimeframe,
@@ -78,6 +82,7 @@ export const TimeframeMenu = ({
   </>
 );
 
+// ─── Column Visibility Settings Menu ──────────────────────────────────────
 export const SettingsMenu = ({ visibleCols, toggleCol, closeMenu }) => (
   <>
     <span className="block text-xs font-extrabold text-slate-300 uppercase mb-3 tracking-wide">Toggle Metrics</span>

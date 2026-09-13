@@ -20,13 +20,26 @@ const sumFields = new Set([
   'detractors',
   'phoneAdds',
   'vhi',
-  'creditFreq',
   'handoffsCount',
-  'netOcc',
-  'hold',
+  'vttSent',
+  'vttTransacted',
 ]);
 
-const averageFields = new Set(['aht', 'vxs', 'resolve2hr', 'resolve3d', 'handoffs', 'viewTogether', 'vtt', 'dpc']);
+// These are per-call rate/average fields — when the same agent+date appears in
+// multiple source sheets, average them rather than sum.
+const averageFields = new Set([
+  'aht',
+  'vxs',
+  'resolve2hr',
+  'resolve3d',
+  'handoffs',
+  'hold',
+  'dpc',
+  'viewTogether',
+  'vtt',
+  'netOcc',
+  'creditFreq',
+]);
 
 const choosePreferredValue = (currentValue: string | number | null | undefined, newValue: string | number | null | undefined) => {
   if (currentValue === null || currentValue === undefined || currentValue === '') return newValue;

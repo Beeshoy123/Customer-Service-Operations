@@ -49,15 +49,32 @@ if (typeof window !== 'undefined') {
 }
 var tailwind = typeof window !== 'undefined' ? window.tailwind : { config: {} };
 
-// ==== App entry + shared UI shell ==== 
-// Source scan order: src/App.tsx -> src/features/dashboard/* -> src/components/*
-// Quick app map:
-// 1) TopNavbar / shell + global overlay
-// 2) MainStatsRow + FloorHeader + tab content blocks
-// 3) AI modal / AskAiContent / MainModal
-// 4) data logic: src/features/dashboard/hooks.ts + metrics.ts + helpers.ts
-// 5) reusable UI: src/components/shared.tsx + menus.tsx
+// ============================================================================
+// FILE STRUCTURE:
+// ├── Error Boundary
+// ├── Upload Status Toast
+// ├── AI Chart Action Modal
+// ├── Top Navigation Bar
+// ├── KPI Summary Row
+// ├── Floor Header & Selector Bar
+// ├── Empty State Upload Panel
+// ├── Floor Roster Tab
+// ├── Floor Outliers Tab
+// ├── Floor Apprentice Tab
+// ├── Analysis Tab
+// ├── Trends Tab
+// ├── Correlation Tab
+// ├── Burnout Tab
+// ├── Day-of-Week Tab
+// ├── Ask AI Modal Content
+// ├── Supervisor Modal Content
+// ├── Main Modal Shell
+// ├── Dashboard Global Styles
+// ├── App State & Reducer Defaults
+// └── Main App Composition
+// ============================================================================
 
+// ─── Error Boundary ──────────────────────────────────────
 class ErrorBoundary extends React.Component {
   state = { hasError: false, error: null };
 
@@ -102,6 +119,7 @@ class ErrorBoundary extends React.Component {
   }
 }
 
+// ─── Upload Status Toast ──────────────────────────────────────
 const UploadStatus = ({ uploadStatus }) => {
   if (!uploadStatus) return null;
 
@@ -137,9 +155,7 @@ const UploadStatus = ({ uploadStatus }) => {
 };
 
 
-// ==== AI chart action modal ==== 
-// NOTE: this modal is intentionally isolated from the main dashboard shell so AI output can be reused separately.
-// Source: src/App.tsx -> ChartActionPlanModal
+// ─── AI Chart Action Modal ──────────────────────────────────────
 const ChartActionPlanModal = () => {
   const { aiTools, uiState } = useDashboard();
   if (!aiTools.loadingChartActionPlan && !aiTools.chartActionPlan) return null;
@@ -176,9 +192,7 @@ const ChartActionPlanModal = () => {
 };
 
 
-// ==== Top navigation / global actions ==== 
-// NOTE: keep this shell compact; most business logic lives in dashboard hooks and metrics helpers.
-// Source: src/App.tsx
+// ─── Top Navigation Bar ──────────────────────────────────────
 const TopNavbar = React.memo(() => {
   const { dashData, uiState, uiHandlers, batchImportSelection, setBatchImportSelection } = useDashboard();
   const menuRef = useRef(null);
@@ -373,9 +387,7 @@ const TopNavbar = React.memo(() => {
 });
 
 
-// ==== KPI summary row ==== 
-// NOTE: this is the executive overview section. Keep card sizing and metric ordering stable when changing layouts.
-// Source: src/App.tsx -> MainStatsRow
+// ─── KPI Summary Row ──────────────────────────────────────
 const MainStatsRow = React.memo(() => {
   const { dashData, metrics, uiState } = useDashboard();
   const spotterPrefix = dashData.activeTimeframe === 'monthly' ? 'Monthly Spotter' : dashData.activeTimeframe === 'weekly' ? 'Weekly Spotter' : dashData.activeTimeframe === 'dow' ? 'Day of Week' : 'Daily Spotter';
@@ -471,9 +483,7 @@ const MainStatsRow = React.memo(() => {
 });
 
 
-// ==== Floor header + selector bar ==== 
-// NOTE: search/filter controls and tab state are managed here; if the toolbar layout changes, update both markup and styles together.
-// Source: src/App.tsx -> FloorHeader
+// ─── Floor Header & Selector Bar ──────────────────────────────────────
 const FloorHeader = React.memo(() => {
   const { dashData, uiState, uiHandlers } = useDashboard();
   const tabs = [
@@ -539,8 +549,7 @@ const FloorHeader = React.memo(() => {
 });
 
 
-// ==== Empty-state upload panel ==== 
-// NOTE: shown only before any dataset is loaded. Keep drag/drop UX consistent with the upload button in TopNavbar.
+// ─── Empty State Upload Panel ──────────────────────────────────────
 const DropZone = () => {
   const { dashData } = useDashboard();
   const [isDragOver, setIsDragOver] = useState(false);
@@ -578,9 +587,7 @@ const DropZone = () => {
 };
 
 
-// ==== Floor roster tab ==== 
-// NOTE: this is the primary grid view for supervisors and is the easiest place to debug sorting/filtering regressions.
-// Source: src/App.tsx -> FloorRosterTab
+// ─── Floor Roster Tab ──────────────────────────────────────
 const FloorRosterTab = () => {
   const { dashData, metrics, aiTools, uiState, uiHandlers } = useDashboard();
   return (
@@ -726,8 +733,7 @@ const FloorRosterTab = () => {
 };
 
 
-// ==== Outliers tab ==== 
-// Source: src/App.tsx -> FloorOutliersTab
+// ─── Floor Outliers Tab ──────────────────────────────────────
 const FloorOutliersTab = () => {
   const { metrics, uiState, uiHandlers, aiTools } = useDashboard();
   const handleOutlierClick = (item, sortKey, sortDir) => {
@@ -806,8 +812,7 @@ const FloorOutliersTab = () => {
 };
 
 
-// ==== Apprentice tab ==== 
-// Source: src/App.tsx -> FloorApprenticeTab
+// ─── Floor Apprentice Tab ──────────────────────────────────────
 const FloorApprenticeTab = () => {
   const { dashData, metrics, aiTools, uiState, uiHandlers } = useDashboard();
   const isCoding = uiState.apprenticeViewMode === 'coding';
@@ -968,8 +973,7 @@ const FloorApprenticeTab = () => {
 };
 
 
-// ==== Analysis tab ==== 
-// Source: src/App.tsx -> FloorAnalysisTab
+// ─── Analysis Tab ──────────────────────────────────────
 const FloorAnalysisTab = () => {
   const { dashData, aiTools, uiState, uiHandlers } = useDashboard();
   useEffect(() => {
@@ -1000,8 +1004,7 @@ const FloorAnalysisTab = () => {
 };
 
 
-// ==== Trends tab ==== 
-// Source: src/App.tsx -> FloorTrendsTab
+// ─── Trends Tab ──────────────────────────────────────
 const FloorTrendsTab = () => {
   const { dashData, metrics, aiTools, uiState, uiHandlers } = useDashboard();
   return (
@@ -1061,8 +1064,7 @@ const FloorTrendsTab = () => {
 };
 
 
-// ==== Correlation tab ==== 
-// Source: src/App.tsx -> FloorCorrelationTab
+// ─── Correlation Tab ──────────────────────────────────────
 const FloorCorrelationTab = () => {
   const { dashData, aiTools, uiState, uiHandlers } = useDashboard();
   useEffect(() => {
@@ -1097,8 +1099,7 @@ const FloorCorrelationTab = () => {
 };
 
 
-// ==== Burnout tab ==== 
-// Source: src/App.tsx -> FloorBurnoutTab
+// ─── Burnout Tab ──────────────────────────────────────
 const FloorBurnoutTab = () => {
   const { metrics, uiState, uiHandlers } = useDashboard();
   return (

@@ -1,7 +1,15 @@
 // @ts-nocheck
-// ==== Dashboard configuration + KPI targets ==== 
-// Quick scan: src/features/dashboard/config.ts for targets, labels, and metric definitions
+// ============================================================================
+// FILE STRUCTURE:
+// ├── Date & Default Constants
+// ├── KPI Target Thresholds
+// ├── Metric Display Configurations
+// ├── Dynamic Target Calculators
+// ├── Column Definitions
+// └── AI Persona Configuration
+// ============================================================================
 
+// ─── Date & Default Constants ──────────────────────────────────────
 export const getYesterdayDateString = () => {
   const d = new Date();
   d.setDate(d.getDate() - 1);
@@ -16,6 +24,7 @@ export const DEFAULT_DATE = getYesterdayDateString();
 export const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 export const CHART_COLORS = ['#D52B1E', '#10B981', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#06b6d4', '#6366f1', '#64748b', '#0b0f19'];
 
+// ─── KPI Target Thresholds ──────────────────────────────────────
 export const TARGETS = {
   resolve2hr: 92,
   resolve3d: 80,
@@ -32,6 +41,7 @@ export const TARGETS = {
   ncw: 10,
 };
 
+// ─── Metric Display Configurations ──────────────────────────────────────
 export const METRIC_CONFIG = {
   bonus: { label: 'Bonus Score', target: 100, format: '', reverse: false, max: 120 },
   vxs: { label: 'C-Sat', target: TARGETS.vxs, format: '', reverse: false, max: 100 },
@@ -49,6 +59,7 @@ export const METRIC_CONFIG = {
   ncw: { label: 'NCW %', target: TARGETS.ncw, format: '%', reverse: true, max: 100 },
 };
 
+// ─── Dynamic Target Calculators ──────────────────────────────────────
 export const getDynamicTarget = (key, count = 1) => {
   const validCount = Math.max(1, count || 1);
   if (key === 'phoneAdds') return Math.ceil(validCount * 1.3);
@@ -61,6 +72,7 @@ export const getDynamicMax = (key, count = 1) => {
   return METRIC_CONFIG[key]?.max || 100;
 };
 
+// ─── Column Definitions ──────────────────────────────────────
 export const COL_DEFINITIONS = [
   { key: 'vxs', stateKey: 'vxs', label: 'C-Sat', format: '', reverse: false },
   { key: 'resolve2hr', stateKey: 'resolve2hr', label: '2HR', format: '', reverse: false },
@@ -77,4 +89,5 @@ export const COL_DEFINITIONS = [
   { key: 'ncw', stateKey: 'ncw', label: 'NCW %', format: '%', reverse: true },
 ];
 
+// ─── AI Persona Configuration ──────────────────────────────────────
 export const PERSONA = 'You are a data-driven, direct, and results-oriented performance improvement consultant. Use simple, everyday English.';

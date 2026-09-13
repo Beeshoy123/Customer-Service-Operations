@@ -64,6 +64,194 @@ export const FIELD_ALIASES: Record<string, ImportFieldPolicy> = {
     ],
     kind: 'number',
   },
+  resolveTotalContacts2hr: {
+    aliases: [
+      'resolve total contacts 2hr',
+      '2 hour resolve contacts',
+      '2hr contacts',
+      'resolve2hrcontacts',
+      '2-hour resolve contacts',
+      '2hr contact count',
+      'resolve 2hr contacts',
+      'resolve_2hr_contacts',
+      'resolve2hr_contacts',
+    ],
+    kind: 'number',
+  },
+  resolveTotalContacts3d: {
+    aliases: [
+      'resolve total contacts 3d',
+      '3 day resolve contacts',
+      '3dr contacts',
+      'resolve3dcontacts',
+      '3-day resolve contacts',
+      '3d contact count',
+      'resolve 3d contacts',
+      'resolve_3d_contacts',
+      'resolve3d_contacts',
+    ],
+    kind: 'number',
+  },
+  surveys: {
+    aliases: [
+      'surveys',
+      'surveys answered',
+      'vxs combined overall count',
+      'survey count',
+      'total surveys',
+      'surveys count',
+      'survey answered',
+    ],
+    kind: 'number',
+  },
+  promoters: {
+    aliases: [
+      'promoters',
+      'vxs combined overall top box',
+      'promoter count',
+      'peromters',
+      'total promoters',
+      'promoter',
+    ],
+    kind: 'number',
+  },
+  handoffs: {
+    aliases: [
+      'handoffs',
+      'net handoffs %',
+      'hand offs %',
+      'handoffs %',
+      'handoff rate',
+      'net handoffs pct',
+      'handoff pct',
+      'transfer rate',
+      'transfer %',
+    ],
+    kind: 'percent',
+  },
+  handoffsCount: {
+    aliases: [
+      'handoffs count',
+      'net handoffs',
+      'transfer flag',
+      'transferflag',
+      'handoff count',
+      'total handoffs',
+      'transfer count',
+      'transfers',
+    ],
+    kind: 'number',
+  },
+  hold: {
+    aliases: [
+      'hold',
+      'hold time',
+      'hold time avg',
+      'avg hold',
+      'average hold time',
+      'hold sec',
+      'hold seconds',
+      'avg hold time',
+    ],
+    kind: 'number',
+  },
+  dpc: {
+    aliases: [
+      'dpc',
+      'real time agent dpc',
+      'agent dpc',
+      'dpc rate',
+      'dpc %',
+      'dpc time',
+      'real-time agent dpc',
+    ],
+    kind: 'number',
+  },
+  viewTogether: {
+    aliases: [
+      'view together',
+      'view together attach',
+      'view together rate',
+      'viewtogether',
+      'view together %',
+      'view together attach %',
+    ],
+    kind: 'percent',
+  },
+  vtt: {
+    aliases: [
+      'vtt',
+      'vtt %',
+      'vtt rate',
+      'vtt attach',
+      'vtt attach %',
+    ],
+    kind: 'percent',
+  },
+  vttSent: {
+    aliases: [
+      'vtt sent',
+      'view together sent',
+      'vttsent',
+      'viewtogethersent',
+      'vtt invites sent',
+    ],
+    kind: 'number',
+  },
+  vttTransacted: {
+    aliases: [
+      'vtt transacted',
+      'view together transacted',
+      'vtttransacted',
+      'viewtogethertransacted',
+      'vtt transactions',
+    ],
+    kind: 'number',
+  },
+  netOcc: {
+    aliases: [
+      'net occ',
+      'net occ per call',
+      'net occupancy',
+      'netocc',
+      'occupancy',
+      'net occ %',
+    ],
+    kind: 'percent',
+  },
+  creditFreq: {
+    aliases: [
+      'credit freq',
+      'credit frequency',
+      'creditfreq',
+      'credit frequency %',
+      'credit freq %',
+    ],
+    kind: 'percent',
+  },
+  phoneAdds: {
+    aliases: [
+      'phone adds',
+      'total phone adds',
+      'phones',
+      'phoneadds',
+      'gross adds phones',
+      'phone add count',
+    ],
+    kind: 'number',
+  },
+  vhi: {
+    aliases: [
+      'vhi',
+      'gross adds fwa',
+      'fwa',
+      'fixed wireless access',
+      'home internet',
+      'vhi adds',
+      'vhi gross adds',
+    ],
+    kind: 'number',
+  },
 };
 
 const normalizeHeader = (value: string): string =>
@@ -85,9 +273,25 @@ const HEADER_TOKEN_HINTS: Record<string, string[]> = {
   calls: ['calls', 'contacts', 'contact', 'volume'],
   aht: ['aht', 'handle', 'time'],
   vxs: ['vxs', 'csat', 'satisfaction', 'score'],
-  resolve2hr: ['resolve', '2hr', '2hr', 'twohour', '2hour', '2 hour'],
+  resolve2hr: ['resolve', '2hr', 'twohour', '2hour', '2 hour'],
   resolve3d: ['resolve', '3d', '3day', 'threeday', '3 day'],
   resolveTotalContacts: ['resolve', 'resolved', 'contacts', 'contact'],
+  resolveTotalContacts2hr: ['resolve2hr', '2hrcontacts', '2hrcontact'],
+  resolveTotalContacts3d: ['resolve3d', '3dcontacts', '3dcontact'],
+  surveys: ['survey', 'surveys'],
+  promoters: ['promoter', 'promoters'],
+  handoffs: ['handoff', 'handoffs'],
+  handoffsCount: ['transferflag', 'handoffcount'],
+  hold: ['hold'],
+  dpc: ['dpc'],
+  viewTogether: ['viewtogether'],
+  vtt: ['vtt'],
+  vttSent: ['vttsent'],
+  vttTransacted: ['vtttransacted'],
+  netOcc: ['netocc', 'occupancy'],
+  creditFreq: ['creditfreq', 'creditfrequency'],
+  phoneAdds: ['phoneadds', 'phones'],
+  vhi: ['vhi', 'fwa'],
 };
 
 export type PairedCountConfig = {
@@ -478,10 +682,40 @@ const tokenHintsMatch = (normalized: string, field: string, aliases: string[], h
   return hints.some((hint) => normalized.includes(hint));
 };
 
+// Excel's serial date epoch: days are counted from 1899-12-30 (not 1899-12-31)
+// because Excel perpetuates the Lotus 1-2-3 leap-year-1900 bug where serial 60
+// represents the fictional 1900-02-29. Serials above 60 are all one day ahead of
+// what you'd get from 1899-12-31, so 1899-12-30 is the correct JS epoch to use.
+const EXCEL_EPOCH_MS = Date.UTC(1899, 11, 30); // 1899-12-30 UTC
+
+// Plausible range for real-world Excel date serials:
+//   1 → 1900-01-01,  60000 → 2064-03-05
+// Values outside this range are rejected rather than passed to new Date() as a
+// bare string, which would silently produce astronomical-year nonsense.
+const EXCEL_SERIAL_MIN = 1;
+const EXCEL_SERIAL_MAX = 60000;
+
 const convertDateLike = (value: string): string | null => {
   const trimmed = value.trim();
   if (!trimmed) return null;
 
+  // ── Excel serial number ───────────────────────────────────────────────────
+  // Must be checked BEFORE the regex patterns: a bare 5-digit integer like
+  // "45383" matches none of the date-format regexes and would otherwise fall
+  // through to `new Date("45383")`, which JavaScript parses as the year 45383.
+  if (/^\d+(\.\d+)?$/.test(trimmed)) {
+    const serial = Number(trimmed);
+    if (serial >= EXCEL_SERIAL_MIN && serial <= EXCEL_SERIAL_MAX) {
+      // Integer part = whole days; fractional part = time-of-day (ignored here).
+      const days = Math.floor(serial);
+      const d = new Date(EXCEL_EPOCH_MS + days * 86400000);
+      return d.toISOString().slice(0, 10);
+    }
+    // Numeric but outside plausible serial range — do NOT pass to new Date().
+    return null;
+  }
+
+  // ── Formatted date strings ────────────────────────────────────────────────
   const directMatches = [
     /^\d{4}-\d{2}-\d{2}$/,
     /^\d{2}-\d{2}-\d{4}$/,
@@ -535,6 +769,7 @@ const convertDateLike = (value: string): string | null => {
     return null;
   }
 
+  // ── Last resort: let JS parse unrecognised string formats ─────────────────
   const parsed = new Date(trimmed);
   if (!Number.isNaN(parsed.getTime())) {
     const normalized = parsed.toISOString().slice(0, 10);

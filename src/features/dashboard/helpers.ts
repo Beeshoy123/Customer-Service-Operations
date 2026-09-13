@@ -1,9 +1,19 @@
 // @ts-nocheck
-// ==== Data parsing + metric helper logic ==== 
-// Quick scan: src/features/dashboard/helpers.ts for raw parsing, aggregation, and filtering
+// ============================================================================
+// FILE STRUCTURE:
+// ├── Agent Search Filter
+// ├── Bonus Score Calculation
+// ├── Record Aggregation
+// ├── Team Metric Aggregation
+// ├── Weighted Metric Calculation
+// ├── Trend Calculation
+// ├── Name Formatting Helpers
+// └── Date & Calendar Helpers
+// ============================================================================
 
 import { METRIC_CONFIG, TARGETS } from './config';
 
+// ─── Agent Search Filter ──────────────────────────────────────
 export const agentMatchesSearch = (a, queries) => {
   if (queries.length === 0) return true;
   return queries.some((q) =>
@@ -15,6 +25,7 @@ export const agentMatchesSearch = (a, queries) => {
   );
 };
 
+// ─── Bonus Score Calculation ──────────────────────────────────────
 export const calculateBonus = (vxs, r3d, handoffs) => {
   if (vxs == null || r3d == null || handoffs == null) return null;
   const vxsAttain = Math.min(1.2, vxs / TARGETS.vxs);
@@ -23,6 +34,7 @@ export const calculateBonus = (vxs, r3d, handoffs) => {
   return vxsAttain * 50 + r3dAttain * 20 + handoffsAttain * 20 + 10;
 };
 
+// ─── Record Aggregation ──────────────────────────────────────
 export const aggregateRecords = (records) => {
   let calls = 0, sumResolveTotalContacts = 0, sumTalkTime = 0, callsWithAht = 0, surveys = 0, promoters = 0;
   let totalResContacts3d = 0, totalRepeats3d = 0, totalResContacts2hr = 0, totalRepeats2hr = 0, ncwCount = 0;
@@ -111,6 +123,7 @@ export const aggregateRecords = (records) => {
   };
 };
 
+// ─── Team Metric Aggregation ──────────────────────────────────────
 export const aggregateTeamMetrics = (agentDatas) => {
   let totalCalls = 0, totalCallsAht = 0, totalTalkTime = 0, totalPromoters = 0, totalSurveys = 0, sumHandoffs = 0, countHandoffs = 0, totalHandoffsCount = 0;
   let totalResContacts3d = 0, totalRepeats3d = 0, totalResContacts2hr = 0, totalRepeats2hr = 0, totalResolveContacts = 0, totalNcwCount = 0;
@@ -185,6 +198,7 @@ export const aggregateTeamMetrics = (agentDatas) => {
   };
 };
 
+// ─── Weighted Metric Calculation ──────────────────────────────────────
 export const calculateWeightedVSF = (agentsList, metricKey) => {
   if (!['vxs', 'resolve3d', 'resolve2hr'].includes(metricKey)) return null;
 
@@ -243,6 +257,7 @@ export const calculateWeightedVSF = (agentsList, metricKey) => {
   return `VSF is ${vsf.toFixed(2)}. This is a PROCESS ISSUE. Your action plan MUST NOT target individuals. Recommend floor-wide changes. Mathematical Proof: Despite top offenders like ${worstOutliers}, the variance is too tight. The entire team is failing the process together.`;
 };
 
+// ─── Trend Calculation ──────────────────────────────────────
 export const calculateTrend = (currentData, baselineData) => {
   if (!currentData || currentData.isOff || typeof currentData.vxs !== 'number' || !baselineData || typeof baselineData.vxs !== 'number' || isNaN(currentData.vxs)) {
     return { direction: 'stable', label: 'OFF', diff: 0, diffStr: '-' };
@@ -254,6 +269,7 @@ export const calculateTrend = (currentData, baselineData) => {
   return { direction: 'stable', label: '✊ STABLE', diff, diffStr };
 };
 
+// ─── Name Formatting Helpers ──────────────────────────────────────
 export const formatName = (fullName) => {
   if (!fullName) return '';
   const parts = fullName.split(',');
@@ -268,6 +284,7 @@ export const shortenManagerName = (fullName) => {
   return `${words[0]} ${words[words.length - 1]}`;
 };
 
+// ─── Date & Calendar Helpers ──────────────────────────────────────
 export const normalizeDate = (dStr) => {
   if (!dStr) return null;
   const datePart = dStr.split(' ')[0];
