@@ -15,16 +15,19 @@ import {
   aggregateTeamMetrics,
   calculateTrend,
   calculateWeightedVSF,
-  detectColumns,
   dowFromDateStr,
-  formatName,
-  getWeekNumber,
-  isRawGranularFormat,
   normalizeDate,
-  parseCSVLine,
-  shortenManagerName,
 } from './helpers';
-import { runImportService } from './import';
+import {
+  runImportService,
+  convertWorkbookToSheets,
+  parseCsvFileText,
+  aggregateTransactions,
+  validateNormalizedRows,
+  mergeNormalizedRows,
+  normalizeCellValue,
+} from './import';
+import type { SheetTable, SheetGranularity, ImportResult } from './import/types';
 import { detectFileType } from './import/fileTypeDetector';
 
 // ==== Dashboard state + data lifecycle ==== 
@@ -65,7 +68,20 @@ export const useDashboardData = (onDataReset = null) => {
   const [hasUploadedData, setHasUploadedData] = useState(() => !!persistedState?.hasUploadedData);
   const [uploadStatus, setUploadStatus] = useState(null);
   const [batchImportSummary, setBatchImportSummary] = useState(null);
+  const [importPreview, setImportPreview] = useState(null);
   const importAbortControllerRef = useRef(null);
+
+  const openImportPreview = useCallback((config) => {
+    setImportPreview({
+      isOpen: true,
+      fileName: config.fileName,
+      sheets: config.sheets,
+    });
+  }, []);
+
+  const closeImportPreview = useCallback(() => {
+    setImportPreview(null);
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -93,36 +109,50 @@ export const useDashboardData = (onDataReset = null) => {
     if (!files.length) return;
 
     if (files.length === 1) {
-      processFile(files[0]);
+      await processFile(files[0]);
       if (event.target) event.target.value = '';
       return;
     }
 
-    setUploadStatus({ type: 'info', message: `Preparing ${files.length} files for multi-sheet import...` });
+    setUploadStatus({ type: 'info', message: `Preparing ${files.length} files for import preview...` });
 
     try {
-      const result = await runImportService(files);
-      const totalRows = result.rows?.length ?? 0;
-      setBatchImportSummary(result);
-
-      if (totalRows > 0) {
-        setUploadStatus({
-          type: 'success',
-          message: `Batch import ready: ${totalRows} normalized rows from ${result.files} file(s).`,
-        });
-      } else {
-        setUploadStatus({
-          type: 'error',
-          message: 'No usable rows were detected across the selected files.',
-        });
+      const combinedSheets = [];
+      for (const file of files) {
+        const fileType = detectFileType(file.name);
+        if (fileType === 'xlsx' || fileType === 'xls' || fileType === 'xlsm') {
+          const { sheets } = await convertWorkbookToSheets(file);
+          combinedSheets.push(...sheets);
+        } else if (fileType === 'csv' || fileType === 'tsv' || fileType === 'txt') {
+          const textTable = await parseCsvFileText(file);
+          combinedSheets.push({
+            workbookName: file.name,
+            sheetName: file.name.replace(/\.[^/.]+$/, '') || 'CSV',
+            index: combinedSheets.length,
+            headerRow: textTable.headers,
+            rows: textTable.rows,
+            rowCount: textTable.rows.length,
+          });
+        }
       }
 
       if (event.target) event.target.value = '';
-      setTimeout(() => setUploadStatus(null), 5000);
+      setUploadStatus(null);
+
+      if (combinedSheets.length === 0) {
+        setUploadStatus({ type: 'error', message: 'No usable sheets detected across the selected files.' });
+        setTimeout(() => setUploadStatus(null), 5000);
+        return;
+      }
+
+      openImportPreview({
+        fileName: `${files.length} files batch`,
+        sheets: combinedSheets,
+      });
     } catch (error) {
       setUploadStatus({
         type: 'error',
-        message: 'The batch import could not be processed. Please check the file set.',
+        message: 'The batch files could not be processed. Please check the file set.',
       });
       if (event.target) event.target.value = '';
       setTimeout(() => setUploadStatus(null), 5000);

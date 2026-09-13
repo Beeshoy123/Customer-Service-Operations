@@ -1,3 +1,5 @@
+import type { ColumnMappingConfidence, DetectedColumnMapping } from './types';
+
 export type ImportFieldKind = 'text' | 'number' | 'percent' | 'date';
 
 export type ImportFieldPolicy = {
@@ -322,6 +324,126 @@ export const findCanonicalField = (header: string): string | null => {
   }
 
   return null;
+};
+
+export const CANONICAL_FIELD_OPTIONS: { value: string; label: string }[] = [
+  { value: 'agentName', label: 'Agent Name' },
+  { value: 'employeeId', label: 'Employee ID' },
+  { value: 'supervisor', label: 'Supervisor Name' },
+  { value: 'oam', label: 'OAM (Operations Manager)' },
+  { value: 'date', label: 'Date' },
+  { value: 'calls', label: 'Call Volume' },
+  { value: 'aht', label: 'Average Handle Time (AHT)' },
+  { value: 'vxs', label: 'Customer Satisfaction (VXS / CSAT)' },
+  { value: 'resolve2hr', label: 'Resolve 2hr %' },
+  { value: 'resolve3d', label: 'Resolve 3d %' },
+  { value: 'resolveTotalContacts', label: 'Resolve Total Contacts' },
+  { value: 'location', label: 'Location / Site' },
+  { value: 'vxs_Pass', label: 'VXS Pass Count' },
+  { value: 'vxs_Cnt', label: 'VXS Total Count' },
+  { value: 'resolve2hr_Pass', label: 'Resolve 2hr Pass' },
+  { value: 'resolve2hr_Cnt', label: 'Resolve 2hr Count' },
+  { value: 'resolve3d_Pass', label: 'Resolve 3d Pass' },
+  { value: 'resolve3d_Cnt', label: 'Resolve 3d Count' },
+];
+
+export const detectColumnMappingWithConfidence = (
+  header: string,
+  index = 0,
+  sampleValues: string[] = []
+): DetectedColumnMapping => {
+  const normalized = normalizeHeader(header);
+  if (!normalized) {
+    return {
+      header,
+      normalized: '',
+      mappedField: null,
+      confidence: 'none',
+      isLowConfidence: false,
+      matchType: 'unmapped',
+      sampleValues,
+      index,
+    };
+  }
+
+  // 1. Paired count exact match
+  const paired = findPairedCountField(header);
+  if (paired) {
+    return {
+      header,
+      normalized,
+      mappedField: paired.taggedField,
+      confidence: 'exact',
+      isLowConfidence: false,
+      matchType: 'paired_count',
+      sampleValues,
+      index,
+    };
+  }
+
+  // 2. Direct alias match in FIELD_ALIASES
+  for (const [field, config] of Object.entries(FIELD_ALIASES)) {
+    const aliases = config.aliases ?? [];
+    const directMatch = aliases.some(
+      (alias: string) => normalizeHeader(alias) === normalized || compactHeader(alias) === compactHeader(header)
+    );
+    if (directMatch) {
+      return {
+        header,
+        normalized,
+        mappedField: field,
+        confidence: 'exact',
+        isLowConfidence: false,
+        matchType: 'exact_alias',
+        sampleValues,
+        index,
+      };
+    }
+  }
+
+  // 3. Token-hint match (low confidence fallback)
+  for (const [field, config] of Object.entries(FIELD_ALIASES)) {
+    const aliases = config.aliases ?? [];
+    const tokenHint = HEADER_TOKEN_HINTS[field] ?? [];
+    if (tokenHintsMatch(normalized, field, aliases, tokenHint)) {
+      return {
+        header,
+        normalized,
+        mappedField: field,
+        confidence: 'low',
+        isLowConfidence: true,
+        matchType: 'token_hint',
+        sampleValues,
+        index,
+      };
+    }
+  }
+
+  for (const [field, hints] of Object.entries(HEADER_TOKEN_HINTS)) {
+    if (tokenMatches(header, hints)) {
+      return {
+        header,
+        normalized,
+        mappedField: field,
+        confidence: 'low',
+        isLowConfidence: true,
+        matchType: 'token_hint',
+        sampleValues,
+        index,
+      };
+    }
+  }
+
+  return {
+    header,
+    normalized,
+    mappedField: null,
+    confidence: 'none',
+    isLowConfidence: false,
+    matchType: 'unmapped',
+    sampleValues,
+    index,
+  };
 };
 
 const tokenHintsMatch = (normalized: string, field: string, aliases: string[], hints: string[]) => {

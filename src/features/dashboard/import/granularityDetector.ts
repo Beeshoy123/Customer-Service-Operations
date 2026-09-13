@@ -199,3 +199,61 @@ export const detectGranularity = (
 
 export const detectSheetGranularity = detectGranularity;
 
+export const evaluateGranularityConfidence = (
+  result: GranularityDetectionResult,
+  columnMappings?: { mappedField: string | null; isLowConfidence?: boolean }[]
+): { isHighConfidence: boolean; reason: string } => {
+  if (!result || result.classification === 'unknown') {
+    return {
+      isHighConfidence: false,
+      reason: 'Missing agent or date column mapping to determine granularity.',
+    };
+  }
+
+  // If key identifier columns were matched with low confidence, mark granularity as low confidence
+  if (columnMappings) {
+    const keyColumnLowConfidence = columnMappings.some(
+      (col) =>
+        (col.mappedField === 'agentName' || col.mappedField === 'employeeId' || col.mappedField === 'date') &&
+        Boolean(col.isLowConfidence)
+    );
+    if (keyColumnLowConfidence) {
+      return {
+        isHighConfidence: false,
+        reason: 'Key identifier column (agent or date) was matched via low-confidence token hints.',
+      };
+    }
+  }
+
+  if (result.classification === 'aggregate') {
+    if (result.averageRowsPerAgentDate <= 1.2) {
+      return {
+        isHighConfidence: true,
+        reason: `High confidence daily aggregate (~${result.averageRowsPerAgentDate} rows per agent/day).`,
+      };
+    }
+    return {
+      isHighConfidence: false,
+      reason: `Borderline aggregate (${result.averageRowsPerAgentDate} avg rows/day) requires verification.`,
+    };
+  }
+
+  if (result.classification === 'transaction') {
+    if (result.averageRowsPerAgentDate >= 2.0) {
+      return {
+        isHighConfidence: true,
+        reason: `High confidence transaction-level data (~${result.averageRowsPerAgentDate} rows per agent/day).`,
+      };
+    }
+    return {
+      isHighConfidence: false,
+      reason: `Borderline transaction level (${result.averageRowsPerAgentDate} avg rows/day) requires verification.`,
+    };
+  }
+
+  return {
+    isHighConfidence: false,
+    reason: 'Granularity requires manual verification.',
+  };
+};
+

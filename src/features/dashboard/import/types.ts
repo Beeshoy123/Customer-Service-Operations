@@ -17,6 +17,12 @@ export type ImportProgress = {
 export type ImportOptions = {
   signal?: AbortSignal;
   onProgress?: (progress: ImportProgress) => void;
+  largeSheetRowThreshold?: number;
+  batchRowSize?: number;
+  largeFileSizeThreshold?: number;
+  maxRowsPerSheet?: number;
+  fileSize?: number;
+  fileName?: string;
 };
 
 export type ImportWarning = {
@@ -34,6 +40,12 @@ export type SheetTable = {
   rows: unknown[][];
   headerRow: unknown[];
   rowCount: number;
+};
+
+export type WorkbookResult = {
+  sheets: SheetTable[];
+  skippedSheets: string[];
+  totalSheets: number;
 };
 
 export type NormalizedRow = Record<string, string | number | null | undefined>;
@@ -80,3 +92,37 @@ export type ColumnFieldMapping =
   | SheetHeaderMapping[]
   | Record<string | number, string | null | undefined>
   | Map<string | number, string | null | undefined>;
+
+export type ColumnMappingConfidence = 'exact' | 'low' | 'none';
+
+export type DetectedColumnMapping = {
+  header: string;
+  normalized: string;
+  mappedField: string | null;
+  confidence: ColumnMappingConfidence;
+  isLowConfidence: boolean;
+  matchType: 'exact_alias' | 'paired_count' | 'token_hint' | 'unmapped';
+  sampleValues?: string[];
+  index: number;
+};
+
+export type SheetPreviewData = {
+  sheetName: string;
+  workbookName: string;
+  index: number;
+  rowCount: number;
+  table: SheetTable;
+  detectedGranularity: SheetGranularity;
+  granularityConfidence: 'high' | 'low';
+  granularityReason?: string;
+  selectedGranularity: SheetGranularity;
+  isConfirmed: boolean;
+  columnMappings: DetectedColumnMapping[];
+};
+
+export type ImportPreviewState = {
+  isOpen: boolean;
+  fileName: string;
+  sheets: SheetPreviewData[];
+  skippedSheets?: string[];
+};

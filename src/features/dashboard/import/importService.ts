@@ -110,8 +110,10 @@ const parseTextFile = async (file: File, options: ImportOptions = {}): Promise<{
 const parseWorkbookFile = async (file: File, options: ImportOptions = {}): Promise<{ rows: NormalizedRow[]; sourceSummary: ImportSourceSummary[]; warnings: ImportWarning[] }> => {
   throwIfAborted(options.signal);
 
-  const workbookResult = await convertWorkbookToSheets(file, options);
-  const { sheets, skippedSheets } = workbookResult;
+  const { sheets, skippedSheets, totalSheets } = await convertWorkbookToSheets(file, options, (progress) => {
+    notifyProgress(options, progress);
+  });
+  void totalSheets;
   const filteredSheets = selectSheets(sheets);
   const mergedRows: NormalizedRow[] = [];
   const sourceSummary: ImportSourceSummary[] = [];
