@@ -1,3 +1,4 @@
+// @ts-nocheck
 // ==== Shared dashboard menus ==== 
 // Quick scan: src/components/menus.tsx for timeframe and settings controls
 

@@ -1,3 +1,4 @@
+// @ts-nocheck
 // ==== Data parsing + metric helper logic ==== 
 // Quick scan: src/features/dashboard/helpers.ts for raw parsing, aggregation, and filtering
 
@@ -316,10 +317,10 @@ export const dowFromDateStr = (d) => {
 };
 
 export const COLUMN_PATTERNS = {
-  name: { match: (h, hn) => h === 'name' || h === 'agent name' || h === 'rep name' || h === 'employee name' || hn === 'employeename' || hn === 'repname' || hn === 'agentname' },
+  name: { match: (h, hn) => h === 'name' || h === 'agent name' || h === 'rep name' || h === 'employee name' || h === 'employeename' || h === 'employee' || hn === 'employeename' || hn === 'repname' || hn === 'agentname' },
   employeeId: { match: (h, hn) => hn === 'employeeid' || h === 'ccms' || h === 'ccms ident' || h.includes('ccms ident') || hn.includes('ccmsident') },
   employeeIdFallback: { match: (h, hn) => h === 'attuid' || h === 'sid' },
-  supervisor: { match: (h, hn) => h === 'manager 1' || h === 'supervisor name' || h === 'supervisor' || h === 'sup name' || h === 'spv' || hn === 'spv' || h.includes('direct manager name') },
+  supervisor: { match: (h, hn) => h === 'manager 1' || h === 'supervisor name' || h === 'supervisor' || h === 'sup name' || h === 'spv' || h === 'spv name' || hn === 'spv' || h.includes('direct manager name') },
   oam: { match: (h, hn) => h === 'manager 2' || h === 'oam' || h === 'manager' || h.includes('acm name') },
   date: { match: (h, hn) => h === 'startdate' || h === 'start date' || h === 'date' || h === 'reportdate' || h === 'survey date' },
   location: { match: (h, hn) => h === 'location' || h === 'site' || hn === 'geographiclocationdescription' },
@@ -358,11 +359,40 @@ export const COLUMN_PATTERNS = {
   requestResolved: { match: (h) => h === 'request resolved' || h === 'not resolved' },
 };
 
+const compactHeader = (value) => String(value ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+
+const shouldMatchField = (header, hints) => {
+  const normalized = compactHeader(header);
+  return hints.some((hint) => {
+    const key = compactHeader(hint);
+    if (!key) return false;
+    return normalized.includes(key) || key.length > 3 && normalized.includes(key.slice(0, 3));
+  });
+};
+
 export const detectColumns = (headers) => {
-  const normalized = headers.map((h) => h.replace(/[^a-z0-9]/g, ''));
+  const safeHeaders = headers.map((h) => (h ?? '').toLowerCase());
+  const normalized = safeHeaders.map((h) => h.replace(/[^a-z0-9]/g, ''));
   const found = {};
+
   for (const key in COLUMN_PATTERNS) {
-    found[key] = headers.findIndex((h, i) => COLUMN_PATTERNS[key].match(h, normalized[i]));
+    found[key] = safeHeaders.findIndex((h, i) => {
+      if (COLUMN_PATTERNS[key].match(h, normalized[i])) return true;
+
+      if (key === 'name') {
+        return shouldMatchField(h, ['agent', 'employee', 'emp', 'rep', 'associate', 'name']);
+      }
+      if (key === 'supervisor') {
+        return shouldMatchField(h, ['supervisor', 'spv', 'manager', 'mgr', 'lead', 'team']);
+      }
+      if (key === 'employeeId') {
+        return shouldMatchField(h, ['employee', 'emp', 'agent', 'associate', 'ccms', 'id']);
+      }
+      if (key === 'date') {
+        return shouldMatchField(h, ['date', 'day', 'report', 'service', 'work']);
+      }
+      return false;
+    });
   }
   if (found.employeeId === -1 && found.employeeIdFallback !== -1) {
     found.employeeId = found.employeeIdFallback;

@@ -60,6 +60,50 @@ var tailwind = typeof window !== 'undefined' ? window.tailwind : { config: {} };
 // 4) data logic: src/features/dashboard/hooks.ts + metrics.ts + helpers.ts
 // 5) reusable UI: src/components/shared.tsx + menus.tsx
 
+class ErrorBoundary extends React.Component {
+  state = { hasError: false, error: null };
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('Dashboard error boundary caught an error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0b0f19', color: '#e2e8f0', padding: '32px' }}>
+          <div style={{ maxWidth: 520, width: '100%', background: '#111827', border: '1px solid rgba(148,163,184,0.2)', borderRadius: 16, padding: 24 }}>
+            <h2 style={{ margin: '0 0 12px', fontSize: 24, color: '#ffffff' }}>Dashboard Error</h2>
+            <p style={{ margin: '0 0 16px', color: '#cbd5e1', lineHeight: 1.6 }}>
+              The dashboard hit an unexpected error and needs to reload. This is a UI-level failure, not a data-loss issue.
+            </p>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              style={{
+                background: '#2563eb',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: 8,
+                padding: '10px 16px',
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              Reload dashboard
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 const UploadStatus = ({ uploadStatus }) => {
   if (!uploadStatus) return null;
   return (
@@ -72,6 +116,7 @@ const UploadStatus = ({ uploadStatus }) => {
 
 
 // ==== AI chart action modal ==== 
+// NOTE: this modal is intentionally isolated from the main dashboard shell so AI output can be reused separately.
 // Source: src/App.tsx -> ChartActionPlanModal
 const ChartActionPlanModal = () => {
   const { aiTools, uiState } = useDashboard();
@@ -110,11 +155,21 @@ const ChartActionPlanModal = () => {
 
 
 // ==== Top navigation / global actions ==== 
+// NOTE: keep this shell compact; most business logic lives in dashboard hooks and metrics helpers.
 // Source: src/App.tsx
 const TopNavbar = React.memo(() => {
-  const { dashData, uiState, uiHandlers } = useDashboard();
+  const { dashData, uiState, uiHandlers, batchImportSelection, setBatchImportSelection } = useDashboard();
   const menuRef = useRef(null);
   const timeframeRef = useRef(null);
+  const batchSummary = dashData.batchImportSummary;
+
+  const toggleBatchImportSource = (sourceKey) => {
+    setBatchImportSelection((prev) => {
+      const next = { ...(prev || {}) };
+      next[sourceKey] = !next[sourceKey];
+      return next;
+    });
+  };
 
 
   useEffect(() => {
@@ -155,7 +210,15 @@ const TopNavbar = React.memo(() => {
         
         <div className="action-buttons">
           <div className="flex gap-2 items-center">
-
+            {batchSummary && (
+              <div className="flex items-center gap-2 rounded-full bg-slate-800/80 border border-slate-600 px-3 py-1 text-[10px] uppercase tracking-[0.18em] text-slate-200 whitespace-nowrap">
+                <span>{batchSummary.files} file(s)</span>
+                <span>•</span>
+                <span>{batchSummary.sheets} sheet(s)</span>
+                <span>•</span>
+                <span>{batchSummary.rows?.length ?? 0} rows</span>
+              </div>
+            )}
 
             <button 
               title="Data Assistant"
@@ -168,11 +231,10 @@ const TopNavbar = React.memo(() => {
               🔍
             </button>
 
-
-            <input type="file" accept=".csv, .txt, .tsv" id="csv-upload" style={{ display: 'none' }} onChange={dashData.handleFileUpload} />
+            <input type="file" accept=".csv, .txt, .tsv, .xls, .xlsx, .xlsm" id="csv-upload" style={{ display: 'none' }} multiple onChange={dashData.handleFileUpload} />
             <label 
               htmlFor="csv-upload" 
-              title="Upload CSV Data" 
+              title="Upload CSV or Excel Data" 
               className="py-1 px-4 rounded-full cursor-pointer transition-all flex items-center justify-center text-lg text-white" 
               style={{ background: 'transparent', border: '1px solid transparent', opacity: 0.7 }}
               onMouseOver={(e) => e.currentTarget.style.opacity = 1}
@@ -180,7 +242,6 @@ const TopNavbar = React.memo(() => {
             >
               📤
             </label>
-
 
             <div className="column-menu-container flex" ref={timeframeRef}>
               <button 
@@ -211,7 +272,6 @@ const TopNavbar = React.memo(() => {
               )}
             </div>
 
-
             <div className="column-menu-container flex" ref={menuRef}>
               <button 
                 title="Toggle Metrics" 
@@ -237,6 +297,53 @@ const TopNavbar = React.memo(() => {
               )}
             </div>
           </div>
+
+          {batchSummary && (
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-300">
+              {batchSummary.warnings?.length > 0 && (
+                <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-amber-200">
+                  {batchSummary.warnings.length} warning(s)
+                </span>
+              )}
+              {batchSummary.errors?.length > 0 && (
+                <span className="rounded-full border border-rose-500/40 bg-rose-500/10 px-2 py-1 text-rose-200">
+                  {batchSummary.errors.length} error(s)
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => dashData.applyBatchImport(batchImportSelection)}
+                className="rounded-full border border-emerald-400/40 bg-emerald-500/10 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-200 hover:bg-emerald-500/20"
+              >
+                Apply to dashboard
+              </button>
+            </div>
+          )}
+
+          {batchSummary?.sources?.length > 0 && (
+            <div className="mt-2 rounded-xl border border-slate-700 bg-slate-900/70 p-3 text-[11px] text-slate-300">
+              <div className="mb-2 text-[10px] uppercase tracking-[0.18em] text-slate-400">Import preview</div>
+              <div className="flex flex-wrap gap-2">
+                {batchSummary.sources.map((source) => {
+                  const sourceKey = `${source.fileName}|${source.sheetName}`;
+                  const isSelected = !!batchImportSelection?.[sourceKey];
+                  return (
+                    <label key={sourceKey} className="flex cursor-pointer items-center gap-2 rounded-full border border-slate-600 bg-slate-800 px-2 py-1">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleBatchImportSource(sourceKey)}
+                        className="accent-emerald-500"
+                      />
+                      <span>
+                        {source.fileName} • {source.sheetName} • {source.rowCount} rows
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -245,6 +352,7 @@ const TopNavbar = React.memo(() => {
 
 
 // ==== KPI summary row ==== 
+// NOTE: this is the executive overview section. Keep card sizing and metric ordering stable when changing layouts.
 // Source: src/App.tsx -> MainStatsRow
 const MainStatsRow = React.memo(() => {
   const { dashData, metrics, uiState } = useDashboard();
@@ -260,7 +368,7 @@ const MainStatsRow = React.memo(() => {
             <h2 className="text-xl text-white m-0 font-bold">Month to Date</h2>
             <div className="flex gap-3 mt-2">
               <span className="text-xs text-slate-400 bg-slate-800 py-1 px-2 rounded">Calls Handled: <strong className="text-white">{metrics.mtdLeaderData.calls ? metrics.mtdLeaderData.calls.toLocaleString() : '-'}</strong></span>
-              <span className="text-xs text-slate-400 bg-slate-800 py-1 px-2 rounded">Resolve Contacts: <strong className="text-white">{metrics.mtdLeaderData.resolveTotalContacts ? metrics.mtdLeaderData.resolveTotalContacts.toLocaleString() : '-'}</strong></span>
+              <span className="text-xs text-slate-400 bg-slate-800 py-1 px-2 rounded">Res Contacts: <strong className="text-white">{metrics.mtdLeaderData.resolveTotalContacts ? metrics.mtdLeaderData.resolveTotalContacts.toLocaleString() : '-'}</strong></span>
             </div>
           </div>
           <span className="bg-red-900 bg-opacity-20 text-red-300 py-1 px-2 rounded text-xs font-bold">MONTH-END STRATEGY</span>
@@ -342,24 +450,10 @@ const MainStatsRow = React.memo(() => {
 
 
 // ==== Floor header + selector bar ==== 
+// NOTE: search/filter controls and tab state are managed here; if the toolbar layout changes, update both markup and styles together.
 // Source: src/App.tsx -> FloorHeader
 const FloorHeader = React.memo(() => {
   const { dashData, uiState, uiHandlers } = useDashboard();
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const dropdownRef = useRef(null);
-
-
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setIsDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-
   const tabs = [
     { id: 'roster', icon: '📋', label: 'Team Roster' },
     { id: 'outliers', icon: '⚠️', label: 'Floor Outliers' },
@@ -377,63 +471,54 @@ const FloorHeader = React.memo(() => {
 
   return (
     <div className="roster-header relative z-20">
-      <div>
-        <h2 className="text-xl text-slate-900 m-0 font-bold flex items-center gap-2">
-            Floor Details 
+      <div className="flex items-center justify-between gap-4 w-full">
+        <div className="flex items-center gap-2">
+          <h2 className="text-xl text-slate-900 m-0 font-bold flex items-center gap-2">
+            Floor Details
             {uiState.searchQuery && <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded font-bold uppercase tracking-wide border border-blue-200">Filtered</span>}
-        </h2>
+          </h2>
+        </div>
+
+        <div className="flex items-center gap-3" style={{ marginLeft: 'auto' }}>
+          <div className="flex items-center gap-1">
+            <button onClick={() => dashData.handleDateChange(-1)} className="p-2 bg-transparent border-none cursor-pointer text-xl text-slate-500 rounded-full transition-all flex items-center justify-center w-9 h-9 hover:bg-slate-100 hover:text-slate-900" title="Previous Day">◀</button>
+            <button onClick={() => dashData.handleDateChange(1)} className="p-2 bg-transparent border-none cursor-pointer text-xl text-slate-500 rounded-full transition-all flex items-center justify-center w-9 h-9 hover:bg-slate-100 hover:text-slate-900" title="Next Day">▶</button>
+          </div>
+
+          <input
+            type="text"
+            className="search-input"
+            placeholder="Search multiple (comma separated)..."
+            value={uiState.inputValue}
+            onChange={(e) => uiHandlers.setInputValue(e.target.value)}
+            style={{ width: 'min(360px, 100%)', maxWidth: '360px' }}
+          />
+        </div>
       </div>
 
-
-        <div className="flex gap-3 items-center flex-wrap">
-        <div className="flex items-center gap-1">
-          <button onClick={() => dashData.handleDateChange(-1)} className="p-2 bg-transparent border-none cursor-pointer text-xl text-slate-500 rounded-full transition-all flex items-center justify-center w-9 h-9 hover:bg-slate-100 hover:text-slate-900" title="Previous Day">◀</button>
-          <button onClick={() => dashData.handleDateChange(1)} className="p-2 bg-transparent border-none cursor-pointer text-xl text-slate-500 rounded-full transition-all flex items-center justify-center w-9 h-9 hover:bg-slate-100 hover:text-slate-900" title="Next Day">▶</button>
+      <div className="mt-3">
+        <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-100 p-1 shadow-sm w-full overflow-x-auto">
+          {tabs.map(tab => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => uiHandlers.setMainTab(tab.id)}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap border ${uiState.mainTab === tab.id ? 'bg-white text-slate-900 border-slate-200 shadow-sm' : 'text-slate-500 border-transparent hover:bg-slate-50 hover:text-slate-900'}`}
+              title={tab.label}
+            >
+              <span className="text-base leading-none">{tab.icon}</span>
+              <span>{tab.label}</span>
+            </button>
+          ))}
         </div>
-
-
-        <div className="relative" ref={dropdownRef}>
-          <button 
-            title="Action Hub Menu"
-            onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-            className="flex items-center justify-center w-11 h-11 bg-slate-900 border border-slate-700 rounded-xl shadow-sm text-white hover:bg-slate-800 hover:border-slate-600 transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 focus:ring-offset-slate-900"
-          >
-            <span className="text-xl leading-none">{currentTab.icon}</span>
-          </button>
-          
-          {isDropdownOpen && (
-            <div className="absolute left-0 top-full mt-2 min-w-[200px] w-max glass-panel rounded-xl z-50 overflow-hidden animate-slide-down p-2">
-              <div className="flex flex-col gap-1">
-                {tabs.map(tab => (
-                  <button
-                    key={tab.id}
-                    onClick={() => { uiHandlers.setMainTab(tab.id); setIsDropdownOpen(false); }}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-bold transition-all cursor-pointer border-none text-left whitespace-nowrap ${uiState.mainTab === tab.id ? 'bg-white shadow-sm text-slate-900 border border-slate-200' : 'bg-transparent text-slate-600 hover:bg-white/60 hover:text-slate-900'}`}
-                  >
-                    <span className="text-lg leading-none shrink-0 text-center">{tab.icon}</span>
-                    <span>{tab.label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-
-        <input 
-          type="text" 
-          className="search-input" 
-          placeholder="Search multiple (comma separated)..." 
-          value={uiState.inputValue}
-          onChange={(e) => uiHandlers.setInputValue(e.target.value)}
-        />
       </div>
     </div>
   );
 });
 
 
-// Drag-and-drop upload zone, shown in place of plain text when no data is loaded yet.
+// ==== Empty-state upload panel ==== 
+// NOTE: shown only before any dataset is loaded. Keep drag/drop UX consistent with the upload button in TopNavbar.
 const DropZone = () => {
   const { dashData } = useDashboard();
   const [isDragOver, setIsDragOver] = useState(false);
@@ -472,6 +557,7 @@ const DropZone = () => {
 
 
 // ==== Floor roster tab ==== 
+// NOTE: this is the primary grid view for supervisors and is the easiest place to debug sorting/filtering regressions.
 // Source: src/App.tsx -> FloorRosterTab
 const FloorRosterTab = () => {
   const { dashData, metrics, aiTools, uiState, uiHandlers } = useDashboard();
@@ -1558,7 +1644,7 @@ const MainModal = React.memo(() => {
 
 
 const DASHBOARD_STYLES = `
-.analyst-dashboard{min-height:100vh;width:100%;min-width:0;box-sizing:border-box;background-color:#f5f2eb;color:#0b0f19;font-family:'Inter',Helvetica,sans-serif;position:relative;overflow-x:hidden}@keyframes slideDown{from{transform:translate(-50%,-20px);opacity:0}to{transform:translate(-50%,0);opacity:1}}.top-navbar{background-color:#0b0f19;border-bottom:1px solid #111827;padding:16px 24px;z-index:40}.top-navbar-inner{width:100%;max-width:1100px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;box-sizing:border-box}.header-info{display:flex;align-items:center;gap:16px}.badge{background:linear-gradient(135deg,rgba(59,130,246,.15) 0,rgba(30,58,138,.2) 100%);color:#93c5fd;border:1px solid rgba(96,165,250,.15);padding:6px 16px;border-radius:20px;font-size:.75rem;font-weight:700;letter-spacing:.5px;display:flex;align-items:center;gap:6px;box-shadow:0 2px 10px rgba(0,0,0,.2)}.action-buttons{display:flex;gap:12px;flex-wrap:wrap;align-items:center}.column-menu-container{position:relative}.column-menu-btn{padding:8px 12px;background:#0b0f19;border:1px solid #111827;border-radius:6px;font-size:1.2rem;color:#94a3b8;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s}.column-menu-btn:hover{color:#fff;background:#111827;border-color:#1e293b}.glass-panel{background:rgba(15,23,42,0.96);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(148,163,184,0.2);box-shadow:0 10px 40px -10px rgba(2,6,23,0.8)}.column-menu-dropdown{position:absolute;top:100%;right:0;margin-top:12px;background:rgba(15,23,42,0.96);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(148,163,184,0.22);border-radius:16px;box-shadow:0 10px 40px -10px rgba(2,6,23,0.8);width:300px;padding:20px;z-index:100;display:flex;flex-direction:column;gap:12px;color:#e2e8f0}.column-menu-dropdown label{display:flex;align-items:center;gap:10px;font-size:.85rem;cursor:pointer;color:#e2e8f0}.column-menu-dropdown select,.column-menu-dropdown input{color:#f8fafc;background:#0f172a;border-color:#334155}.column-menu-dropdown option{background:#0f172a;color:#f8fafc}.main-workspace{padding:32px 24px;max-width:1100px;margin:0 auto;width:100%;display:flex;flex-direction:column;gap:32px;box-sizing:border-box;min-width:0}.stats-row{display:grid;grid-template-columns:1fr 1fr;gap:24px}@media (max-width:850px){.stats-row{grid-template-columns:1fr}}.roster-container{position:relative;z-index:10;background:#fff;border-radius:12px;display:flex;flex-direction:column;box-shadow:0 4px 6px rgba(0,0,0,.05);margin-bottom:60px;border:1px solid #e2e8f0;overflow:hidden}.roster-header{position:relative;z-index:50;padding:0 0 16px 0;background-color:transparent;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px}.search-input{padding:8px 16px;border:1px solid #cbd5e1;background-color:#fff;color:#0b0f19;border-radius:6px;font-size:.9rem;width:250px;outline:0;transition:border-color .2s}.search-input:focus{border-color:#3b82f6}.search-input::placeholder{color:#94a3b8}.table-scroll-area{overflow-x:auto}.roster-table{width:100%;border-collapse:collapse;text-align:left;min-width:800px}.roster-table th{position:sticky;top:0;background-color:#0b0f19;padding:12px 24px;font-size:.75rem;text-transform:uppercase;color:#fff;font-weight:700;border-bottom:2px solid #111827;z-index:10;cursor:pointer;user-select:none;transition:background-color .2s}.roster-table th:hover{background-color:#111827;color:#fff}.sort-icon{display:inline-block;margin-left:6px;color:#3b82f6;font-size:.8rem}.roster-table td{padding:16px 24px;border-bottom:1px solid #e2e8f0;color:#334155;font-size:.95rem;vertical-align:middle}.roster-row{cursor:pointer;transition:background-color .2s}.roster-row:nth-child(even){background-color:#f8fafc}.roster-row:nth-child(odd){background-color:#fff}.roster-table tbody tr.roster-row:hover{background-color:#f1f5f9}.roster-table tbody tr.roster-row.active{background-color:#eff6ff}.metric-card{background:#0b0f19;border:1px solid #111827;border-radius:12px;padding:24px;position:relative;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,.1)}.metric-card.clickable-card{cursor:pointer;transition:transform .2s}.metric-card.clickable-card:hover{transform:translateY(-2px);border-color:#334155}.metric-card::after{content:"";position:absolute;top:0;left:0;bottom:0;width:4px}.card-daily::after{background:#3b82f6}.card-mtd::after{background:#1e40af}.gemini-btn{background:linear-gradient(135deg,#3b82f6 0,#1d4ed8 100%);color:#fff;border:none;padding:10px 18px;border-radius:6px;font-weight:700;font-size:.85rem;cursor:pointer;transition:transform .2s,box-shadow .2s;box-shadow:0 4px 12px rgba(59,130,246,.2);display:flex;align-items:center;justify-content:center;gap:8px;text-transform:uppercase;letter-spacing:.5px}.gemini-btn:hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(59,130,246,.3)}.gemini-btn:disabled{opacity:.7;cursor:not-allowed;transform:none}.btn-alt{background:transparent;border:1px solid #3b82f6;color:#3b82f6;box-shadow:none}.btn-alt:hover{background:rgba(59,130,246,.05);box-shadow:none}.btn-dark{background:#0b0f19;border:1px solid #111827;color:#fff;box-shadow:none}.btn-dark:hover{background:#111827;border-color:#1e293b}.btn-red-dark{background:#450a0a;color:#fca5a5;border:1px solid #991b1b}.btn-red-dark:hover{background:#7f1d1d}.modal-backdrop{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(11,15,25,.75);backdrop-filter:blur(4px);z-index:90;display:flex;justify-content:flex-start;align-items:stretch;opacity:0;pointer-events:none;transition:opacity .3s ease}.modal-backdrop.open{opacity:1;pointer-events:all}.main-modal{width:95%;max-width:1100px;background:#fff;border-radius:0 24px 24px 0;overflow-y:auto;box-shadow:15px 0 50px -12px rgba(0,0,0,.3);display:flex;flex-direction:column;transform:translateX(-100%);transition:transform .3s cubic-bezier(.16,1,.3,1)}.modal-backdrop.open .main-modal{transform:translateX(0)}.main-modal-header{position:sticky;top:0;background:#fff;z-index:20;padding:24px 32px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center}.main-modal-content{padding:32px;flex:1;display:flex;flex-direction:column}.close-btn{background:#f1f5f9;border:none;padding:8px 16px;border-radius:6px;color:#475569;font-weight:700;cursor:pointer;transition:all .2s}.close-btn:hover{background:#e2e8f0;color:#0b0f19}::-webkit-scrollbar{width:8px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px}::-webkit-scrollbar-thumb:hover{background:#94a3b8}.report-body{font-size:16px;line-height:1.9;color:#334155;white-space:pre-wrap;margin-top:16px}.submetrics-panel{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:12px;margin-bottom:24px;padding:20px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0}.sub-val-main{font-size:1.1rem;font-weight:700;color:#0b0f19}.ai-output-box{margin-bottom:24px;background:#f8fafc;border:1px solid #3b82f6;border-radius:8px;padding:20px;position:relative}.chat-container{background:#0b0f19;border:1px solid #111827;border-radius:12px;padding:24px;margin-top:16px;box-shadow:inset 0 2px 4px rgba(0,0,0,.05)}.chat-messages{display:flex;flex-direction:column;gap:16px;max-height:350px;overflow-y:auto;margin-bottom:20px;padding-right:8px}.message-bubble{max-width:80%;padding:12px 16px;border-radius:12px;font-size:.95rem;line-height:1.5}.bubble-bot{align-self:flex-start;background-color:#27272a;color:#f4f4f5;border-left:4px solid #3b82f6}.bubble-user{align-self:flex-end;background-color:#3b82f6;color:#fff}.chat-input-area{display:flex;gap:12px}.chat-input{flex:1;background-color:#111827;border:1px solid #1e293b;color:#fff;padding:12px 16px;border-radius:8px;font-size:.95rem;outline:0}.chat-input:focus{border-color:#3b82f6}.loader-spin{animation:spin 1s linear infinite}@keyframes spin{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}.heatmap-table{width:100%;border-collapse:collapse;margin-top:16px;font-size:.85rem}.heatmap-table th,.heatmap-table td{padding:12px;border:1px solid #e2e8f0;text-align:center}.heatmap-table th{background:#f8fafc;color:#475569;font-weight:700}.range-slider{-webkit-appearance:none;width:100%;height:6px;border-radius:4px;background:#e2e8f0;outline:0}.range-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:18px;height:18px;border-radius:50%;background:#3b82f6;cursor:pointer}
+.analyst-dashboard{min-height:100vh;width:100%;min-width:0;box-sizing:border-box;background-color:#f5f2eb;color:#0b0f19;font-family:'Inter',Helvetica,sans-serif;position:relative;overflow-x:hidden}@keyframes slideDown{from{transform:translate(-50%,-20px);opacity:0}to{transform:translate(-50%,0);opacity:1}}.top-navbar{background-color:#0b0f19;border-bottom:1px solid #111827;padding:16px 24px;z-index:40}.top-navbar-inner{width:100%;max-width:1100px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;box-sizing:border-box}.header-info{display:flex;align-items:center;gap:16px}.badge{background:linear-gradient(135deg,rgba(59,130,246,.15) 0,rgba(30,58,138,.2) 100%);color:#93c5fd;border:1px solid rgba(96,165,250,.15);padding:6px 16px;border-radius:20px;font-size:.75rem;font-weight:700;letter-spacing:.5px;display:flex;align-items:center;gap:6px;box-shadow:0 2px 10px rgba(0,0,0,.2)}.action-buttons{display:flex;gap:12px;flex-wrap:wrap;align-items:center}.column-menu-container{position:relative}.column-menu-btn{padding:8px 12px;background:#0b0f19;border:1px solid #111827;border-radius:6px;font-size:1.2rem;color:#94a3b8;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s}.column-menu-btn:hover{color:#fff;background:#111827;border-color:#1e293b}.glass-panel{background:rgba(15,23,42,0.96);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(148,163,184,0.2);box-shadow:0 10px 40px -10px rgba(2,6,23,0.8)}.tab-dropdown-menu{position:absolute;right:0;top:calc(100% + 10px);min-width:230px;width:max-content;background:rgba(15,23,42,0.98);border:1px solid rgba(148,163,184,0.2);border-radius:16px;box-shadow:0 16px 40px -12px rgba(2,6,23,0.9);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);padding:10px;z-index:120;overflow:hidden}.tab-dropdown-header{padding:8px 12px 10px;font-size:.72rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#94a3b8}.tab-dropdown-list{display:flex;flex-direction:column;gap:4px}.tab-dropdown-item{width:100%;display:flex;align-items:center;gap:10px;border:none;border-radius:10px;background:transparent;color:#e2e8f0;padding:10px 12px;font-size:.92rem;font-weight:700;text-align:left;cursor:pointer;transition:all .18s ease}.tab-dropdown-item:hover{background:rgba(148,163,184,0.09);color:#fff}.tab-dropdown-item.active{background:#ffffff;color:#0b0f19;box-shadow:inset 0 0 0 1px rgba(15,23,42,0.08)}.tab-dropdown-icon{width:22px;display:inline-flex;align-items:center;justify-content:center;font-size:1rem;opacity:.96}.column-menu-dropdown{position:absolute;top:100%;right:0;margin-top:12px;background:rgba(15,23,42,0.96);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(148,163,184,0.22);border-radius:16px;box-shadow:0 10px 40px -10px rgba(2,6,23,0.8);width:300px;padding:20px;z-index:100;display:flex;flex-direction:column;gap:12px;color:#e2e8f0}.column-menu-dropdown label{display:flex;align-items:center;gap:10px;font-size:.85rem;cursor:pointer;color:#e2e8f0}.column-menu-dropdown select,.column-menu-dropdown input{color:#f8fafc;background:#0f172a;border-color:#334155}.column-menu-dropdown option{background:#0f172a;color:#f8fafc}.main-workspace{padding:32px 24px;max-width:1100px;margin:0 auto;width:100%;display:flex;flex-direction:column;gap:32px;box-sizing:border-box;min-width:0}.stats-row{display:grid;grid-template-columns:1fr 1fr;gap:24px}@media (max-width:850px){.stats-row{grid-template-columns:1fr}}.roster-container{position:relative;z-index:10;background:#fff;border-radius:12px;display:flex;flex-direction:column;box-shadow:0 4px 6px rgba(0,0,0,.05);margin-bottom:60px;border:1px solid #e2e8f0;overflow:hidden}.roster-header{position:relative;z-index:50;padding:0 0 16px 0;background-color:transparent;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px}.search-input{padding:8px 16px;border:1px solid #cbd5e1;background-color:#fff;color:#0b0f19;border-radius:6px;font-size:.9rem;width:250px;outline:0;transition:border-color .2s}.search-input:focus{border-color:#3b82f6}.search-input::placeholder{color:#94a3b8}.table-scroll-area{overflow-x:auto}.roster-table{width:100%;border-collapse:collapse;text-align:left;min-width:800px}.roster-table th{position:sticky;top:0;background-color:#0b0f19;padding:12px 24px;font-size:.75rem;text-transform:uppercase;color:#fff;font-weight:700;border-bottom:2px solid #111827;z-index:10;cursor:pointer;user-select:none;transition:background-color .2s}.roster-table th:hover{background-color:#111827;color:#fff}.sort-icon{display:inline-block;margin-left:6px;color:#3b82f6;font-size:.8rem}.roster-table td{padding:16px 24px;border-bottom:1px solid #e2e8f0;color:#334155;font-size:.95rem;vertical-align:middle}.roster-row{cursor:pointer;transition:background-color .2s}.roster-row:nth-child(even){background-color:#f8fafc}.roster-row:nth-child(odd){background-color:#fff}.roster-table tbody tr.roster-row:hover{background-color:#f1f5f9}.roster-table tbody tr.roster-row.active{background-color:#eff6ff}.metric-card{background:#0b0f19;border:1px solid #111827;border-radius:12px;padding:24px;position:relative;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,.1)}.metric-card.clickable-card{cursor:pointer;transition:transform .2s}.metric-card.clickable-card:hover{transform:translateY(-2px);border-color:#334155}.metric-card::after{content:"";position:absolute;top:0;left:0;bottom:0;width:4px}.card-daily::after{background:#3b82f6}.card-mtd::after{background:#1e40af}.gemini-btn{background:linear-gradient(135deg,#3b82f6 0,#1d4ed8 100%);color:#fff;border:none;padding:10px 18px;border-radius:6px;font-weight:700;font-size:.85rem;cursor:pointer;transition:transform .2s,box-shadow .2s;box-shadow:0 4px 12px rgba(59,130,246,.2);display:flex;align-items:center;justify-content:center;gap:8px;text-transform:uppercase;letter-spacing:.5px}.gemini-btn:hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(59,130,246,.3)}.gemini-btn:disabled{opacity:.7;cursor:not-allowed;transform:none}.btn-alt{background:transparent;border:1px solid #3b82f6;color:#3b82f6;box-shadow:none}.btn-alt:hover{background:rgba(59,130,246,.05);box-shadow:none}.btn-dark{background:#0b0f19;border:1px solid #111827;color:#fff;box-shadow:none}.btn-dark:hover{background:#111827;border-color:#1e293b}.btn-red-dark{background:#450a0a;color:#fca5a5;border:1px solid #991b1b}.btn-red-dark:hover{background:#7f1d1d}.modal-backdrop{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(11,15,25,.75);backdrop-filter:blur(4px);z-index:90;display:flex;justify-content:flex-start;align-items:stretch;opacity:0;pointer-events:none;transition:opacity .3s ease}.modal-backdrop.open{opacity:1;pointer-events:all}.main-modal{width:95%;max-width:1100px;background:#fff;border-radius:0 24px 24px 0;overflow-y:auto;box-shadow:15px 0 50px -12px rgba(0,0,0,.3);display:flex;flex-direction:column;transform:translateX(-100%);transition:transform .3s cubic-bezier(.16,1,.3,1)}.modal-backdrop.open .main-modal{transform:translateX(0)}.main-modal-header{position:sticky;top:0;background:#fff;z-index:20;padding:24px 32px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center}.main-modal-content{padding:32px;flex:1;display:flex;flex-direction:column}.close-btn{background:#f1f5f9;border:none;padding:8px 16px;border-radius:6px;color:#475569;font-weight:700;cursor:pointer;transition:all .2s}.close-btn:hover{background:#e2e8f0;color:#0b0f19}::-webkit-scrollbar{width:8px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px}::-webkit-scrollbar-thumb:hover{background:#94a3b8}.report-body{font-size:16px;line-height:1.9;color:#334155;white-space:pre-wrap;margin-top:16px}.submetrics-panel{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:12px;margin-bottom:24px;padding:20px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0}.sub-val-main{font-size:1.1rem;font-weight:700;color:#0b0f19}.ai-output-box{margin-bottom:24px;background:#f8fafc;border:1px solid #3b82f6;border-radius:8px;padding:20px;position:relative}.chat-container{background:#0b0f19;border:1px solid #111827;border-radius:12px;padding:24px;margin-top:16px;box-shadow:inset 0 2px 4px rgba(0,0,0,.05)}.chat-messages{display:flex;flex-direction:column;gap:16px;max-height:350px;overflow-y:auto;margin-bottom:20px;padding-right:8px}.message-bubble{max-width:80%;padding:12px 16px;border-radius:12px;font-size:.95rem;line-height:1.5}.bubble-bot{align-self:flex-start;background-color:#27272a;color:#f4f4f5;border-left:4px solid #3b82f6}.bubble-user{align-self:flex-end;background-color:#3b82f6;color:#fff}.chat-input-area{display:flex;gap:12px}.chat-input{flex:1;background-color:#111827;border:1px solid #1e293b;color:#fff;padding:12px 16px;border-radius:8px;font-size:.95rem;outline:0}.chat-input:focus{border-color:#3b82f6}.loader-spin{animation:spin 1s linear infinite}@keyframes spin{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}.heatmap-table{width:100%;border-collapse:collapse;margin-top:16px;font-size:.85rem}.heatmap-table th,.heatmap-table td{padding:12px;border:1px solid #e2e8f0;text-align:center}.heatmap-table th{background:#f8fafc;color:#475569;font-weight:700}.range-slider{-webkit-appearance:none;width:100%;height:6px;border-radius:4px;background:#e2e8f0;outline:0}.range-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:18px;height:18px;border-radius:50%;background:#3b82f6;cursor:pointer}
 
 
 /* UTILITIES */
@@ -1600,6 +1686,8 @@ const DASHBOARD_STYLES = `
 `;
 
 
+// ==== App state + reducer defaults ==== 
+// NOTE: keep reducer state kept here so modal and UI state changes are easy to trace during future refactors.
 const MODAL_INITIAL = {
   activeModal: null, selectedSupervisorObj: null,
   expandedBurnoutAgentId: null, highlightedAgentId: null, supTab: 'roster',
@@ -1620,6 +1708,8 @@ const UI_INITIAL = {
   apprenticeViewMode: 'coding',
 };
 
+// ==== Main app composition ==== 
+// TODO: split this file into smaller component modules once feature logic stabilizes.
 export default function App() {
   const aiResetRef = useRef(null);
   const dashData = useDashboardData(() => { if (aiResetRef.current) aiResetRef.current(); });
@@ -1632,6 +1722,7 @@ export default function App() {
   const setSupTab = (v) => dispatchModal({ supTab: v });
   const [searchQuery, setSearchQuery] = useState("");
   const [inputValue, setInputValue] = useState("");
+  const [batchImportSelection, setBatchImportSelection] = useState({});
   const [sortConfig, setSortConfig] = useState({ key: 'outlier', direction: 'asc' }); 
   const [agentSortConfig, setAgentSortConfig] = useState({ key: 'name', direction: 'asc' });
   // 12 UI display states → single reducer: one subscription, one render per change
@@ -1663,6 +1754,21 @@ export default function App() {
     }, 300);
     return () => clearTimeout(timer);
   }, [inputValue]);
+
+  useEffect(() => {
+    const sources = dashData.batchImportSummary?.sources || [];
+    if (!sources.length) {
+      setBatchImportSelection({});
+      return;
+    }
+
+    const nextSelection = {};
+    for (const source of sources) {
+      const sourceKey = `${source.fileName}|${source.sheetName}`;
+      nextSelection[sourceKey] = true;
+    }
+    setBatchImportSelection(nextSelection);
+  }, [dashData.batchImportSummary?.sources]);
 
 
   const linkedEntities = useMemo(() => {
@@ -1754,49 +1860,51 @@ export default function App() {
 
 
   const ctxValue = useMemo(
-    () => ({ dashData, metrics, aiTools, uiState, uiHandlers }),
-    [dashData, metrics, aiTools, uiState, uiHandlers]
+    () => ({ dashData, metrics, aiTools, uiState, uiHandlers, batchImportSelection, setBatchImportSelection }),
+    [dashData, metrics, aiTools, uiState, uiHandlers, batchImportSelection, setBatchImportSelection]
   );
 
   return (
-    <DashboardContext.Provider value={ctxValue}>
-      <div className="analyst-dashboard" style={{ width: '100%', minWidth: 0, overflowX: 'hidden' }}>
-        <style dangerouslySetInnerHTML={{ __html: DASHBOARD_STYLES }} />
+    <ErrorBoundary>
+      <DashboardContext.Provider value={ctxValue}>
+        <div className="analyst-dashboard" style={{ width: '100%', minWidth: 0, overflowX: 'hidden' }}>
+          <style dangerouslySetInnerHTML={{ __html: DASHBOARD_STYLES }} />
 
-        {/* ==== Overlay + modal layer ==== */}
-        <UploadStatus uploadStatus={dashData.uploadStatus} />
-        <ChartActionPlanModal />
+          {/* ==== Overlay + modal layer ==== */}
+          <UploadStatus uploadStatus={dashData.uploadStatus} />
+          <ChartActionPlanModal />
 
-        {/* ==== Header / shell navigation ==== */}
-        <TopNavbar />
+          {/* ==== Header / shell navigation ==== */}
+          <TopNavbar />
 
-        {/* ==== Dashboard body shell ==== */}
-        <div className="main-workspace" style={{ width: '100%', maxWidth: '1100px', minWidth: 0, margin: '0 auto', padding: '32px 24px' }}>
-          {/* ==== KPI summary row ==== */}
-          <MainStatsRow />
+          {/* ==== Dashboard body shell ==== */}
+          <div className="main-workspace" style={{ width: '100%', maxWidth: '1100px', minWidth: 0, margin: '0 auto', padding: '32px 24px' }}>
+            {/* ==== KPI summary row ==== */}
+            <MainStatsRow />
 
-          {/* ==== Floor board / roster content ==== */}
-          <div className="flex flex-col gap-4 mb-16">
-            {/* ==== Header area for floor selection ==== */}
-            <FloorHeader />
+            {/* ==== Floor board / roster content ==== */}
+            <div className="flex flex-col gap-4 mb-16">
+              {/* ==== Header area for floor selection ==== */}
+              <FloorHeader />
 
-            {/* ==== Tab content switcher ==== */}
-            <div className="roster-container">
-              {mainTab === 'roster'      && <FloorRosterTab />}
-              {mainTab === 'outliers'    && <FloorOutliersTab />}
-              {mainTab === 'apprentice'  && <FloorApprenticeTab />}
-              {mainTab === 'analysis'    && <FloorAnalysisTab />}
-              {mainTab === 'trends'      && <FloorTrendsTab />}
-              {mainTab === 'correlation' && <FloorCorrelationTab />}
-              {mainTab === 'burnout'     && <FloorBurnoutTab />}
-              {mainTab === 'dow'         && <FloorDowTab />}
+              {/* ==== Tab content switcher ==== */}
+              <div className="roster-container">
+                {mainTab === 'roster'      && <FloorRosterTab />}
+                {mainTab === 'outliers'    && <FloorOutliersTab />}
+                {mainTab === 'apprentice'  && <FloorApprenticeTab />}
+                {mainTab === 'analysis'    && <FloorAnalysisTab />}
+                {mainTab === 'trends'      && <FloorTrendsTab />}
+                {mainTab === 'correlation' && <FloorCorrelationTab />}
+                {mainTab === 'burnout'     && <FloorBurnoutTab />}
+                {mainTab === 'dow'         && <FloorDowTab />}
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* ==== Detail modal / AI modal layer ==== */}
-        <MainModal />
-      </div>
-    </DashboardContext.Provider>
+          {/* ==== Detail modal / AI modal layer ==== */}
+          <MainModal />
+        </div>
+      </DashboardContext.Provider>
+    </ErrorBoundary>
   );
 }

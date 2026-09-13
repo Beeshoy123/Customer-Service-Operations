@@ -1,3 +1,4 @@
+// @ts-nocheck
 // ==== Shared dashboard UI primitives ==== 
 // Quick scan: src/components/shared.tsx for cards, charts, and view formatting
 

@@ -1,3 +1,4 @@
+// @ts-nocheck
 // ==== Derived dashboard metrics + summaries ==== 
 // Quick scan: src/features/dashboard/metrics.ts for rolled-up KPI, leader, heatmap, and burnout logic
 

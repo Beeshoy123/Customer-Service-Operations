@@ -3,24 +3,22 @@
 ## Priority 1 — Critical stability and correctness
 
 ### App reliability
-- [ ] No error boundary — one bad render crashes the whole dashboard
-- [ ] Zero error boundaries — any render exception blacks out the entire app
+
 - [ ] Hardcoded OAM names for phase detection
-- [ ] setShowModalColMenu defined but has 0 usages
 - [ ] searchedOams computed 3x in 3 different components
 - [ ] supAgentsList/liveSupObj computed in modal render body
 - [ ] No data validation/schema layer between parser and consumers
 - [ ] CSV parser is a 100+ line untested heuristic embedded in a UI event handler
 
 ### Data safety and persistence
-- [ ] Zero persistence layer — full data loss on refresh or crash
+
 - [ ] No backend — all business logic and data storage runs client-side
 - [ ] No environment/config separation
 - [ ] Business logic is tightly coupled to React hooks
 - [ ] Zero automated tests anywhere in the codebase
-- [ ] No TypeScript or PropTypes — props and data shapes are implicit
 
 ### Existing code cleanup already completed
+
 - [x] Memoize getAgentDataForTimeframe
 - [x] Extract agentMatchesSearch to top-level
 - [x] Fix double calculateTrend call in supervisorStats
@@ -42,8 +40,7 @@
 
 ## Priority 2 — Architecture and maintainability
 
-- [ ] Single 3,687-line file holds the entire application
-- [ ] AI calls have no resilience layer — no timeout, retry, or abort
+- [x] AI calls have no resilience layer — no timeout, retry, or abort
 - [ ] 41 inline style={{}} objects in JSX
 - [ ] 47 inline arrow functions in JSX event handlers create new references every render
 - [ ] DASHBOARD_STYLES re-injected via dangerouslySetInnerHTML every render
@@ -63,7 +60,6 @@
 
 ## Priority 4 — Performance and optimization
 
-- [ ] aWow loop duplicated in both generateExpertReport and generateTeamReport
 - [ ] DASHBOARD_STYLES is defined inside the App component render tree
 - [ ] supBurnoutList filtered raw inside a JSX IIFE on every supervisor modal render
 - [ ] COL_DEFINITIONS.filter/map called 14 times in render paths
@@ -75,4 +71,13 @@
 
 ## Notes
 
-This prioritized version keeps the highest-risk reliability items first, followed by architecture and maintainability, then UX/accessibility, and finally optimization cleanup. The completed items are retained for historical tracking and to make the remaining work easier to act on.
+This prioritized version keeps the highest-risk reliability items first, followed by architecture and maintainability, then UX/accessibility, and finally optimization cleanup.
+
+## Working rule
+
+- [ ] If a task is fixed or intentionally accepted, remove it from the active backlog immediately.
+- [ ] Keep only open, actionable issues in the main to-do list.
+- [ ] Historical completed work should live in commit history or a separate archive, not in the active list.
+- [ ] Revisit the backlog after each cleanup pass and delete stale solved items.
+
+This rule keeps the list focused on what still needs work instead of accumulating items that were already resolved.

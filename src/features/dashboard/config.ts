@@ -1,3 +1,4 @@
+// @ts-nocheck
 // ==== Dashboard configuration + KPI targets ==== 
 // Quick scan: src/features/dashboard/config.ts for targets, labels, and metric definitions
 

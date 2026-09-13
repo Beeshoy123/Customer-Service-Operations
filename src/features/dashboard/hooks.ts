@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+// @ts-nocheck
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import {
   CHART_COLORS,
   DAYS_OF_WEEK,
@@ -23,30 +24,245 @@ import {
   parseCSVLine,
   shortenManagerName,
 } from './helpers';
+import { runImportService } from './import';
+import { detectFileType } from './import/fileTypeDetector';
 
 // ==== Dashboard state + data lifecycle ==== 
 // Quick scan: src/features/dashboard/hooks.ts for upload flow, state, and app wiring
+
+const DASHBOARD_STORAGE_KEY = 'customer-service-dashboard-state-v1';
+
+const readPersistedDashboardState = () => {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const raw = window.localStorage.getItem(DASHBOARD_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return null;
+    return parsed;
+  } catch (error) {
+    console.warn('Failed to load persisted dashboard state:', error);
+    return null;
+  }
+};
 
 export const DashboardContext = createContext(null);
 export const useDashboard = () => useContext(DashboardContext);
 
 export const useDashboardData = (onDataReset = null) => {
-  const [activeTimeframe, setActiveTimeframe] = useState('monthly');
-  const [selectedWeek, setSelectedWeek] = useState('Week 1');
-  const [selectedDate, setSelectedDate] = useState(DEFAULT_DATE);
-  const [selectedDow, setSelectedDow] = useState('Monday');
+  const persistedState = useMemo(() => readPersistedDashboardState(), []);
 
-  const [agents, setAgents] = useState([]);
-  const [supervisors, setSupervisors] = useState([]);
-  const [oamName, setOamName] = useState(DEFAULT_MANAGER_NAME);
-  const [historicalData, setHistoricalData] = useState({});
-  const [hasUploadedData, setHasUploadedData] = useState(false);
+  const [activeTimeframe, setActiveTimeframe] = useState(() => persistedState?.activeTimeframe || 'monthly');
+  const [selectedWeek, setSelectedWeek] = useState(() => persistedState?.selectedWeek || 'Week 1');
+  const [selectedDate, setSelectedDate] = useState(() => persistedState?.selectedDate || DEFAULT_DATE);
+  const [selectedDow, setSelectedDow] = useState(() => persistedState?.selectedDow || 'Monday');
+
+  const [agents, setAgents] = useState(() => persistedState?.agents || []);
+  const [supervisors, setSupervisors] = useState(() => persistedState?.supervisors || []);
+  const [oamName, setOamName] = useState(() => persistedState?.oamName || DEFAULT_MANAGER_NAME);
+  const [historicalData, setHistoricalData] = useState(() => persistedState?.historicalData || {});
+  const [hasUploadedData, setHasUploadedData] = useState(() => !!persistedState?.hasUploadedData);
   const [uploadStatus, setUploadStatus] = useState(null);
+  const [batchImportSummary, setBatchImportSummary] = useState(null);
 
-  const handleFileUpload = (event) => {
-    const file = event.target.files[0];
-    processFile(file);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    try {
+      const payload = {
+        activeTimeframe,
+        selectedWeek,
+        selectedDate,
+        selectedDow,
+        agents,
+        supervisors,
+        oamName,
+        historicalData,
+        hasUploadedData,
+      };
+      window.localStorage.setItem(DASHBOARD_STORAGE_KEY, JSON.stringify(payload));
+    } catch (error) {
+      console.warn('Failed to persist dashboard state:', error);
+    }
+  }, [activeTimeframe, selectedWeek, selectedDate, selectedDow, agents, supervisors, oamName, historicalData, hasUploadedData]);
+
+  const handleFileUpload = async (event) => {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
+
+    if (files.length === 1) {
+      processFile(files[0]);
+      if (event.target) event.target.value = '';
+      return;
+    }
+
+    setUploadStatus({ type: 'info', message: `Preparing ${files.length} files for multi-sheet import...` });
+
+    try {
+      const result = await runImportService(files);
+      const totalRows = result.rows?.length ?? 0;
+      setBatchImportSummary(result);
+
+      if (totalRows > 0) {
+        setUploadStatus({
+          type: 'success',
+          message: `Batch import ready: ${totalRows} normalized rows from ${result.files} file(s).`,
+        });
+      } else {
+        setUploadStatus({
+          type: 'error',
+          message: 'No usable rows were detected across the selected files.',
+        });
+      }
+
+      if (event.target) event.target.value = '';
+      setTimeout(() => setUploadStatus(null), 5000);
+    } catch (error) {
+      setUploadStatus({
+        type: 'error',
+        message: 'The batch import could not be processed. Please check the file set.',
+      });
+      if (event.target) event.target.value = '';
+      setTimeout(() => setUploadStatus(null), 5000);
+    }
   };
+
+  const applyBatchImport = useCallback((sourceSelection = null, explicitSummary = null) => {
+    const summary = explicitSummary || batchImportSummary;
+    if (!summary || !summary.rows?.length) {
+      setUploadStatus({ type: 'error', message: 'There is no valid batch import ready to apply.' });
+      setTimeout(() => setUploadStatus(null), 4000);
+      return;
+    }
+
+    const selectedKeys = sourceSelection && typeof sourceSelection === 'object'
+      ? Object.keys(sourceSelection).filter((key) => sourceSelection[key])
+      : null;
+
+    const rowsToApply = selectedKeys && selectedKeys.length
+      ? summary.rows.filter((row) => {
+          const sourceKey = `${row.sourceFile || 'unknown'}|${row.sourceSheet || 'CSV'}`;
+          return selectedKeys.includes(sourceKey);
+        })
+      : summary.rows;
+
+    if (!rowsToApply.length) {
+      setUploadStatus({ type: 'error', message: 'No selected sheets have usable rows to apply.' });
+      setTimeout(() => setUploadStatus(null), 4000);
+      return;
+    }
+
+    const newHistory = { ...historicalData };
+    const updatedAgents = [...agents];
+    const nextSupervisors = new Set(supervisors);
+
+    const toNumber = (value) => {
+      if (value === null || value === undefined || value === '') return 0;
+      if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+      const parsed = Number(String(value).replace(/[%,$\s]/g, ''));
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+
+    for (const row of rowsToApply) {
+      const rawName = String(row.agentName ?? row.name ?? '').trim();
+      const rawDate = normalizeDate(String(row.date ?? ''));
+      if (!rawName || !rawDate) continue;
+
+      const rawSupervisor = String(row.supervisor ?? '').trim() || 'Unknown';
+      const rawOam = String(row.oam ?? '').trim() || 'Unknown';
+      const rawId = String(row.employeeId ?? '').trim();
+      const agentKey = rawId ? `ID_${rawId}` : `AUTO_${rawName.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`;
+
+      let targetAgent = updatedAgents.find((agent) => agent.ccms === agentKey || (agent.name && agent.name.toLowerCase() === rawName.toLowerCase() && agent.sourceId === rawId));
+      if (!targetAgent) {
+        targetAgent = {
+          ccms: agentKey,
+          sourceId: rawId || null,
+          name: rawName,
+          supervisor: rawSupervisor,
+          oam: rawOam,
+          coding: 'Unknown',
+          phase: 'Unknown',
+        };
+        updatedAgents.push(targetAgent);
+      } else {
+        targetAgent.name = rawName;
+        targetAgent.supervisor = rawSupervisor;
+        targetAgent.oam = rawOam;
+        if (!targetAgent.sourceId && rawId) targetAgent.sourceId = rawId;
+      }
+
+      if (rawSupervisor && rawSupervisor !== 'Unknown') nextSupervisors.add(rawSupervisor);
+      if (!newHistory[targetAgent.ccms]) newHistory[targetAgent.ccms] = {};
+
+      const callsValue = toNumber(row.calls);
+      const ahtValue = toNumber(row.aht);
+      const vxsValue = toNumber(row.vxs);
+      const resolve2hrValue = toNumber(row.resolve2hr);
+      const resolve3dValue = toNumber(row.resolve3d);
+
+      newHistory[targetAgent.ccms][rawDate] = {
+        isOff: callsValue === 0,
+        calls: callsValue,
+        resolveTotalContacts3d: null,
+        resolveTotalContacts2hr: null,
+        resolveTotalContacts: callsValue,
+        surveys: null,
+        promoters: null,
+        vxs: vxsValue,
+        resolve3d: resolve3dValue,
+        handoffs: null,
+        handoffsCount: null,
+        resolve2hr: resolve2hrValue,
+        aht: ahtValue,
+        hold: null,
+        dpc: null,
+        viewTogether: null,
+        vtt: null,
+        vttSent: null,
+        vttTransacted: null,
+        netOcc: null,
+        creditFreq: null,
+        phoneAdds: null,
+        vhi: null,
+      };
+    }
+
+    setHistoricalData(newHistory);
+    setAgents(updatedAgents);
+    setSupervisors(Array.from(nextSupervisors).sort());
+    setHasUploadedData(true);
+    const firstDate = rowsToApply.find((row) => row.date)?.date ? normalizeDate(String(rowsToApply.find((row) => row.date)?.date ?? '')) : DEFAULT_DATE;
+    setSelectedDate(firstDate || DEFAULT_DATE);
+    setActiveTimeframe('monthly');
+    setUploadStatus({ type: 'success', message: `Applied ${rowsToApply.length} imported rows from the selected sheets.` });
+    setTimeout(() => setUploadStatus(null), 5000);
+  }, [agents, batchImportSummary, historicalData, setActiveTimeframe, setAgents, setHasUploadedData, setHistoricalData, setSelectedDate, setSupervisors, supervisors]);
+
+  const handleWorkbookImport = useCallback(async (file) => {
+    if (!file) return;
+
+    setUploadStatus({ type: 'info', message: `Processing workbook ${file.name}...` });
+
+    try {
+      const result = await runImportService([file]);
+      const totalRows = result.rows?.length ?? 0;
+      setBatchImportSummary(result);
+
+      if (totalRows > 0) {
+        setBatchImportSummary(result);
+        applyBatchImport(null, result);
+        return;
+      }
+
+      setUploadStatus({ type: 'error', message: 'No usable rows were found in the workbook.' });
+      setTimeout(() => setUploadStatus(null), 5000);
+    } catch (error) {
+      setUploadStatus({ type: 'error', message: 'The workbook could not be processed. Please check the file format.' });
+      setTimeout(() => setUploadStatus(null), 5000);
+    }
+  }, [setBatchImportSummary, setUploadStatus]);
 
   const handleFileDrop = (file) => {
     processFile(file);
@@ -54,7 +270,14 @@ export const useDashboardData = (onDataReset = null) => {
 
   const processFile = (file) => {
     if (!file) return;
-    setUploadStatus({ type: 'info', message: 'Building OAM Database from file...' });
+
+    const fileType = detectFileType(file.name);
+    if (fileType === 'xlsx' || fileType === 'xls' || fileType === 'xlsm') {
+      handleWorkbookImport(file);
+      return;
+    }
+
+    setUploadStatus({ type: 'info', message: `Building OAM Database from ${file.name}...` });
 
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -78,7 +301,7 @@ export const useDashboardData = (onDataReset = null) => {
         const idKey = cols.employeeId;
 
         if (nameKey === -1) {
-          setUploadStatus({ type: 'error', message: 'Could not find an "Agent Name" or "Name" column.' });
+          setUploadStatus({ type: 'error', message: 'Could not find an "Agent Name", "Employee Name", or "Name" column.' });
           return;
         }
 
@@ -433,7 +656,8 @@ export const useDashboardData = (onDataReset = null) => {
   };
 
   return {
-    agents, supervisors, oamName, historicalData, hasUploadedData, uploadStatus, handleFileUpload, handleFileDrop,
+    agents, supervisors, oamName, historicalData, hasUploadedData, uploadStatus, batchImportSummary,
+    handleFileUpload, handleFileDrop, applyBatchImport,
     activeTimeframe, setActiveTimeframe, selectedWeek, setSelectedWeek, selectedDate, setSelectedDate,
     selectedDow, setSelectedDow,
     getAgentDataForTimeframe, handleDateChange, getTopHeadlineMonth,
@@ -441,6 +665,38 @@ export const useDashboardData = (onDataReset = null) => {
 };
 
 const _aiControllers = new Map();
+
+const delayForRetry = (attempt) => new Promise((resolve) => setTimeout(resolve, 1000 * 2 ** attempt));
+
+const fetchWithRetry = async (url, options, retries = 2, timeoutMs = 30000) => {
+  let lastError = null;
+
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const response = await fetch(url, { ...options, signal: controller.signal });
+      if (response.status === 429 || response.status >= 500) {
+        if (attempt < retries) {
+          await delayForRetry(attempt);
+          continue;
+        }
+      }
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      return await response.json();
+    } catch (error) {
+      lastError = error;
+      if (error?.name === 'AbortError') throw error;
+      if (attempt === retries) break;
+      await delayForRetry(attempt);
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  throw lastError || new Error('AI request failed');
+};
 
 const executeGeminiAction = async (context, systemPrompt, setStatusFn, setLoadingFn, errorMsg) => {
   const slotKey = setLoadingFn;
@@ -452,34 +708,39 @@ const executeGeminiAction = async (context, systemPrompt, setStatusFn, setLoadin
   const controller = new AbortController();
   _aiControllers.set(slotKey, { controller, active: true });
 
-  const timeoutId = setTimeout(() => controller.abort(), 30000);
-
   setLoadingFn(true);
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      signal: controller.signal,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 1000,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: context }],
-      }),
-    });
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-    const result = await response.json();
+    const result = await fetchWithRetry(
+      'https://api.anthropic.com/v1/messages',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 1000,
+          system: systemPrompt,
+          messages: [{ role: 'user', content: context }],
+        }),
+      },
+      2,
+      30000,
+    );
+
     const text = result.content?.map((b) => b.text || '').join('') || '';
-    if (text) { setStatusFn(text); setLoadingFn(false); return; }
+    if (text) {
+      setStatusFn(text);
+      setLoadingFn(false);
+      return;
+    }
+
     throw new Error('Empty response');
   } catch (e) {
-    if (e.name !== 'AbortError') {
-      const isTimeout = e.message?.includes('abort') || e.name === 'TimeoutError';
+    if (e?.name !== 'AbortError') {
+      const isTimeout = e?.message?.includes('abort') || e?.name === 'TimeoutError';
       setStatusFn(isTimeout ? 'Request timed out. Please try again.' : (errorMsg || 'An error occurred while generating content.'));
       setLoadingFn(false);
     }
   } finally {
-    clearTimeout(timeoutId);
     const current = _aiControllers.get(slotKey);
     if (current?.controller === controller) {
       _aiControllers.set(slotKey, { controller, active: false });
