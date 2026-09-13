@@ -1,4 +1,5 @@
 export * from './types';
+export * from './importPolicy';
 export * from './fileTypeDetector';
 export * from './csvParser';
 export * from './sheetSelector';
@@ -7,3 +8,5 @@ export * from './schemaNormalizer';
 export * from './validation';
 export * from './mergeData';
 export * from './importService';
+export * from './granularityDetector';
+export * from './aggregateTransactions';

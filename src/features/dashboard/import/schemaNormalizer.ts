@@ -1,4 +1,4 @@
-import { FIELD_ALIASES, normalizeImportedValue, findCanonicalField } from './importPolicy';
+import { FIELD_ALIASES, normalizeImportedValue, findCanonicalField, findPairedCountField } from './importPolicy';
 
 const normalizeHeader = (value: string): string =>
   `${value ?? ''}`
@@ -12,6 +12,11 @@ const CANONICAL_FIELDS: Record<string, string[]> = Object.fromEntries(
 );
 
 export const normalizeHeaderToField = (header: string): string | null => {
+  const paired = findPairedCountField(header);
+  if (paired) {
+    return paired.taggedField;
+  }
+
   const normalized = normalizeHeader(header);
 
   for (const [field, aliases] of Object.entries(CANONICAL_FIELDS)) {

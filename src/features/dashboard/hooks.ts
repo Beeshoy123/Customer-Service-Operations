@@ -65,6 +65,7 @@ export const useDashboardData = (onDataReset = null) => {
   const [hasUploadedData, setHasUploadedData] = useState(() => !!persistedState?.hasUploadedData);
   const [uploadStatus, setUploadStatus] = useState(null);
   const [batchImportSummary, setBatchImportSummary] = useState(null);
+  const importAbortControllerRef = useRef(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -128,7 +129,7 @@ export const useDashboardData = (onDataReset = null) => {
     }
   };
 
-  const applyBatchImport = useCallback((sourceSelection = null, explicitSummary = null) => {
+  const applyBatchImport = useCallback(async (sourceSelection = null, explicitSummary = null) => {
     const summary = explicitSummary || batchImportSummary;
     if (!summary || !summary.rows?.length) {
       setUploadStatus({ type: 'error', message: 'There is no valid batch import ready to apply.' });
@@ -164,7 +165,13 @@ export const useDashboardData = (onDataReset = null) => {
       return Number.isFinite(parsed) ? parsed : 0;
     };
 
-    for (const row of rowsToApply) {
+    const chunkSize = 250;
+    for (let index = 0; index < rowsToApply.length; index += 1) {
+      if (index > 0 && index % chunkSize === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+
+      const row = rowsToApply[index];
       const rawName = String(row.agentName ?? row.name ?? '').trim();
       const rawDate = normalizeDate(String(row.date ?? ''));
       if (!rawName || !rawDate) continue;
@@ -243,26 +250,71 @@ export const useDashboardData = (onDataReset = null) => {
   const handleWorkbookImport = useCallback(async (file) => {
     if (!file) return;
 
-    setUploadStatus({ type: 'info', message: `Processing workbook ${file.name}...` });
+    const controller = new AbortController();
+    importAbortControllerRef.current?.abort();
+    importAbortControllerRef.current = controller;
+
+    const cancelImport = () => {
+      controller.abort();
+      setUploadStatus({
+        type: 'info',
+        message: 'Import cancelled.',
+        progress: 100,
+        cancelAction: null,
+      });
+      setTimeout(() => setUploadStatus(null), 2000);
+    };
+
+    setUploadStatus({
+      type: 'info',
+      message: `Processing workbook ${file.name}...`,
+      progress: 0,
+      cancelAction: cancelImport,
+    });
 
     try {
-      const result = await runImportService([file]);
+      const result = await runImportService([file], {
+        signal: controller.signal,
+        onProgress: (progress) => {
+          setUploadStatus({
+            type: 'info',
+            message: progress.message || `Processing workbook ${file.name}...`,
+            progress: typeof progress.percent === 'number' ? progress.percent : 0,
+            cancelAction: cancelImport,
+          });
+        },
+      });
       const totalRows = result.rows?.length ?? 0;
       setBatchImportSummary(result);
 
       if (totalRows > 0) {
         setBatchImportSummary(result);
-        applyBatchImport(null, result);
+        await applyBatchImport(null, result);
         return;
       }
 
       setUploadStatus({ type: 'error', message: 'No usable rows were found in the workbook.' });
       setTimeout(() => setUploadStatus(null), 5000);
     } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        setUploadStatus({
+          type: 'info',
+          message: 'Import cancelled.',
+          progress: 100,
+          cancelAction: null,
+        });
+        setTimeout(() => setUploadStatus(null), 2000);
+        return;
+      }
+
       setUploadStatus({ type: 'error', message: 'The workbook could not be processed. Please check the file format.' });
       setTimeout(() => setUploadStatus(null), 5000);
+    } finally {
+      if (importAbortControllerRef.current?.signal === controller.signal) {
+        importAbortControllerRef.current = null;
+      }
     }
-  }, [setBatchImportSummary, setUploadStatus]);
+  }, [applyBatchImport, setBatchImportSummary, setUploadStatus]);
 
   const handleFileDrop = (file) => {
     processFile(file);

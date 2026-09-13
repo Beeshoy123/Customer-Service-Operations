@@ -18,6 +18,24 @@ export const validateNormalizedRows = (rows: NormalizedRow[], fileName: string):
       return false;
     }
 
+    const percentFields = ['vxs', 'resolve2hr', 'resolve3d'] as const;
+    for (const field of percentFields) {
+      const value = row[field];
+      if (value === null || value === undefined || value === '') continue;
+
+      const numericValue = typeof value === 'number' ? value : Number(String(value).replace(/[%,$\s]/g, ''));
+      if (Number.isNaN(numericValue)) continue;
+
+      if (numericValue < 0 || numericValue > 100) {
+        warnings.push({
+          fileName,
+          message: `Row ${index + 1} has out-of-range ${field} value (${numericValue}). Expected a percentage between 0 and 100.`,
+          row: index + 1,
+          code: 'OUT_OF_RANGE_PERCENT',
+        });
+      }
+    }
+
     return true;
   });
 

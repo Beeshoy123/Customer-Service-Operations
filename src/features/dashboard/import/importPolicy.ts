@@ -50,6 +50,18 @@ export const FIELD_ALIASES: Record<string, ImportFieldPolicy> = {
     aliases: ['resolve within 3d', 'resolve 3d', '3d resolution', '3 day resolve', '3dr', '3-day resolve', '3 day resolve %', '3d resolve', 'within 3d', '3 day resolution'],
     kind: 'percent',
   },
+  resolveTotalContacts: {
+    aliases: [
+      'resolve total contacts',
+      'resolvetotalcontacts',
+      'total resolved',
+      'resolved contacts',
+      'total resolved contacts',
+      'resolved total contacts',
+      'resolve contacts',
+    ],
+    kind: 'number',
+  },
 };
 
 const normalizeHeader = (value: string): string =>
@@ -73,6 +85,197 @@ const HEADER_TOKEN_HINTS: Record<string, string[]> = {
   vxs: ['vxs', 'csat', 'satisfaction', 'score'],
   resolve2hr: ['resolve', '2hr', '2hr', 'twohour', '2hour', '2 hour'],
   resolve3d: ['resolve', '3d', '3day', 'threeday', '3 day'],
+  resolveTotalContacts: ['resolve', 'resolved', 'contacts', 'contact'],
+};
+
+export type PairedCountConfig = {
+  passAliases: string[];
+  cntAliases: string[];
+};
+
+export type PairedCountSide = 'pass' | 'cnt';
+
+export type PairedCountFieldTag = {
+  canonicalField: string;
+  side: PairedCountSide;
+  taggedField: string;
+};
+
+export const PAIRED_COUNT_FIELDS: Record<string, PairedCountConfig> = {
+  vxs: {
+    passAliases: [
+      'vxs_overall_rep_pass',
+      'vxsoverallreppass',
+      'vxs_pass',
+      'vxspass',
+      'vxs pass',
+      'csat pass',
+      'csat_pass',
+      'csatpass',
+      'rep pass',
+      'overall rep pass',
+      'vxs top box',
+      'vxs_top_box',
+    ],
+    cntAliases: [
+      'vxs_overall_rep_cnt',
+      'vxsoverallrepcnt',
+      'vxs_cnt',
+      'vxscnt',
+      'vxs cnt',
+      'vxs count',
+      'vxs_count',
+      'vxscount',
+      'vxs total',
+      'vxs_total',
+      'vxstotal',
+      'csat cnt',
+      'csat_cnt',
+      'csatcnt',
+      'csat count',
+      'csat_count',
+      'rep cnt',
+      'overall rep cnt',
+    ],
+  },
+  resolve2hr: {
+    passAliases: [
+      'resolve_2hr_pass',
+      'resolve2hr_pass',
+      'resolve2hrpass',
+      'resolve 2hr pass',
+      '2hr pass',
+      '2hr_pass',
+      'resolve2hrcount',
+    ],
+    cntAliases: [
+      'resolve_2hr_cnt',
+      'resolve2hr_cnt',
+      'resolve2hrcnt',
+      'resolve 2hr cnt',
+      'resolve 2hr count',
+      'resolve 2hr total',
+      '2hr cnt',
+      '2hr_cnt',
+      '2hr total',
+      'resolve2hrcontacts',
+    ],
+  },
+  resolve3d: {
+    passAliases: [
+      'resolve_3d_pass',
+      'resolve3d_pass',
+      'resolve3dpass',
+      'resolve 3d pass',
+      '3d pass',
+      '3d_pass',
+      'resolve3daycount',
+    ],
+    cntAliases: [
+      'resolve_3d_cnt',
+      'resolve3d_cnt',
+      'resolve3dcnt',
+      'resolve 3d cnt',
+      'resolve 3d count',
+      'resolve 3d total',
+      '3d cnt',
+      '3d_cnt',
+      '3d total',
+      'resolve3dcontacts',
+    ],
+  },
+};
+
+const PASS_SUFFIX_PATTERN = /^(.*?)(?:[_\s\-]+pass|[_\s\-]+flag|pass|flag)$/i;
+const CNT_SUFFIX_PATTERN = /^(.*?)(?:[_\s\-]+cnt|[_\s\-]+count|[_\s\-]+total|cnt|count|total)$/i;
+
+const findCanonicalBaseField = (base: string): string | null => {
+  const norm = normalizeHeader(base);
+  const comp = compactHeader(base);
+  if (!norm && !comp) return null;
+
+  for (const [field, config] of Object.entries(FIELD_ALIASES)) {
+    if (config.aliases.some((alias) => normalizeHeader(alias) === norm || compactHeader(alias) === comp)) {
+      return field;
+    }
+    const hints = HEADER_TOKEN_HINTS[field] ?? [];
+    if (hints.some((h) => comp.includes(compactHeader(h)))) {
+      return field;
+    }
+  }
+  return null;
+};
+
+export const findPairedCountField = (header: string): PairedCountFieldTag | null => {
+  const normalized = normalizeHeader(header);
+  const compact = compactHeader(header);
+  if (!normalized && !compact) return null;
+
+  // 1. Check explicit aliases in PAIRED_COUNT_FIELDS
+  for (const [canonicalField, config] of Object.entries(PAIRED_COUNT_FIELDS)) {
+    if (config.passAliases.some((alias) => normalizeHeader(alias) === normalized || compactHeader(alias) === compact)) {
+      return {
+        canonicalField,
+        side: 'pass',
+        taggedField: `${canonicalField}_Pass`,
+      };
+    }
+
+    if (config.cntAliases.some((alias) => normalizeHeader(alias) === normalized || compactHeader(alias) === compact)) {
+      return {
+        canonicalField,
+        side: 'cnt',
+        taggedField: `${canonicalField}_Cnt`,
+      };
+    }
+  }
+
+  // 2. Check suffix patterns (_pass or _cnt)
+  const trimmed = header.trim();
+  const passMatch = PASS_SUFFIX_PATTERN.exec(trimmed);
+  const cntMatch = CNT_SUFFIX_PATTERN.exec(trimmed);
+
+  if (passMatch && passMatch[1]) {
+    const base = passMatch[1].trim();
+    const baseCanonical =
+      Object.keys(PAIRED_COUNT_FIELDS).find((k) => k.toLowerCase() === base.toLowerCase()) ||
+      findCanonicalBaseField(base);
+    const canonicalField = baseCanonical || normalizeHeader(base).replace(/\s+/g, '_') || 'metric';
+    return {
+      canonicalField,
+      side: 'pass',
+      taggedField: `${canonicalField}_Pass`,
+    };
+  }
+
+  if (cntMatch && cntMatch[1]) {
+    const base = cntMatch[1].trim();
+    const baseCanonical =
+      Object.keys(PAIRED_COUNT_FIELDS).find((k) => k.toLowerCase() === base.toLowerCase()) ||
+      findCanonicalBaseField(base);
+    const canonicalField = baseCanonical || normalizeHeader(base).replace(/\s+/g, '_') || 'metric';
+    return {
+      canonicalField,
+      side: 'cnt',
+      taggedField: `${canonicalField}_Cnt`,
+    };
+  }
+
+  return null;
+};
+
+export const findCanonicalFieldWithTag = (
+  header: string,
+): { canonicalField: string; side?: PairedCountSide; taggedField: string } | null => {
+  const paired = findPairedCountField(header);
+  if (paired) {
+    return paired;
+  }
+  const canonical = findCanonicalField(header);
+  if (canonical) {
+    return { canonicalField: canonical, taggedField: canonical };
+  }
+  return null;
 };
 
 const tokenMatches = (header: string, hints: string[]) => {
@@ -88,14 +291,24 @@ const tokenMatches = (header: string, hints: string[]) => {
 };
 
 export const findCanonicalField = (header: string): string | null => {
+  const paired = findPairedCountField(header);
+  if (paired) {
+    return paired.taggedField;
+  }
+
   const normalized = normalizeHeader(header);
   if (!normalized) return null;
 
+  // 1. Direct matches for all fields first
   for (const [field, config] of Object.entries(FIELD_ALIASES)) {
     const aliases = config.aliases ?? [];
     const directMatch = aliases.some((alias: string) => normalizeHeader(alias) === normalized || compactHeader(alias) === compactHeader(header));
     if (directMatch) return field;
+  }
 
+  // 2. Token hints match
+  for (const [field, config] of Object.entries(FIELD_ALIASES)) {
+    const aliases = config.aliases ?? [];
     const tokenHint = HEADER_TOKEN_HINTS[field] ?? [];
     if (tokenHintsMatch(normalized, field, aliases, tokenHint)) {
       return field;
@@ -133,6 +346,13 @@ const tokenHintsMatch = (normalized: string, field: string, aliases: string[], h
     return hasIdLike;
   }
 
+  if (field === 'resolveTotalContacts') {
+    const hasResolve = normalized.includes('resolve') || normalized.includes('resolved');
+    const hasContact = normalized.includes('contact');
+    const isNot2hrOr3d = !normalized.includes('2hr') && !normalized.includes('3d') && !normalized.includes('2 hour') && !normalized.includes('3 day');
+    return hasResolve && hasContact && isNot2hrOr3d;
+  }
+
   return hints.some((hint) => normalized.includes(hint));
 };
 
@@ -148,16 +368,55 @@ const convertDateLike = (value: string): string | null => {
   ];
 
   if (directMatches.some((pattern) => pattern.test(trimmed))) {
-    const [first, second, third] = trimmed.split(/[\/\-]/g);
+    const parts = trimmed.split(/[\/\-]/g);
+    const [first, second, third] = parts;
     const year = third?.length === 2 ? `20${third}` : third;
-    const month = String(first.length === 4 ? first : second).padStart(2, '0');
-    const day = String(first.length === 4 ? second : first).padStart(2, '0');
-    if (year && month && day) return `${year}-${month}-${day}`;
+
+    if (trimmed.includes('-') && first?.length === 4) {
+      const year = first;
+      const month = Number(second);
+      const day = Number(third);
+      if (year && Number.isInteger(month) && Number.isInteger(day) && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      }
+      return null;
+    }
+
+    if (trimmed.includes('-') && first?.length !== 4) {
+      const month = Number(second);
+      const day = Number(first);
+      if (year && Number.isInteger(month) && Number.isInteger(day) && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      }
+      return null;
+    }
+
+    const slashCandidates = [
+      { month: Number(second), day: Number(first) },
+      { month: Number(first), day: Number(second) },
+    ];
+
+    for (const candidate of slashCandidates) {
+      if (
+        year &&
+        Number.isInteger(candidate.month) &&
+        Number.isInteger(candidate.day) &&
+        candidate.month >= 1 &&
+        candidate.month <= 12 &&
+        candidate.day >= 1 &&
+        candidate.day <= 31
+      ) {
+        return `${year}-${String(candidate.month).padStart(2, '0')}-${String(candidate.day).padStart(2, '0')}`;
+      }
+    }
+
+    return null;
   }
 
   const parsed = new Date(trimmed);
   if (!Number.isNaN(parsed.getTime())) {
-    return parsed.toISOString().slice(0, 10);
+    const normalized = parsed.toISOString().slice(0, 10);
+    return normalized;
   }
 
   return null;
@@ -171,8 +430,11 @@ export const normalizeImportedValue = (field: string | null, value: unknown): st
 
   const policy = field ? FIELD_ALIASES[field] : null;
   if (policy?.kind === 'percent') {
-    const percentNumber = Number(stringValue.replace(/[%,$\s]/g, ''));
-    if (!Number.isNaN(percentNumber)) return percentNumber;
+    const rawPercentNumber = Number(stringValue.replace(/[%,$\s]/g, ''));
+    if (!Number.isNaN(rawPercentNumber)) {
+      const normalizedPercent = rawPercentNumber <= 1 ? rawPercentNumber * 100 : rawPercentNumber;
+      return normalizedPercent;
+    }
   }
 
   if (policy?.kind === 'number') {
@@ -182,7 +444,7 @@ export const normalizeImportedValue = (field: string | null, value: unknown): st
 
   if (policy?.kind === 'date') {
     const dateValue = convertDateLike(stringValue);
-    if (dateValue) return dateValue;
+    return dateValue;
   }
 
   const plainNumeric = Number(stringValue.replace(/[$,%\s]/g, ''));
