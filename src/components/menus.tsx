@@ -2,7 +2,7 @@
 // Quick scan: src/components/menus.tsx for timeframe and settings controls
 
 import React from 'react';
-import { COL_DEFINITIONS } from '../dashboard/config';
+import { COL_DEFINITIONS } from '../features/dashboard/config';
 
 export const TimeframeMenu = ({
   activeTimeframe,

@@ -2,7 +2,7 @@
 // Quick scan: src/components/shared.tsx for cards, charts, and view formatting
 
 import React from 'react';
-import { getDynamicTarget, METRIC_CONFIG } from '../dashboard/config';
+import { getDynamicTarget, METRIC_CONFIG } from '../features/dashboard/config';
 
 export const GeminiLoader = ({ message = 'Cooking it up...', color = '#3b82f6', icon = '✨' }) => (
   <div className="flex flex-col items-center justify-center p-8 gap-4">

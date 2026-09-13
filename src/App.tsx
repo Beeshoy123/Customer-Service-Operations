@@ -57,7 +57,7 @@ var tailwind = typeof window !== 'undefined' ? window.tailwind : { config: {} };
 // 1) TopNavbar / shell + global overlay
 // 2) MainStatsRow + FloorHeader + tab content blocks
 // 3) AI modal / AskAiContent / MainModal
-// 4) data logic: src/dashboard/hooks.ts + metrics.ts + helpers.ts
+// 4) data logic: src/features/dashboard/hooks.ts + metrics.ts + helpers.ts
 // 5) reusable UI: src/components/shared.tsx + menus.tsx
 
 const UploadStatus = ({ uploadStatus }) => {
