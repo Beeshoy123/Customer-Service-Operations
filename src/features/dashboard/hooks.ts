@@ -21,6 +21,7 @@ import {
 import {
   runImportService,
   convertWorkbookToSheets,
+  selectSheets,
   parseCsvFileText,
   aggregateTransactions,
   validateNormalizedRows,
@@ -122,7 +123,8 @@ export const useDashboardData = (onDataReset = null) => {
         const fileType = detectFileType(file.name);
         if (fileType === 'xlsx' || fileType === 'xls' || fileType === 'xlsm') {
           const { sheets } = await convertWorkbookToSheets(file);
-          combinedSheets.push(...sheets);
+          const filteredSheets = selectSheets(sheets);
+          combinedSheets.push(...filteredSheets);
         } else if (fileType === 'csv' || fileType === 'tsv' || fileType === 'txt') {
           const textTable = await parseCsvFileText(file);
           combinedSheets.push({
@@ -350,7 +352,7 @@ export const useDashboardData = (onDataReset = null) => {
     processFile(file);
   };
 
-  const processFile = (file) => {
+  const processFile = async (file) => {
     if (!file) return;
 
     const fileType = detectFileType(file.name);
@@ -359,295 +361,41 @@ export const useDashboardData = (onDataReset = null) => {
       return;
     }
 
-    setUploadStatus({ type: 'info', message: `Building OAM Database from ${file.name}...` });
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
+    if (fileType === 'csv' || fileType === 'tsv' || fileType === 'txt') {
+      setUploadStatus({ type: 'info', message: `Preparing ${file.name} for import preview...` });
       try {
-        const text = e.target.result;
-        const lines = text.split(/\r?\n/).filter((line) => line.trim() !== '');
-        if (lines.length < 2) {
-          setUploadStatus({ type: 'error', message: 'File is empty or missing data rows.' });
-          return;
-        }
+        const textTable = await parseCsvFileText(file);
+        const singleSheet = [
+          {
+            workbookName: file.name,
+            sheetName: file.name.replace(/\.[^/.]+$/, '') || 'CSV',
+            index: 0,
+            headerRow: textTable.headers,
+            rows: textTable.rows,
+            rowCount: textTable.rows.length,
+          },
+        ];
 
-        const delimiter = lines[0].includes('\t') ? '\t' : ',';
-        const headers = parseCSVLine(lines[0], delimiter).map((h) => h.toLowerCase().trim());
-
-        const cols = detectColumns(headers);
-        const nameKey = cols.name;
-        const supKey = cols.supervisor;
-        const oamKey = cols.oam;
-        const dateKey = cols.date;
-        const locationKey = cols.location;
-        const idKey = cols.employeeId;
-
-        if (nameKey === -1) {
-          setUploadStatus({ type: 'error', message: 'Could not find an "Agent Name", "Employee Name", or "Name" column.' });
-          return;
-        }
-
-        const rawFormat = isRawGranularFormat(cols);
-
-        const getFloat = (row, index, treatAsPercent = false) => {
-          if (index === -1 || !row[index] || row[index].trim() === '') return null;
-          let strVal = row[index].trim();
-          const hasPct = strVal.includes('%');
-          let parsed = parseFloat(strVal.replace(/,/g, '').replace(/%/g, '').replace(/\$/g, ''));
-          if (isNaN(parsed)) return null;
-          if (treatAsPercent && !hasPct && parsed <= 1.0 && parsed >= 0) { parsed = parsed * 100; }
-          return parsed;
-        };
-
-        const getRowDate = (row) => {
-          if (dateKey !== -1 && row[dateKey]) return normalizeDate(row[dateKey]);
-          const rawDateCell = row.find((c) => c && typeof c === 'string' && (c.includes('/20') || c.includes(' AM') || c.includes(' PM')));
-          return rawDateCell ? normalizeDate(rawDateCell) : null;
-        };
-
-        const getRowKey = (row) => {
-          if (idKey !== -1 && row[idKey]) return 'ID_' + row[idKey].trim();
-          return 'NAME_' + formatName(row[nameKey] || '').toLowerCase();
-        };
-
-        let rollups = null;
-        if (rawFormat) {
-          rollups = {};
-          for (let i = 1; i < lines.length; i++) {
-            const row = parseCSVLine(lines[i], delimiter);
-            if (!row[nameKey]) continue;
-            const rowDate = getRowDate(row);
-            if (!rowDate) continue;
-            const rowKey = getRowKey(row);
-            const groupKey = `${rowKey}|${rowDate}`;
-
-            if (!rollups[groupKey]) {
-              rollups[groupKey] = {
-                rowKey, rowDate, rowRef: row,
-                callsRaw: 0, handleTimeRaw: 0, vxsPassRaw: 0, vxsTotalRaw: 0,
-                resolve2hrFlag: 0, resolve3dFlag: 0, transferFlag: 0,
-                detractors: 0, promoters: 0, satisfactionSum: 0, satisfactionCount: 0,
-                knowledgeSum: 0, knowledgeCount: 0, rowCount: 0,
-              };
-            }
-            const acc = rollups[groupKey];
-            acc.rowCount += 1;
-            if (cols.callsRaw !== -1) acc.callsRaw += getFloat(row, cols.callsRaw) || 0;
-            if (cols.handleTimeRaw !== -1) acc.handleTimeRaw += getFloat(row, cols.handleTimeRaw) || 0;
-            if (cols.vxsPassRaw !== -1) acc.vxsPassRaw += getFloat(row, cols.vxsPassRaw) || 0;
-            if (cols.vxsTotalRaw !== -1) acc.vxsTotalRaw += getFloat(row, cols.vxsTotalRaw) || 0;
-            const r2hr = cols.resolve2hrFlag !== -1 ? (getFloat(row, cols.resolve2hrFlag) || 0) : 0;
-            const r3d = cols.resolve3dFlag !== -1 ? (getFloat(row, cols.resolve3dFlag) || 0) : 0;
-            acc.resolve2hrFlag += r2hr;
-            acc.resolve3dFlag += (r2hr > 0 ? 1 : r3d);
-            if (cols.transferFlag !== -1) acc.transferFlag += getFloat(row, cols.transferFlag) || 0;
-            if (cols.vxsTotalRaw !== -1) {
-              const promoterVal = cols.promoters !== -1 ? (getFloat(row, cols.promoters) || 0) : 0;
-              acc.promoters += promoterVal;
-            }
-            if (cols.detractors !== -1) acc.detractors += getFloat(row, cols.detractors) || 0;
-            const satVal = cols.satisfaction !== -1 ? getFloat(row, cols.satisfaction) : null;
-            if (satVal !== null) { acc.satisfactionSum += satVal; acc.satisfactionCount += 1; }
-            const knowVal = cols.knowledge !== -1 ? getFloat(row, cols.knowledge) : null;
-            if (knowVal !== null) { acc.knowledgeSum += knowVal; acc.knowledgeCount += 1; }
-          }
-        }
-
-        let rowsParsed = 0;
-        let latestFoundDate = null;
-        const newHistory = { ...historicalData };
-        const updatedAgents = [...agents];
-        let foundSupervisors = new Set();
-        let foundOam = null;
-
-        const resolveAgentForRow = (row, joinKeyOverride) => {
-          const rawAgentName = row[nameKey];
-          const rawSupName = supKey !== -1 && row[supKey] ? row[supKey].trim() : 'Unknown';
-          const rawOamName = oamKey !== -1 && row[oamKey] ? row[oamKey].trim() : null;
-          const locationVal = locationKey !== -1 && row[locationKey] ? row[locationKey].trim() : 'Unknown';
-
-          const agentName = formatName(rawAgentName);
-          const supName = rawSupName !== 'Unknown' ? shortenManagerName(formatName(rawSupName)) : 'Unknown';
-          const oamNameFormatted = rawOamName ? shortenManagerName(formatName(rawOamName)) : 'Unknown';
-
-          if (supName !== 'Unknown') foundSupervisors.add(supName);
-          if (rawOamName && !foundOam) foundOam = shortenManagerName(formatName(rawOamName));
-
-          let coding = 'Unknown';
-          if (locationVal.toLowerCase().includes('new hire')) coding = 'New Hire';
-          else if (locationVal.toLowerCase().includes('transition')) coding = 'Transition';
-
-          let phase = 'Unknown';
-          if (rawOamName) {
-            const mgr2 = rawOamName.toLowerCase();
-            if (mgr2.includes('abdelazim') || mgr2.includes('ziad') || mgr2.includes('mohsen') || mgr2.includes('youssef')) {
-              phase = 'OJT';
-            } else if (mgr2.includes('mohamed') || mgr2.includes('seifeldin') || mgr2.includes('shahat') || mgr2.includes('ali') || mgr2.includes('khaled') || mgr2.includes('manar')) {
-              phase = 'Nesting';
-            }
-          }
-
-          const idVal = idKey !== -1 && row[idKey] ? row[idKey].trim() : null;
-          let targetAgent = idVal
-            ? updatedAgents.find((a) => a.sourceId === idVal)
-            : updatedAgents.find((a) => a.name.toLowerCase() === agentName.toLowerCase());
-          if (!targetAgent && idVal) {
-            targetAgent = updatedAgents.find((a) => a.name.toLowerCase() === agentName.toLowerCase() && !a.sourceId);
-          }
-
-          if (!targetAgent) {
-            targetAgent = {
-              ccms: idVal ? ('ID_' + idVal) : ('AUTO_' + Math.random().toString(36).substr(2, 8)),
-              sourceId: idVal,
-              name: agentName,
-              supervisor: supName,
-              oam: oamNameFormatted,
-              coding,
-              phase,
-            };
-            updatedAgents.push(targetAgent);
-          } else {
-            targetAgent.supervisor = supName;
-            targetAgent.oam = oamNameFormatted;
-            if (coding !== 'Unknown') targetAgent.coding = coding;
-            if (phase !== 'Unknown') targetAgent.phase = phase;
-            if (idVal && !targetAgent.sourceId) targetAgent.sourceId = idVal;
-          }
-          return targetAgent;
-        };
-
-        if (rawFormat) {
-          for (const groupKey in rollups) {
-            const acc = rollups[groupKey];
-            const row = acc.rowRef;
-            const targetAgent = resolveAgentForRow(row);
-            if (!targetAgent) continue;
-
-            rowsParsed++;
-            const rowDate = acc.rowDate;
-            if (!latestFoundDate || rowDate > latestFoundDate) latestFoundDate = rowDate;
-
-            const callsHandled = acc.callsRaw || acc.rowCount || 0;
-            const isOff = callsHandled === 0;
-
-            const vxsRate = acc.vxsTotalRaw > 0
-              ? (acc.vxsPassRaw > 0 ? (acc.vxsPassRaw / acc.vxsTotalRaw) * 100 : (acc.promoters / acc.vxsTotalRaw) * 100)
-              : null;
-            const resolve2hrRate = callsHandled > 0 && cols.resolve2hrFlag !== -1 ? (1 - acc.resolve2hrFlag / callsHandled) * 100 : null;
-            const resolve3dRate = callsHandled > 0 && (cols.resolve3dFlag !== -1 || cols.resolve2hrFlag !== -1) ? (1 - acc.resolve3dFlag / callsHandled) * 100 : null;
-            const handoffsRate = callsHandled > 0 && cols.transferFlag !== -1 ? (acc.transferFlag / callsHandled) * 100 : null;
-            const ahtVal = callsHandled > 0 && acc.handleTimeRaw > 0 ? acc.handleTimeRaw / callsHandled : null;
-
-            if (!newHistory[targetAgent.ccms]) newHistory[targetAgent.ccms] = {};
-            newHistory[targetAgent.ccms][rowDate] = {
-              isOff, calls: callsHandled,
-              resolveTotalContacts3d: null, resolveTotalContacts2hr: null,
-              resolveTotalContacts: callsHandled,
-              surveys: acc.vxsTotalRaw || null, promoters: acc.promoters || null, vxs: vxsRate,
-              resolve3d: resolve3dRate, handoffs: handoffsRate, handoffsCount: acc.transferFlag || null,
-              resolve2hr: resolve2hrRate, aht: ahtVal, hold: null,
-              dpc: null, viewTogether: null, vtt: null, vttSent: null, vttTransacted: null, netOcc: null,
-              creditFreq: null, phoneAdds: null, vhi: null,
-            };
-          }
-        } else {
-          const vxsIdx = cols.vxs;
-          const resolve3dIdx = cols.resolve3d;
-          const handoffsIdx = cols.handoffsPct;
-          const handoffsCountIdx = cols.handoffsCount;
-          const resolve2hrIdx = cols.resolve2hr;
-          const ahtIdx = cols.aht;
-          const resolve3dContactsIdx = cols.resolve3dContacts;
-          const resolve2hrContactsIdx = cols.resolve2hrContacts;
-          const fallbackResolveContactsIdx = cols.resolveContactsFallback;
-          const holdIdx = cols.hold;
-          const dpcIdx = cols.dpc;
-          const vttIdx = cols.vtt;
-          const vttSentIdx = cols.vttSent;
-          const vttTransactedIdx = cols.vttTransacted;
-          const netOccIdx = cols.netOcc;
-          const creditFreqIdx = cols.creditFreq;
-          const phoneAddsIdx = cols.phoneAdds;
-          const vhiIdx = cols.vhi;
-          const callsIdx = cols.calls;
-          const surveysIdx = cols.surveys;
-          const promotersIdx = cols.promoters;
-
-          for (let i = 1; i < lines.length; i++) {
-            const row = parseCSVLine(lines[i], delimiter);
-            if (!row[nameKey]) continue;
-
-            const rowDate = getRowDate(row);
-            if (!rowDate) continue;
-            if (!latestFoundDate || rowDate > latestFoundDate) latestFoundDate = rowDate;
-
-            const targetAgent = resolveAgentForRow(row);
-            if (!targetAgent) continue;
-
-            rowsParsed++;
-            const callsHandled = getFloat(row, callsIdx) || 0;
-            const isOff = callsHandled === 0;
-
-            const parsed3drContacts = getFloat(row, resolve3dContactsIdx);
-            const parsedFallback = getFloat(row, fallbackResolveContactsIdx);
-            const parsedVttSent = getFloat(row, vttSentIdx, false);
-            const parsedVttTransacted = getFloat(row, vttTransactedIdx, false);
-            let parsedVttRate = getFloat(row, vttIdx, true);
-            if (parsedVttSent != null && parsedVttTransacted != null && parsedVttSent > 0) {
-              parsedVttRate = (parsedVttTransacted / parsedVttSent) * 100;
-            }
-
-            if (!newHistory[targetAgent.ccms]) newHistory[targetAgent.ccms] = {};
-            newHistory[targetAgent.ccms][rowDate] = {
-              isOff,
-              calls: callsHandled,
-              resolveTotalContacts3d: parsed3drContacts,
-              resolveTotalContacts2hr: getFloat(row, resolve2hrContactsIdx),
-              resolveTotalContacts: parsedFallback !== null ? parsedFallback : (parsed3drContacts !== null ? parsed3drContacts : callsHandled),
-              surveys: getFloat(row, surveysIdx),
-              promoters: getFloat(row, promotersIdx),
-              vxs: getFloat(row, vxsIdx, true),
-              resolve3d: getFloat(row, resolve3dIdx, true),
-              handoffs: getFloat(row, handoffsIdx, true),
-              handoffsCount: getFloat(row, handoffsCountIdx, false),
-              resolve2hr: getFloat(row, resolve2hrIdx, true),
-              aht: getFloat(row, ahtIdx, false),
-              hold: getFloat(row, holdIdx, false),
-              dpc: getFloat(row, dpcIdx, false),
-              viewTogether: parsedVttRate,
-              vtt: parsedVttRate,
-              vttSent: parsedVttSent,
-              vttTransacted: parsedVttTransacted,
-              netOcc: getFloat(row, netOccIdx, false),
-              creditFreq: getFloat(row, creditFreqIdx, false),
-              phoneAdds: getFloat(row, phoneAddsIdx, false),
-              vhi: getFloat(row, vhiIdx, false),
-            };
-          }
-        }
-
-        if (rowsParsed > 0) {
-          setHistoricalData(newHistory);
-          setAgents(updatedAgents);
-          setSupervisors(Array.from(foundSupervisors).sort());
-          if (foundOam) setOamName(foundOam);
-          setHasUploadedData(true);
-          if (onDataReset) onDataReset();
-
-          if (latestFoundDate) setSelectedDate(latestFoundDate);
-          setActiveTimeframe('monthly');
-          setUploadStatus({ type: 'success', message: `Database Built! Tracked ${Array.from(foundSupervisors).length} Supervisors & ${rowsParsed} records.` });
-        } else {
-          setUploadStatus({ type: 'error', message: 'No active records matched your Members.' });
-        }
-        setTimeout(() => setUploadStatus(null), 6000);
-      } catch (err) {
-        setUploadStatus({ type: 'error', message: 'Failed to process file format. Please check the data.' });
+        setUploadStatus(null);
+        openImportPreview({
+          fileName: file.name,
+          sheets: singleSheet,
+        });
+      } catch (error) {
+        setUploadStatus({
+          type: 'error',
+          message: 'The file could not be processed. Please check the file format.',
+        });
         setTimeout(() => setUploadStatus(null), 5000);
       }
-    };
-    reader.readAsText(file);
-    if (event && event.target) event.target.value = '';
+      return;
+    }
+
+    setUploadStatus({
+      type: 'error',
+      message: `Unsupported file format: ${file.name}. Please upload CSV, TSV, TXT, or Excel files.`,
+    });
+    setTimeout(() => setUploadStatus(null), 5000);
   };
 
   const agentDataCache = useMemo(() => {

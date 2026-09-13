@@ -1,4 +1,4 @@
-import type { ColumnMappingConfidence, DetectedColumnMapping } from './types';
+import type { DetectedColumnMapping } from './types';
 
 export type ImportFieldKind = 'text' | 'number' | 'percent' | 'date';
 

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import type { SheetTable, SheetGranularity, SheetPreviewData, DetectedColumnMapping } from './types';
+import type { SheetTable, SheetGranularity, SheetHeaderMapping, DetectedColumnMapping } from './types';
 import { detectGranularity, evaluateGranularityConfidence } from './granularityDetector';
 import { CANONICAL_FIELD_OPTIONS, detectColumnMappingWithConfidence } from './importPolicy';
 
@@ -49,7 +49,14 @@ export const buildInitialSheetStates = (sheets: SheetTable[]): LocalSheetState[]
       return detectColumnMappingWithConfidence(headerStr, colIdx, sampleVals);
     });
 
-    const detected = detectGranularity(table, columnMappings);
+    const headerMappings: SheetHeaderMapping[] = columnMappings.map((m) => ({
+      original: m.header,
+      normalized: m.normalized,
+      mappedField: m.mappedField,
+      index: m.index,
+    }));
+
+    const detected = detectGranularity(table, headerMappings);
     const confidence = evaluateGranularityConfidence(detected, columnMappings);
 
     const isHighConfidence = confidence.isHighConfidence;
@@ -126,8 +133,15 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
       updatedMappings[colIndex] = col;
       target.columnMappings = updatedMappings;
 
+      const headerMappings: SheetHeaderMapping[] = updatedMappings.map((m) => ({
+        original: m.header,
+        normalized: m.normalized,
+        mappedField: m.mappedField,
+        index: m.index,
+      }));
+
       // Re-evaluate granularity detection with updated mappings
-      const detected = detectGranularity(target.table, updatedMappings);
+      const detected = detectGranularity(target.table, headerMappings);
       target.detectedGranularity = detected.classification;
       const confidence = evaluateGranularityConfidence(detected, updatedMappings);
       target.granularityConfidence = confidence.isHighConfidence ? 'high' : 'low';

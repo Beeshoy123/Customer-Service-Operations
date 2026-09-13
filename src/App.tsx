@@ -22,11 +22,8 @@ import {
   formatName,
   shortenManagerName,
   normalizeDate,
-  parseCSVLine,
   getWeekNumber,
   dowFromDateStr,
-  detectColumns,
-  isRawGranularFormat,
 } from './features/dashboard/helpers';
 import {
   GeminiLoader,

@@ -282,21 +282,6 @@ export const normalizeDate = (dStr) => {
   return null;
 };
 
-export const parseCSVLine = (line, delimiter) => {
-  if (delimiter === '\t') return line.split('\t').map((c) => c.trim().replace(/^"|"$/g, ''));
-  const result = [];
-  let current = '';
-  let inQuotes = false;
-  const cleanLine = line.replace(/&amp;/g, '&');
-  for (let i = 0; i < cleanLine.length; i++) {
-    if (cleanLine[i] === '"') { inQuotes = !inQuotes; }
-    else if (cleanLine[i] === ',' && !inQuotes) { result.push(current.trim()); current = ''; }
-    else { current += cleanLine[i]; }
-  }
-  result.push(current.trim());
-  return result.map((s) => s.replace(/^"|"$/g, ''));
-};
-
 export const getWeekNumber = (dateStr) => {
   if (!dateStr) return 'Week 1';
   const parts = dateStr.split('-');
@@ -314,94 +299,4 @@ export const dowFromDateStr = (d) => {
   const t = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4];
   const yr = m < 3 ? y - 1 : y;
   return (yr + Math.floor(yr / 4) - Math.floor(yr / 100) + Math.floor(yr / 400) + t[m - 1] + day) % 7;
-};
-
-export const COLUMN_PATTERNS = {
-  name: { match: (h, hn) => h === 'name' || h === 'agent name' || h === 'rep name' || h === 'employee name' || h === 'employeename' || h === 'employee' || hn === 'employeename' || hn === 'repname' || hn === 'agentname' },
-  employeeId: { match: (h, hn) => hn === 'employeeid' || h === 'ccms' || h === 'ccms ident' || h.includes('ccms ident') || hn.includes('ccmsident') },
-  employeeIdFallback: { match: (h, hn) => h === 'attuid' || h === 'sid' },
-  supervisor: { match: (h, hn) => h === 'manager 1' || h === 'supervisor name' || h === 'supervisor' || h === 'sup name' || h === 'spv' || h === 'spv name' || hn === 'spv' || h.includes('direct manager name') },
-  oam: { match: (h, hn) => h === 'manager 2' || h === 'oam' || h === 'manager' || h.includes('acm name') },
-  date: { match: (h, hn) => h === 'startdate' || h === 'start date' || h === 'date' || h === 'reportdate' || h === 'survey date' },
-  location: { match: (h, hn) => h === 'location' || h === 'site' || hn === 'geographiclocationdescription' },
-  calls: { match: (h) => h === 'calls handled' || h === 'total contacts', mode: 'rate' },
-  callsRaw: { match: (h, hn) => hn === 'callsanswered', mode: 'count_sum' },
-  aht: { match: (h) => h === 'aht', mode: 'rate' },
-  handleTimeRaw: { match: (h, hn) => hn === 'handletmseconds', mode: 'count_sum' },
-  vxs: { match: (h) => h.includes('vxs combined overall rep success') || h === 'csat %' || h === 'csat' || h === 'vxs combined %', mode: 'rate' },
-  surveys: { match: (h) => h === 'vxs combined overall count' || h === 'surveys answered', mode: 'rate' },
-  promoters: { match: (h, hn) => h === 'vxs combined overall top box' || h === 'promoters' || hn === 'peromters' || hn === 'promoters', mode: 'rate_or_sum' },
-  vxsTotalRaw: { match: (h, hn) => h === 'total' || hn === 'vxsoverallrepcnt', mode: 'count_sum' },
-  vxsPassRaw: { match: (h, hn) => hn === 'vxsoverallreppass', mode: 'flag_sum' },
-  detractors: { match: (h) => h === 'detractors', mode: 'count_sum' },
-  satisfaction: { match: (h) => h === 'satisfaction', mode: 'avg' },
-  knowledge: { match: (h) => h === 'knowledge', mode: 'avg' },
-  resolve2hr: { match: (h) => h === '2 hour resolve' || h === '2hr', mode: 'rate' },
-  resolve2hrFlag: { match: (h, hn) => hn === 'resolve2hrcount', mode: 'flag_sum' },
-  resolve3d: { match: (h) => h === '3 day resolve' || h === '3dr', mode: 'rate' },
-  resolve3dFlag: { match: (h, hn) => hn === 'resolve3daycount', mode: 'flag_sum' },
-  resolve3dContacts: { match: (h) => h === '3 day resolve contacts' || h === '3dr contacts' || (h.includes('3') && h.includes('resolve') && h.includes('contact')) },
-  resolve2hrContacts: { match: (h) => h === '2 hour resolve contacts' || h === '2hr contacts' || (h.includes('2') && h.includes('resolve') && h.includes('contact')) },
-  resolveContactsFallback: { match: (h) => h === 'resolve total contacts' || (h.includes('resolve') && h.includes('contact') && !h.includes('2') && !h.includes('3')) },
-  resolveContactsRaw: { match: (h, hn) => hn === 'resolvetotalcontacts', mode: 'count_sum' },
-  handoffsPct: { match: (h) => h === 'net handoffs %' || h === 'hand offs %', mode: 'rate' },
-  handoffsCount: { match: (h) => h === 'net handoffs', mode: 'rate' },
-  transferFlag: { match: (h, hn) => hn === 'transferflag', mode: 'flag_sum' },
-  hold: { match: (h) => h === 'hold time avg' || h === 'hold', mode: 'rate' },
-  dpc: { match: (h) => h === 'real time agent dpc' || h === 'dpc', mode: 'rate' },
-  vtt: { match: (h) => h.includes('view together attach') || h === 'vtt' || (h.includes('view together') && !h.includes('sent') && !h.includes('transacted')), mode: 'rate' },
-  vttSent: { match: (h) => h.includes('view together sent') },
-  vttTransacted: { match: (h) => h.includes('view together transacted') },
-  netOcc: { match: (h) => h.includes('net occ per call') || h === 'net occ', mode: 'rate' },
-  creditFreq: { match: (h) => h.includes('credit frequency'), mode: 'rate' },
-  phoneAdds: { match: (h) => h === 'phone adds' || h === 'total phone adds' || h === 'phones', mode: 'rate' },
-  vhi: { match: (h) => h.includes('gross adds fwa') || h === 'vhi' || h.includes('fwa') || h.includes('fixed wireless access') || h.includes('home internet'), mode: 'rate' },
-  requestResolved: { match: (h) => h === 'request resolved' || h === 'not resolved' },
-};
-
-const compactHeader = (value) => String(value ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '');
-
-const shouldMatchField = (header, hints) => {
-  const normalized = compactHeader(header);
-  return hints.some((hint) => {
-    const key = compactHeader(hint);
-    if (!key) return false;
-    return normalized.includes(key) || key.length > 3 && normalized.includes(key.slice(0, 3));
-  });
-};
-
-export const detectColumns = (headers) => {
-  const safeHeaders = headers.map((h) => (h ?? '').toLowerCase());
-  const normalized = safeHeaders.map((h) => h.replace(/[^a-z0-9]/g, ''));
-  const found = {};
-
-  for (const key in COLUMN_PATTERNS) {
-    found[key] = safeHeaders.findIndex((h, i) => {
-      if (COLUMN_PATTERNS[key].match(h, normalized[i])) return true;
-
-      if (key === 'name') {
-        return shouldMatchField(h, ['agent', 'employee', 'emp', 'rep', 'associate', 'name']);
-      }
-      if (key === 'supervisor') {
-        return shouldMatchField(h, ['supervisor', 'spv', 'manager', 'mgr', 'lead', 'team']);
-      }
-      if (key === 'employeeId') {
-        return shouldMatchField(h, ['employee', 'emp', 'agent', 'associate', 'ccms', 'id']);
-      }
-      if (key === 'date') {
-        return shouldMatchField(h, ['date', 'day', 'report', 'service', 'work']);
-      }
-      return false;
-    });
-  }
-  if (found.employeeId === -1 && found.employeeIdFallback !== -1) {
-    found.employeeId = found.employeeIdFallback;
-  }
-  return found;
-};
-
-export const isRawGranularFormat = (cols) => {
-  const hasRawSignals = cols.vxsPassRaw !== -1 || cols.resolve2hrFlag !== -1 || cols.resolve3dFlag !== -1 || cols.handleTimeRaw !== -1 || cols.detractors !== -1;
-  const hasReadyRates = cols.vxs !== -1 && cols.resolve2hr !== -1;
-  return hasRawSignals && !hasReadyRates;
 };
