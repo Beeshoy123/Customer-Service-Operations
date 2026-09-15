@@ -410,7 +410,9 @@ export const convertWorkbookToSheetsViaWorker = async (
 ): Promise<WorkbookResult> => {
   const { options, onProgress } = resolveOptionsAndProgress(optionsOrProgress, progressCallback);
 
+  console.log('[DEBUG 3a - convertWorkbookToSheetsViaWorker] Entered. typeof Worker:', typeof Worker, 'fileSize:', file?.size);
   if (typeof Worker === 'undefined') {
+    console.warn('[DEBUG 3a-WARN] Worker is undefined in this environment! Falling back to convertWorkbookToSheets.');
     return convertWorkbookToSheets(file, options, onProgress);
   }
 
@@ -430,7 +432,11 @@ export const convertWorkbookToSheetsViaWorker = async (
     throw createAbortError();
   }
 
+  console.log('[DEBUG 3b - convertWorkbookToSheetsViaWorker] Calling await file.arrayBuffer()...');
+  const bufferStartTime = performance.now();
   const arrayBuffer = await file.arrayBuffer();
+  const bufferDuration = (performance.now() - bufferStartTime).toFixed(1);
+  console.log(`[DEBUG 3c - convertWorkbookToSheetsViaWorker] file.arrayBuffer() resolved in ${bufferDuration}ms! byteLength: ${arrayBuffer.byteLength}`);
 
   if (options.signal?.aborted) {
     throw createAbortError();
@@ -475,10 +481,13 @@ export const convertWorkbookToSheetsViaWorker = async (
     }
 
     try {
+      console.log('[DEBUG 3d - convertWorkbookToSheetsViaWorker] Right before new Worker(...)');
       worker = new Worker(new URL('./workbookWorker.ts', import.meta.url), {
         type: 'module',
       });
-    } catch {
+      console.log('[DEBUG 3e - convertWorkbookToSheetsViaWorker] Worker instance created successfully!');
+    } catch (err) {
+      console.error('[DEBUG 3-CATCH] Worker creation threw an exception! Falling back to synchronous parseWorkbookBuffer on MAIN THREAD:', err);
       cleanup();
       return parseWorkbookBuffer(
         arrayBuffer,
@@ -488,6 +497,7 @@ export const convertWorkbookToSheetsViaWorker = async (
     }
 
     worker.onmessage = (event: MessageEvent<WorkerOutMessage>) => {
+      console.log('[DEBUG 3f - Main thread received worker onmessage]:', event.data?.type);
       if (isCancelled || isSettled) {
         return;
       }
@@ -503,12 +513,14 @@ export const convertWorkbookToSheetsViaWorker = async (
         if (!isCancelled && !isSettled) {
           isSettled = true;
           cleanup();
+          console.log('[DEBUG 3f-SUCCESS] Worker finished parsing successfully! Resolving promise.');
           resolve(data.result);
         }
       } else if (data.type === 'error') {
         if (!isCancelled && !isSettled) {
           isSettled = true;
           cleanup();
+          console.error('[DEBUG 3f-ERROR] Worker returned error message:', data.error);
           const err = new Error(data.error || 'Workbook worker failed.');
           if (data.name) {
             err.name = data.name;
@@ -519,6 +531,7 @@ export const convertWorkbookToSheetsViaWorker = async (
     };
 
     worker.onerror = (event: ErrorEvent) => {
+      console.error('[DEBUG 3g - Main thread worker.onerror fired]:', event.message, event);
       if (isCancelled || isSettled) {
         return;
       }
@@ -542,6 +555,8 @@ export const convertWorkbookToSheetsViaWorker = async (
       options: transferableOptions,
     };
 
+    console.log('[DEBUG 3h - convertWorkbookToSheetsViaWorker] Calling worker.postMessage with transferable arrayBuffer...');
     worker.postMessage(parseMessage, [arrayBuffer]);
+    console.log('[DEBUG 3i - convertWorkbookToSheetsViaWorker] worker.postMessage returned. Main thread is free.');
   });
 };

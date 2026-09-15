@@ -208,6 +208,7 @@ export const useDashboardData = (onDataReset = null) => {
     };
 
     const chunkSize = 250;
+    console.log('[DEBUG 8 - applyBatchImport] Starting to apply rows to state. Total rows:', rowsToApply.length);
     for (let index = 0; index < rowsToApply.length; index += 1) {
       if (index > 0 && index % chunkSize === 0) {
         await new Promise((resolve) => setTimeout(resolve, 0));
@@ -413,6 +414,7 @@ export const useDashboardData = (onDataReset = null) => {
 
   const handleWorkbookImport = useCallback(async (file) => {
     if (!file) return;
+    console.log('[DEBUG 1e - handleWorkbookImport] Initiating runImportService for:', { name: file.name, size: file.size });
 
     const controller = new AbortController();
     importAbortControllerRef.current?.abort();
@@ -481,6 +483,7 @@ export const useDashboardData = (onDataReset = null) => {
   }, [applyBatchImport, setBatchImportSummary, setUploadStatus]);
 
   const handleFileDrop = (file) => {
+    console.log('[DEBUG 1a - handleFileDrop] File dropped:', { name: file?.name, size: file?.size, type: file?.type });
     processFile(file);
   };
 
@@ -488,12 +491,16 @@ export const useDashboardData = (onDataReset = null) => {
     if (!file) return;
 
     const fileType = detectFileType(file.name);
+    console.log('[DEBUG 1b - processFile] File detected:', { name: file.name, size: file.size, detectedType: fileType });
+
     if (fileType === 'xlsx' || fileType === 'xls' || fileType === 'xlsm') {
+      console.log('[DEBUG 1c - processFile] Routing to handleWorkbookImport');
       handleWorkbookImport(file);
       return;
     }
 
     if (fileType === 'csv' || fileType === 'tsv' || fileType === 'txt') {
+      console.log('[DEBUG 1d - processFile] Routing to parseCsvFileText (CSV preview route)');
       setUploadStatus({ type: 'info', message: `Preparing ${file.name} for import preview...` });
       try {
         const textTable = await parseCsvFileText(file);

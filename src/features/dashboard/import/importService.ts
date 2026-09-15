@@ -112,14 +112,18 @@ const parseWorkbookFile = async (file: File, options: ImportOptions = {}): Promi
 
   const threshold = options.largeFileSizeThreshold ?? DEFAULT_LARGE_FILE_SIZE_THRESHOLD;
   const fileSize = options.fileSize ?? (typeof file?.size === 'number' ? file.size : undefined);
+  console.log('[DEBUG 2 - parseWorkbookFile] Size threshold check:', { fileName: file.name, fileSize, threshold, isLargeFile: typeof fileSize === 'number' && fileSize >= threshold });
   const isLargeFile = typeof fileSize === 'number' && fileSize >= threshold;
 
   const loaderFn = isLargeFile ? convertWorkbookToSheetsViaWorker : convertWorkbookToSheets;
+  console.log('[DEBUG 2b - parseWorkbookFile] Selected loader function:', isLargeFile ? 'convertWorkbookToSheetsViaWorker' : 'convertWorkbookToSheets (SYNC)');
   const { sheets, skippedSheets, totalSheets } = await loaderFn(file, options, (progress) => {
     notifyProgress(options, progress);
   });
+  console.log('[DEBUG 7 - parseWorkbookFile] loaderFn finished! Returned sheets count:', sheets?.length, 'totalSheets:', totalSheets);
   void totalSheets;
   const filteredSheets = selectSheets(sheets);
+  console.log('[DEBUG 7a - parseWorkbookFile] Filtered sheets selected:', filteredSheets.map((s) => `${s.sheetName} (${s.rowCount} rows)`));
   const mergedRows: NormalizedRow[] = [];
   const sourceSummary: ImportSourceSummary[] = [];
   const warnings: ImportWarning[] = [];
@@ -140,7 +144,10 @@ const parseWorkbookFile = async (file: File, options: ImportOptions = {}): Promi
     }
 
     const sheet = filteredSheets[sheetIndex];
+    console.log(`[DEBUG 7b - parseWorkbookFile] Mapping sheet ${sheet.sheetName} with ${sheet.rows.length} rows on main thread...`);
+    const mapStart = performance.now();
     const mappedRows = mapTableToNormalizedRows(sheet, file.name);
+    console.log(`[DEBUG 7c - parseWorkbookFile] Finished mapping sheet ${sheet.sheetName} in ${(performance.now() - mapStart).toFixed(1)}ms. Mapped rows: ${mappedRows.length}`);
     mergedRows.push(...mappedRows);
     sourceSummary.push({ fileName: file.name, sheetName: sheet.sheetName, rowCount: mappedRows.length });
 
@@ -202,7 +209,10 @@ export const runImportService = async (files: File[], options: ImportOptions = {
         parsedWarnings = parsed.warnings;
       }
 
+      console.log(`[DEBUG 7d - runImportService] Starting validateNormalizedRows with ${parsedRows.length} rows on main thread...`);
+      const valStart = performance.now();
       const validated = validateNormalizedRows(parsedRows, file.name);
+      console.log(`[DEBUG 7e - runImportService] Finished validateNormalizedRows in ${(performance.now() - valStart).toFixed(1)}ms. Validated rows: ${validated.rows.length}, warnings: ${validated.warnings.length}`);
       warnings.push(...parsedWarnings, ...validated.warnings);
       aggregatedRows.push(...validated.rows);
       sourceSummary.push(...parsedSourceSummary);
@@ -218,7 +228,10 @@ export const runImportService = async (files: File[], options: ImportOptions = {
     }
   }
 
+  console.log(`[DEBUG 7f - runImportService] Starting mergeNormalizedRows with ${aggregatedRows.length} rows on main thread...`);
+  const mergeStart = performance.now();
   const mergedRows = mergeNormalizedRows(aggregatedRows);
+  console.log(`[DEBUG 7g - runImportService] Finished mergeNormalizedRows in ${(performance.now() - mergeStart).toFixed(1)}ms. Merged rows: ${mergedRows.length}`);
   const sheetNames = new Set(
     sourceSummary
       .map((source) => source.sheetName)

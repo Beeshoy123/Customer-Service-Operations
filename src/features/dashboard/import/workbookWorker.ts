@@ -34,13 +34,17 @@ interface WorkerScope {
 
 let currentAbortController: AbortController | null = null;
 
+console.log('[DEBUG 4a - workbookWorker.ts] Worker script evaluated in worker thread!');
+
 export const handleWorkerMessage = async (
   data: WorkerInMessage,
   postMessage: (message: WorkerOutMessage) => void
 ): Promise<void> => {
   if (!data) return;
+  console.log('[DEBUG 4c - workbookWorker.ts] handleWorkerMessage called with type:', data.type);
 
   if (data.type === 'cancel') {
+    console.log('[DEBUG 4c-cancel] Worker received cancel request');
     if (currentAbortController) {
       currentAbortController.abort();
       currentAbortController = null;
@@ -51,6 +55,8 @@ export const handleWorkerMessage = async (
   if (data.type === 'parse') {
     currentAbortController = new AbortController();
     const { arrayBuffer, options = {} } = data;
+    console.log('[DEBUG 4d - workbookWorker.ts] Worker received PARSE message! ArrayBuffer byteLength:', arrayBuffer?.byteLength, 'Starting parseWorkbookBuffer in background thread...');
+    const workerParseStart = performance.now();
 
     try {
       const result = await parseWorkbookBuffer(
@@ -60,12 +66,16 @@ export const handleWorkerMessage = async (
           signal: currentAbortController.signal,
         },
         (progress: ImportProgress) => {
+          console.log('[DEBUG 4-progress - workbookWorker.ts] Progress update:', progress.percent, progress.message);
           postMessage({ type: 'progress', progress });
         }
       );
 
+      const parseDuration = (performance.now() - workerParseStart).toFixed(1);
+      console.log(`[DEBUG 4e - workbookWorker.ts] Worker parseWorkbookBuffer FINISHED successfully in ${parseDuration}ms! Sheets parsed: ${result.sheets.length}. Posting success to main thread...`);
       postMessage({ type: 'success', result });
     } catch (err: unknown) {
+      console.error('[DEBUG 4f - workbookWorker.ts] Error during parseWorkbookBuffer in worker:', err);
       const errorObj = err as Error | undefined;
       const isAbort = errorObj?.name === 'AbortError' || currentAbortController?.signal.aborted;
       postMessage({
@@ -81,9 +91,12 @@ export const handleWorkerMessage = async (
 
 // If running in a Web Worker environment, wire up the listener
 if (typeof self !== 'undefined' && typeof (self as unknown as WorkerScope).postMessage === 'function') {
+  console.log('[DEBUG 4b-setup] Web Worker environment detected (self.postMessage is function). Attaching message listener.');
   const workerScope = self as unknown as WorkerScope;
   workerScope.addEventListener('message', (event: MessageEvent<WorkerInMessage>) => {
+    console.log('[DEBUG 4b - workbookWorker.ts] Worker addEventListener message received:', event.data?.type);
     void handleWorkerMessage(event.data, (msg) => workerScope.postMessage(msg));
   });
 }
+
 
