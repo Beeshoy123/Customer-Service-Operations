@@ -117,7 +117,6 @@ const parseWorkbookFile = async (file: File, options: ImportOptions = {}): Promi
 
     const sheet = filteredSheets[sheetIndex];
     const mappedRows = mapTableToNormalizedRows(sheet, file.name);
-    mergedRows.push(...mappedRows);
     for (let i = 0; i < mappedRows.length; i += 1) {
       mergedRows.push(mappedRows[i]);
     }

@@ -132,7 +132,6 @@ export const handleWorkerMessage = async (
         });
 
         const mappedRows = mapTableToNormalizedRows(sheet, fileName);
-        mergedRows.push(...mappedRows);
         for (let i = 0; i < mappedRows.length; i += 1) {
           mergedRows.push(mappedRows[i]);
         }
