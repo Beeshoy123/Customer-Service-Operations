@@ -207,7 +207,18 @@ export const useDashboardData = (onDataReset = null) => {
       return Number.isFinite(parsed) ? parsed : 0;
     };
 
-    const chunkSize = 250;
+    const agentByCcms = new Map();
+    const agentByNameAndId = new Map();
+
+    for (const agent of updatedAgents) {
+      if (agent.ccms) {
+        agentByCcms.set(agent.ccms, agent);
+      }
+      const nameIdKey = `${(agent.name || '').toLowerCase()}|${agent.sourceId || ''}`;
+      agentByNameAndId.set(nameIdKey, agent);
+    }
+
+    const chunkSize = 2500;
     console.log('[DEBUG 8 - applyBatchImport] Starting to apply rows to state. Total rows:', rowsToApply.length);
     for (let index = 0; index < rowsToApply.length; index += 1) {
       if (index > 0 && index % chunkSize === 0) {
@@ -224,7 +235,8 @@ export const useDashboardData = (onDataReset = null) => {
       const rawId = String(row.employeeId ?? '').trim();
       const agentKey = rawId ? `ID_${rawId}` : `AUTO_${rawName.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`;
 
-      let targetAgent = updatedAgents.find((agent) => agent.ccms === agentKey || (agent.name && agent.name.toLowerCase() === rawName.toLowerCase() && agent.sourceId === rawId));
+      const nameIdKey = `${rawName.toLowerCase()}|${rawId}`;
+      let targetAgent = agentByCcms.get(agentKey) || agentByNameAndId.get(nameIdKey);
       if (!targetAgent) {
         targetAgent = {
           ccms: agentKey,
@@ -236,6 +248,8 @@ export const useDashboardData = (onDataReset = null) => {
           phase: 'Unknown',
         };
         updatedAgents.push(targetAgent);
+        agentByCcms.set(agentKey, targetAgent);
+        agentByNameAndId.set(nameIdKey, targetAgent);
       } else {
         targetAgent.name = rawName;
         targetAgent.supervisor = rawSupervisor;
@@ -326,24 +340,30 @@ export const useDashboardData = (onDataReset = null) => {
           const headers = sheet.headerRow ?? [];
           const rows = sheet.rows ?? [];
 
+          const mappedHeaders = [];
+          for (let colIdx = 0; colIdx < headers.length; colIdx += 1) {
+            const rawHeader = headers[colIdx];
+            const headerStr = String(rawHeader ?? '').trim();
+
+            let mappedField = undefined;
+            if (Object.prototype.hasOwnProperty.call(userMappings, headerStr)) {
+              mappedField = userMappings[headerStr];
+            } else if (Object.prototype.hasOwnProperty.call(userMappings, rawHeader)) {
+              mappedField = userMappings[rawHeader];
+            } else {
+              mappedField = normalizeHeaderToField(headerStr);
+            }
+
+            if (mappedField) {
+              mappedHeaders.push({ colIdx, mappedField });
+            }
+          }
+
           const rawMappedRows = [];
           for (const rawRow of rows) {
             const mappedRow = {};
-            for (let colIdx = 0; colIdx < headers.length; colIdx += 1) {
-              const rawHeader = headers[colIdx];
-              const headerStr = String(rawHeader ?? '').trim();
-
-              let mappedField = undefined;
-              if (Object.prototype.hasOwnProperty.call(userMappings, headerStr)) {
-                mappedField = userMappings[headerStr];
-              } else if (Object.prototype.hasOwnProperty.call(userMappings, rawHeader)) {
-                mappedField = userMappings[rawHeader];
-              } else {
-                mappedField = normalizeHeaderToField(headerStr);
-              }
-
-              if (!mappedField) continue;
-
+            for (let m = 0; m < mappedHeaders.length; m += 1) {
+              const { colIdx, mappedField } = mappedHeaders[m];
               const val = rawRow?.[colIdx];
               mappedRow[mappedField] = normalizeCellValue(val, mappedField);
             }

@@ -1,6 +1,6 @@
 import * as RawXLSX from 'xlsx';
 import type { ImportOptions, ImportProgress, SheetTable, WorkbookResult } from './types';
-import type { WorkerInMessage, WorkerOutMessage } from './workbookWorker';
+import type { WorkerInMessage, WorkerOutMessage, WorkerImportPayload } from './workbookWorker';
 
 const resolveXlsx = (moduleRef: any): typeof RawXLSX => {
   return moduleRef.read ? moduleRef : (moduleRef.default ?? moduleRef);
@@ -8,6 +8,7 @@ const resolveXlsx = (moduleRef: any): typeof RawXLSX => {
 const XLSX = resolveXlsx(RawXLSX);
 
 export { type WorkbookResult };
+export type WorkerProcessedResult = WorkbookResult & Partial<WorkerImportPayload>;
 
 export const DEFAULT_LARGE_SHEET_ROW_THRESHOLD = 50_000;
 export const DEFAULT_BATCH_ROW_SIZE = 5_000;
@@ -407,12 +408,10 @@ export const convertWorkbookToSheetsViaWorker = async (
   file: File,
   optionsOrProgress?: ImportOptions | ProgressCallback,
   progressCallback?: ProgressCallback
-): Promise<WorkbookResult> => {
+): Promise<WorkerProcessedResult> => {
   const { options, onProgress } = resolveOptionsAndProgress(optionsOrProgress, progressCallback);
 
-  console.log('[DEBUG 3a - convertWorkbookToSheetsViaWorker] Entered. typeof Worker:', typeof Worker, 'fileSize:', file?.size);
   if (typeof Worker === 'undefined') {
-    console.warn('[DEBUG 3a-WARN] Worker is undefined in this environment! Falling back to convertWorkbookToSheets.');
     return convertWorkbookToSheets(file, options, onProgress);
   }
 
@@ -432,17 +431,16 @@ export const convertWorkbookToSheetsViaWorker = async (
     throw createAbortError();
   }
 
-  console.log('[DEBUG 3b - convertWorkbookToSheetsViaWorker] Calling await file.arrayBuffer()...');
   const bufferStartTime = performance.now();
   const arrayBuffer = await file.arrayBuffer();
   const bufferDuration = (performance.now() - bufferStartTime).toFixed(1);
-  console.log(`[DEBUG 3c - convertWorkbookToSheetsViaWorker] file.arrayBuffer() resolved in ${bufferDuration}ms! byteLength: ${arrayBuffer.byteLength}`);
+  console.log(`[WORKER-LOADER] file.arrayBuffer() resolved in ${bufferDuration}ms. byteLength: ${arrayBuffer.byteLength}`);
 
   if (options.signal?.aborted) {
     throw createAbortError();
   }
 
-  return new Promise<WorkbookResult>((resolve, reject) => {
+  return new Promise<WorkerProcessedResult>((resolve, reject) => {
     let worker: Worker | null = null;
     let isSettled = false;
     let isCancelled = false;
@@ -513,8 +511,7 @@ export const convertWorkbookToSheetsViaWorker = async (
         if (!isCancelled && !isSettled) {
           isSettled = true;
           cleanup();
-          console.log('[DEBUG 3f-SUCCESS] Worker finished parsing successfully! Resolving promise.');
-          resolve(data.result);
+          resolve(data.result as WorkerProcessedResult);
         }
       } else if (data.type === 'error') {
         if (!isCancelled && !isSettled) {

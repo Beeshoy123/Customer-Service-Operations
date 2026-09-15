@@ -1,5 +1,26 @@
 import { parseWorkbookBuffer } from './workbookLoader';
-import type { ImportOptions, ImportProgress, WorkbookResult } from './types';
+import { selectSheets } from './sheetSelector';
+import { mapTableToNormalizedRows } from './schemaNormalizer';
+import { validateNormalizedRows } from './validation';
+import { mergeNormalizedRows } from './mergeData';
+import type {
+  ImportOptions,
+  ImportProgress,
+  ImportSourceSummary,
+  ImportWarning,
+  NormalizedRow,
+  SheetTable,
+  WorkbookResult,
+} from './types';
+
+export type WorkerImportPayload = {
+  rows: NormalizedRow[];
+  sourceSummary: ImportSourceSummary[];
+  warnings: ImportWarning[];
+  skippedSheets: string[];
+  totalSheets: number;
+  sheets: SheetTable[];
+};
 
 export type WorkerInMessage =
   | {
@@ -18,7 +39,7 @@ export type WorkerOutMessage =
     }
   | {
       type: 'success';
-      result: WorkbookResult;
+      result: WorkerImportPayload | WorkbookResult;
     }
   | {
       type: 'error';
@@ -34,17 +55,19 @@ interface WorkerScope {
 
 let currentAbortController: AbortController | null = null;
 
-console.log('[DEBUG 4a - workbookWorker.ts] Worker script evaluated in worker thread!');
+const createAbortError = () => {
+  const error = new Error('Import cancelled.');
+  (error as Error & { name?: string }).name = 'AbortError';
+  return error;
+};
 
 export const handleWorkerMessage = async (
   data: WorkerInMessage,
   postMessage: (message: WorkerOutMessage) => void
 ): Promise<void> => {
   if (!data) return;
-  console.log('[DEBUG 4c - workbookWorker.ts] handleWorkerMessage called with type:', data.type);
 
   if (data.type === 'cancel') {
-    console.log('[DEBUG 4c-cancel] Worker received cancel request');
     if (currentAbortController) {
       currentAbortController.abort();
       currentAbortController = null;
@@ -55,27 +78,139 @@ export const handleWorkerMessage = async (
   if (data.type === 'parse') {
     currentAbortController = new AbortController();
     const { arrayBuffer, options = {} } = data;
-    console.log('[DEBUG 4d - workbookWorker.ts] Worker received PARSE message! ArrayBuffer byteLength:', arrayBuffer?.byteLength, 'Starting parseWorkbookBuffer in background thread...');
-    const workerParseStart = performance.now();
+    const fileName = options.fileName || 'workbook.xlsx';
+    const workerStartTime = performance.now();
 
     try {
-      const result = await parseWorkbookBuffer(
+      // Phase 1: Parse Workbook Buffer into sheets
+      const workbookResult = await parseWorkbookBuffer(
         arrayBuffer,
         {
           ...options,
           signal: currentAbortController.signal,
         },
         (progress: ImportProgress) => {
-          console.log('[DEBUG 4-progress - workbookWorker.ts] Progress update:', progress.percent, progress.message);
           postMessage({ type: 'progress', progress });
         }
       );
 
-      const parseDuration = (performance.now() - workerParseStart).toFixed(1);
-      console.log(`[DEBUG 4e - workbookWorker.ts] Worker parseWorkbookBuffer FINISHED successfully in ${parseDuration}ms! Sheets parsed: ${result.sheets.length}. Posting success to main thread...`);
-      postMessage({ type: 'success', result });
+      if (currentAbortController.signal.aborted) {
+        throw createAbortError();
+      }
+
+      // Phase 2: Sheet Selection & Mapping inside worker thread
+      const filteredSheets = selectSheets(workbookResult.sheets);
+      const mergedRows: NormalizedRow[] = [];
+      const sourceSummary: ImportSourceSummary[] = [];
+      const warnings: ImportWarning[] = [];
+
+      if (workbookResult.skippedSheets.length > 0) {
+        warnings.push({
+          fileName,
+          message: `Skipped ${workbookResult.skippedSheets.length} noisy sheet(s) in the auto-recovered workbook: ${workbookResult.skippedSheets.join(', ')}.`,
+          code: 'NOISY_SHEETS_SKIPPED',
+        });
+      }
+
+      for (let sheetIndex = 0; sheetIndex < filteredSheets.length; sheetIndex += 1) {
+        if (currentAbortController.signal.aborted) {
+          throw createAbortError();
+        }
+
+        const sheet = filteredSheets[sheetIndex];
+        postMessage({
+          type: 'progress',
+          progress: {
+            phase: 'parsing',
+            fileName,
+            currentSheet: sheet.sheetName,
+            currentSheetIndex: sheetIndex + 1,
+            totalSheets: filteredSheets.length,
+            percent: filteredSheets.length ? Math.round(((sheetIndex + 1) / filteredSheets.length) * 100) : 100,
+            message: `Mapping sheet ${sheet.sheetName} (${sheetIndex + 1}/${filteredSheets.length})`,
+          },
+        });
+
+        const mappedRows = mapTableToNormalizedRows(sheet, fileName);
+        mergedRows.push(...mappedRows);
+        for (let i = 0; i < mappedRows.length; i += 1) {
+          mergedRows.push(mappedRows[i]);
+        }
+        sourceSummary.push({
+          fileName,
+          sheetName: sheet.sheetName,
+          rowCount: mappedRows.length,
+        });
+      }
+
+      if (currentAbortController.signal.aborted) {
+        throw createAbortError();
+      }
+
+      // Phase 3: Validation inside worker thread
+      postMessage({
+        type: 'progress',
+        progress: {
+          phase: 'validating',
+          fileName,
+          percent: 95,
+          message: `Validating ${mergedRows.length.toLocaleString()} rows...`,
+        },
+      });
+
+      const validated = validateNormalizedRows(mergedRows, fileName);
+      warnings.push(...validated.warnings);
+
+      if (currentAbortController.signal.aborted) {
+        throw createAbortError();
+      }
+
+      // Phase 4: Merging inside worker thread
+      postMessage({
+        type: 'progress',
+        progress: {
+          phase: 'validating',
+          fileName,
+          percent: 98,
+          message: `Merging ${validated.rows.length.toLocaleString()} rows...`,
+        },
+      });
+
+      const finalMergedRows = mergeNormalizedRows(validated.rows);
+
+      postMessage({
+        type: 'progress',
+        progress: {
+          phase: 'validating',
+          fileName,
+          percent: 100,
+          message: `Import complete: ${finalMergedRows.length.toLocaleString()} rows normalized.`,
+        },
+      });
+
+      const totalDuration = (performance.now() - workerStartTime).toFixed(1);
+      console.log(`[WORKER] Pipeline complete in ${totalDuration}ms. Merged rows: ${finalMergedRows.length}. Posting success to main thread.`);
+
+      // Post final processed result to main thread
+      postMessage({
+        type: 'success',
+        result: {
+          rows: finalMergedRows,
+          sourceSummary,
+          warnings,
+          skippedSheets: workbookResult.skippedSheets,
+          totalSheets: workbookResult.totalSheets,
+          sheets: filteredSheets.map((s) => ({
+            workbookName: s.workbookName,
+            sheetName: s.sheetName,
+            index: s.index,
+            rowCount: s.rowCount,
+            headerRow: s.headerRow,
+            rows: [], // Omit raw rows across thread boundary to avoid memory duplication
+          })),
+        },
+      });
     } catch (err: unknown) {
-      console.error('[DEBUG 4f - workbookWorker.ts] Error during parseWorkbookBuffer in worker:', err);
       const errorObj = err as Error | undefined;
       const isAbort = errorObj?.name === 'AbortError' || currentAbortController?.signal.aborted;
       postMessage({

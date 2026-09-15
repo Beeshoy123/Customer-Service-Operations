@@ -1,4 +1,5 @@
 import { FIELD_ALIASES, normalizeImportedValue, findCanonicalField, findPairedCountField } from './importPolicy';
+import type { NormalizedRow, SheetTable } from './types';
 
 const normalizeHeader = (value: string): string =>
   `${value ?? ''}`
@@ -11,6 +12,14 @@ const CANONICAL_FIELDS: Record<string, string[]> = Object.fromEntries(
   Object.entries(FIELD_ALIASES).map(([field, policy]) => [field, policy.aliases]),
 );
 
+// Pre-compute normalized alias to canonical field map for O(1) lookup
+const ALIAS_LOOKUP_MAP = new Map<string, string>();
+for (const [field, aliases] of Object.entries(CANONICAL_FIELDS)) {
+  for (const alias of aliases) {
+    ALIAS_LOOKUP_MAP.set(normalizeHeader(alias), field);
+  }
+}
+
 export const normalizeHeaderToField = (header: string): string | null => {
   const paired = findPairedCountField(header);
   if (paired) {
@@ -18,11 +27,9 @@ export const normalizeHeaderToField = (header: string): string | null => {
   }
 
   const normalized = normalizeHeader(header);
-
-  for (const [field, aliases] of Object.entries(CANONICAL_FIELDS)) {
-    if (aliases.some((alias) => normalizeHeader(alias) === normalized)) {
-      return field;
-    }
+  const directMatch = ALIAS_LOOKUP_MAP.get(normalized);
+  if (directMatch) {
+    return directMatch;
   }
 
   return findCanonicalField(header);
@@ -45,3 +52,50 @@ export const normalizeCellValue = (value: unknown, fieldName?: string): string |
 
   return normalizeImportedValue(fieldName ?? null, value);
 };
+
+export const mapTableToNormalizedRows = (table: SheetTable, fileName: string): NormalizedRow[] => {
+  const headers = table.headerRow ?? [];
+  if (!headers.length) {
+    return [];
+  }
+
+  // Pre-resolve header mappings ONCE per sheet, not per-row
+  const mappedHeaders: Array<{ index: number; mappedField: string }> = [];
+  for (let i = 0; i < headers.length; i += 1) {
+    const header = String(headers[i] ?? '').trim();
+    const mappedField = normalizeHeaderToField(header);
+    if (mappedField) {
+      mappedHeaders.push({ index: i, mappedField });
+    }
+  }
+
+  if (mappedHeaders.length === 0) {
+    return [];
+  }
+
+  const normalizedRows: NormalizedRow[] = [];
+  const rows = table.rows ?? [];
+
+  for (let r = 0; r < rows.length; r += 1) {
+    const rawRow = rows[r];
+    const row: NormalizedRow = {};
+
+    for (let m = 0; m < mappedHeaders.length; m += 1) {
+      const { index, mappedField } = mappedHeaders[m];
+      const value = rawRow?.[index];
+      const normalizedValue = normalizeCellValue(value, mappedField);
+      if (normalizedValue !== null && normalizedValue !== undefined && normalizedValue !== '') {
+        row[mappedField] = normalizedValue;
+      }
+    }
+
+    if (Object.keys(row).length > 0) {
+      row.sourceFile = fileName;
+      row.sourceSheet = table.sheetName;
+      normalizedRows.push(row);
+    }
+  }
+
+  return normalizedRows;
+};
+

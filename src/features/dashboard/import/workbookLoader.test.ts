@@ -591,13 +591,16 @@ describe('workbookLoader', () => {
         // Prove the main thread stayed responsive: ticks must have advanced repeatedly
         assert.ok(ticks >= 10, 'Expected at least 10 event loop ticks during 100k parse, got ' + ticks);
 
-        // Verify the real worker returned the correct row count and sheet data
+        // Verify the real worker returned the correct row count, sheet metadata, and processed rows
         assert.equal(result.sheets.length, 1);
         assert.equal(result.sheets[0].sheetName, 'BigSheet');
         assert.equal(result.sheets[0].rowCount, 100000);
-        assert.equal(result.sheets[0].rows[0][0], 'Agent_1');
-        assert.equal(result.sheets[0].rows[99999][0], 'Agent_100000');
+        assert.ok(result.rows, 'Expected result.rows to be populated by worker pipeline');
+        assert.equal(result.rows.length, 100000);
+        assert.equal(result.rows[0].agentName, 'Agent_1');
+        assert.equal(result.rows[99999].agentName, 'Agent_100000');
         assert.ok(progressUpdates.length > 0, 'Expected progress updates from real worker');
+        assert.ok(progressUpdates.some((p) => p.phase === 'validating'), 'Expected validating phase progress update');
       } finally {
         (globalThis as any).Worker = origWorker;
       }
