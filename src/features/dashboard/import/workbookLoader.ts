@@ -1,5 +1,11 @@
-import * as XLSX from 'xlsx';
+import * as RawXLSX from 'xlsx';
 import type { ImportOptions, ImportProgress, SheetTable, WorkbookResult } from './types';
+import type { WorkerInMessage, WorkerOutMessage } from './workbookWorker';
+
+const resolveXlsx = (moduleRef: any): typeof RawXLSX => {
+  return moduleRef.read ? moduleRef : (moduleRef.default ?? moduleRef);
+};
+const XLSX = resolveXlsx(RawXLSX);
 
 export { type WorkbookResult };
 
@@ -77,7 +83,7 @@ export async function* iterateSheetRowsBatched(
     return;
   }
 
-  let range: XLSX.Range;
+  let range: RawXLSX.Range;
   try {
     range = XLSX.utils.decode_range(ref);
   } catch {
@@ -342,26 +348,26 @@ export const parseWorkbookSheets = async (
   return { sheets, skippedSheets, totalSheets: sheetNames.length };
 };
 
-export const convertWorkbookToSheets = async (
-  file: File,
+export const parseWorkbookBuffer = async (
+  arrayBuffer: ArrayBuffer,
   optionsOrProgress?: ImportOptions | ProgressCallback,
   progressCallback?: ProgressCallback
 ): Promise<WorkbookResult> => {
   const { options, onProgress } = resolveOptionsAndProgress(optionsOrProgress, progressCallback);
 
-  const fileSize = typeof file?.size === 'number' ? file.size : undefined;
+  const fileSize = options.fileSize ?? arrayBuffer.byteLength;
   const fileThreshold = options.largeFileSizeThreshold ?? DEFAULT_LARGE_FILE_SIZE_THRESHOLD;
 
-  if (fileSize && fileSize >= fileThreshold) {
+  if (fileSize >= fileThreshold) {
     onProgress?.({
       phase: 'loading workbook',
-      fileName: file.name,
+      fileName: options.fileName,
       percent: 2,
       message: `Reading large workbook (${(fileSize / (1024 * 1024)).toFixed(1)} MB)...`,
     });
+    // Yield to the event loop so progress event can be flushed before synchronous XLSX.read
+    await yieldToEventLoop();
   }
-
-  const arrayBuffer = await file.arrayBuffer();
 
   if (options.signal?.aborted) {
     throw createAbortError();
@@ -375,7 +381,167 @@ export const convertWorkbookToSheets = async (
 
   return parseWorkbookSheets(
     workbook,
+    { ...options, fileSize, fileName: options.fileName, onProgress },
+    onProgress
+  );
+};
+
+export const convertWorkbookToSheets = async (
+  file: File,
+  optionsOrProgress?: ImportOptions | ProgressCallback,
+  progressCallback?: ProgressCallback
+): Promise<WorkbookResult> => {
+  const { options, onProgress } = resolveOptionsAndProgress(optionsOrProgress, progressCallback);
+  const fileSize = typeof file?.size === 'number' ? file.size : undefined;
+
+  const arrayBuffer = await file.arrayBuffer();
+
+  return parseWorkbookBuffer(
+    arrayBuffer,
     { ...options, fileSize, fileName: file.name, onProgress },
     onProgress
   );
+};
+
+export const convertWorkbookToSheetsViaWorker = async (
+  file: File,
+  optionsOrProgress?: ImportOptions | ProgressCallback,
+  progressCallback?: ProgressCallback
+): Promise<WorkbookResult> => {
+  const { options, onProgress } = resolveOptionsAndProgress(optionsOrProgress, progressCallback);
+
+  if (typeof Worker === 'undefined') {
+    return convertWorkbookToSheets(file, options, onProgress);
+  }
+
+  const fileSize = typeof file?.size === 'number' ? file.size : undefined;
+  const fileThreshold = options.largeFileSizeThreshold ?? DEFAULT_LARGE_FILE_SIZE_THRESHOLD;
+
+  if (fileSize && fileSize >= fileThreshold) {
+    onProgress?.({
+      phase: 'loading workbook',
+      fileName: file.name,
+      percent: 1,
+      message: `Reading large workbook (${(fileSize / (1024 * 1024)).toFixed(1)} MB)...`,
+    });
+  }
+
+  if (options.signal?.aborted) {
+    throw createAbortError();
+  }
+
+  const arrayBuffer = await file.arrayBuffer();
+
+  if (options.signal?.aborted) {
+    throw createAbortError();
+  }
+
+  return new Promise<WorkbookResult>((resolve, reject) => {
+    let worker: Worker | null = null;
+    let isSettled = false;
+    let isCancelled = false;
+
+    const cleanup = () => {
+      if (options.signal) {
+        options.signal.removeEventListener('abort', onAbort);
+      }
+      if (worker) {
+        worker.terminate();
+        worker = null;
+      }
+    };
+
+    const onAbort = () => {
+      if (isSettled || isCancelled) return;
+      isCancelled = true;
+      isSettled = true;
+      if (worker) {
+        try {
+          worker.postMessage({ type: 'cancel' } as WorkerInMessage);
+        } catch {
+          // ignore
+        }
+      }
+      cleanup();
+      reject(createAbortError());
+    };
+
+    if (options.signal) {
+      if (options.signal.aborted) {
+        onAbort();
+        return;
+      }
+      options.signal.addEventListener('abort', onAbort, { once: true });
+    }
+
+    try {
+      worker = new Worker(new URL('./workbookWorker.ts', import.meta.url), {
+        type: 'module',
+      });
+    } catch {
+      cleanup();
+      return parseWorkbookBuffer(
+        arrayBuffer,
+        { ...options, fileSize, fileName: file.name, onProgress },
+        onProgress
+      ).then(resolve, reject);
+    }
+
+    worker.onmessage = (event: MessageEvent<WorkerOutMessage>) => {
+      if (isCancelled || isSettled) {
+        return;
+      }
+
+      const data = event.data;
+      if (!data) return;
+
+      if (data.type === 'progress') {
+        if (!isCancelled && !isSettled) {
+          onProgress?.(data.progress);
+        }
+      } else if (data.type === 'success') {
+        if (!isCancelled && !isSettled) {
+          isSettled = true;
+          cleanup();
+          resolve(data.result);
+        }
+      } else if (data.type === 'error') {
+        if (!isCancelled && !isSettled) {
+          isSettled = true;
+          cleanup();
+          const err = new Error(data.error || 'Workbook worker failed.');
+          if (data.name) {
+            err.name = data.name;
+          }
+          reject(err);
+        }
+      }
+    };
+
+    worker.onerror = (event: ErrorEvent) => {
+      if (isCancelled || isSettled) {
+        return;
+      }
+      isSettled = true;
+      cleanup();
+      reject(new Error(event.message || 'Worker error occurred during workbook parsing.'));
+    };
+
+    const transferableOptions: Omit<ImportOptions, 'signal' | 'onProgress'> = {
+      largeSheetRowThreshold: options.largeSheetRowThreshold,
+      batchRowSize: options.batchRowSize,
+      largeFileSizeThreshold: options.largeFileSizeThreshold,
+      maxRowsPerSheet: options.maxRowsPerSheet,
+      fileSize,
+      fileName: file.name,
+    };
+
+    const parseMessage: WorkerInMessage = {
+      type: 'parse',
+      arrayBuffer,
+      options: transferableOptions,
+    };
+
+    worker.postMessage(parseMessage, [arrayBuffer]);
+  });
 };

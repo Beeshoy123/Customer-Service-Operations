@@ -1,6 +1,6 @@
 import { parseDelimitedText } from './csvParser';
 import { detectFileType, isSupportedImportType } from './fileTypeDetector';
-import { convertWorkbookToSheets } from './workbookLoader';
+import { convertWorkbookToSheets, convertWorkbookToSheetsViaWorker, DEFAULT_LARGE_FILE_SIZE_THRESHOLD } from './workbookLoader';
 import { selectSheets } from './sheetSelector';
 import { normalizeCellValue, normalizeHeaderToField } from './schemaNormalizer';
 import { mergeNormalizedRows } from './mergeData';
@@ -110,7 +110,12 @@ const parseTextFile = async (file: File, options: ImportOptions = {}): Promise<{
 const parseWorkbookFile = async (file: File, options: ImportOptions = {}): Promise<{ rows: NormalizedRow[]; sourceSummary: ImportSourceSummary[]; warnings: ImportWarning[] }> => {
   throwIfAborted(options.signal);
 
-  const { sheets, skippedSheets, totalSheets } = await convertWorkbookToSheets(file, options, (progress) => {
+  const threshold = options.largeFileSizeThreshold ?? DEFAULT_LARGE_FILE_SIZE_THRESHOLD;
+  const fileSize = options.fileSize ?? (typeof file?.size === 'number' ? file.size : undefined);
+  const isLargeFile = typeof fileSize === 'number' && fileSize >= threshold;
+
+  const loaderFn = isLargeFile ? convertWorkbookToSheetsViaWorker : convertWorkbookToSheets;
+  const { sheets, skippedSheets, totalSheets } = await loaderFn(file, options, (progress) => {
     notifyProgress(options, progress);
   });
   void totalSheets;

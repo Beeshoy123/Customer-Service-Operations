@@ -56,37 +56,65 @@ const choosePreferredValue = (currentValue: string | number | null | undefined, 
 };
 
 export const mergeNormalizedRows = (rows: NormalizedRow[]): NormalizedRow[] => {
-  const grouped = new Map<string, NormalizedRow>();
+  const groups = new Map<string, NormalizedRow[]>();
 
   for (const row of rows) {
     const key = getRecordKey(row);
-    const current = grouped.get(key) ?? {};
-
-    for (const [field, value] of Object.entries(row)) {
-      if (value === null || value === undefined || value === '') continue;
-
-      const currentValue = current[field];
-      if (currentValue === null || currentValue === undefined || currentValue === '') {
-        current[field] = value;
-        continue;
-      }
-
-      if (typeof currentValue === 'number' && typeof value === 'number') {
-        if (sumFields.has(field)) {
-          current[field] = Number(currentValue) + Number(value);
-        } else if (averageFields.has(field)) {
-          current[field] = (Number(currentValue) + Number(value)) / 2;
-        } else {
-          current[field] = choosePreferredValue(currentValue, value) as number;
-        }
-        continue;
-      }
-
-      current[field] = choosePreferredValue(currentValue, value) as string | number | null | undefined;
+    const existing = groups.get(key);
+    if (existing) {
+      existing.push(row);
+    } else {
+      groups.set(key, [row]);
     }
-
-    grouped.set(key, current);
   }
 
-  return Array.from(grouped.values());
+  const result: NormalizedRow[] = [];
+
+  for (const groupRows of groups.values()) {
+    if (groupRows.length === 1) {
+      result.push({ ...groupRows[0] });
+      continue;
+    }
+
+    const allFields = new Set<string>();
+    for (const row of groupRows) {
+      for (const field of Object.keys(row)) {
+        allFields.add(field);
+      }
+    }
+
+    const merged: NormalizedRow = {};
+
+    for (const field of allFields) {
+      const values = groupRows
+        .map((r) => r[field])
+        .filter((v) => v !== null && v !== undefined && v !== '');
+
+      if (values.length === 0) {
+        continue;
+      }
+
+      if (sumFields.has(field)) {
+        const numValues = values.filter((v): v is number => typeof v === 'number' && !Number.isNaN(v));
+        if (numValues.length > 0) {
+          merged[field] = numValues.reduce((sum, val) => sum + val, 0);
+        } else {
+          merged[field] = values.reduce((prev, curr) => choosePreferredValue(prev, curr));
+        }
+      } else if (averageFields.has(field)) {
+        const numValues = values.filter((v): v is number => typeof v === 'number' && !Number.isNaN(v));
+        if (numValues.length > 0) {
+          merged[field] = numValues.reduce((sum, val) => sum + val, 0) / numValues.length;
+        } else {
+          merged[field] = values.reduce((prev, curr) => choosePreferredValue(prev, curr));
+        }
+      } else {
+        merged[field] = values.reduce((prev, curr) => choosePreferredValue(prev, curr));
+      }
+    }
+
+    result.push(merged);
+  }
+
+  return result;
 };
