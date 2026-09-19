@@ -43,6 +43,7 @@ import {
 import { useDashboardMetrics } from './features/dashboard/metrics';
 import { SettingsMenu, TimeframeMenu } from './components/menus';
 import { ImportPreviewModal } from './features/dashboard/import';
+import { ImportLanding } from './features/dashboard/upload/ImportLanding';
 
 if (typeof window !== 'undefined') {
   window.tailwind = window.tailwind || { config: {} };
@@ -549,44 +550,15 @@ const FloorHeader = React.memo(() => {
 });
 
 
-// ─── Empty State Upload Panel ──────────────────────────────────────
+// ─── Empty State Import Landing ──────────────────────────────────────
 const DropZone = () => {
-  const { dashData } = useDashboard();
-  const [isDragOver, setIsDragOver] = useState(false);
-
-  const onDragOver = (e) => { e.preventDefault(); setIsDragOver(true); };
-  const onDragLeave = (e) => { e.preventDefault(); setIsDragOver(false); };
-  const onDrop = (e) => {
-    e.preventDefault();
-    setIsDragOver(false);
-    const files = e.dataTransfer.files ? Array.from(e.dataTransfer.files) : [];
-    if (files.length === 1) {
-      dashData.handleFileDrop(files[0]);
-    } else if (files.length > 1) {
-      dashData.handleFileDrop(files);
-    }
-  };
-
+  const { dashData, accountName } = useDashboard();
   return (
-    <div
-      onDragOver={onDragOver}
-      onDragLeave={onDragLeave}
-      onDrop={onDrop}
-      onClick={() => document.getElementById('csv-upload')?.click()}
-      style={{
-        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        gap: 10, padding: '48px 24px', margin: '12px', borderRadius: 14, cursor: 'pointer',
-        border: `2px dashed ${isDragOver ? '#3b82f6' : '#cbd5e1'}`,
-        background: isDragOver ? '#eff6ff' : '#f8fafc',
-        transition: 'all 0.15s ease',
-      }}
-    >
-      <div style={{ fontSize: '2rem', opacity: isDragOver ? 1 : 0.6 }}>📤</div>
-      <div style={{ fontSize: '0.95rem', fontWeight: 700, color: isDragOver ? '#2563eb' : '#475569' }}>
-        {isDragOver ? 'Drop your file here' : 'Drag & drop your CSV report here'}
-      </div>
-      <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>or click to browse — .csv, .txt, .tsv</div>
-    </div>
+    <ImportLanding
+      accountName={accountName || 'your account'}
+      uploadStatus={dashData.uploadStatus}
+      onFiles={(files) => dashData.handleFileDrop(files.length === 1 ? files[0] : files)}
+    />
   );
 };
 
@@ -1739,7 +1711,9 @@ const UI_INITIAL = {
 // TODO: split this file into smaller component modules once feature logic stabilizes.
 export default function App() {
   const aiResetRef = useRef(null);
-  const dashData = useDashboardData(() => { if (aiResetRef.current) aiResetRef.current(); });
+  const [accountName, setAccountName] = useState("");
+  const [accountNameInput, setAccountNameInput] = useState("");
+  const dashData = useDashboardData(() => { if (aiResetRef.current) aiResetRef.current(); }, accountName);
   const [modalState, dispatchModal] = React.useReducer((s, a) => ({ ...s, ...a }), MODAL_INITIAL);
   const { activeModal, selectedSupervisorObj, expandedBurnoutAgentId, highlightedAgentId, supTab } = modalState;
   const setActiveModal = (v) => dispatchModal({ activeModal: v });
@@ -1886,10 +1860,92 @@ export default function App() {
   }), [handleSortChange, handleAgentSortChange, toggleCol, closeModal, handleAiLinkClick]);
 
 
+  const normalizedAccountName = accountName.trim();
+  const hasAccountName = normalizedAccountName.length > 0;
+
   const ctxValue = useMemo(
-    () => ({ dashData, metrics, aiTools, uiState, uiHandlers, batchImportSelection, setBatchImportSelection }),
-    [dashData, metrics, aiTools, uiState, uiHandlers, batchImportSelection, setBatchImportSelection]
+    () => ({ dashData, metrics, aiTools, uiState, uiHandlers, batchImportSelection, setBatchImportSelection, accountName: normalizedAccountName }),
+    [dashData, metrics, aiTools, uiState, uiHandlers, batchImportSelection, setBatchImportSelection, normalizedAccountName]
   );
+
+  if (!hasAccountName) {
+    return (
+      <ErrorBoundary>
+        <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0b0f19', color: '#e2e8f0', padding: 24 }}>
+          <div style={{ width: '100%', maxWidth: 420, background: '#111827', border: '1px solid rgba(148,163,184,0.2)', borderRadius: 16, padding: 28, boxShadow: '0 20px 40px rgba(15, 23, 42, 0.35)' }}>
+            <p style={{ margin: '0 0 12px', fontSize: 12, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#93c5fd', fontWeight: 700 }}>
+              Account setup
+            </p>
+            <h1 style={{ margin: '0 0 16px', fontSize: 30, lineHeight: 1.2, color: '#ffffff' }}>
+              Which account is this?
+            </h1>
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                const trimmed = accountNameInput.trim();
+                if (trimmed) {
+                  setAccountName(trimmed);
+                }
+              }}
+              style={{ display: 'flex', flexDirection: 'column', gap: 16 }}
+            >
+              <label htmlFor="account-name" style={{ display: 'flex', flexDirection: 'column', gap: 8, color: '#cbd5e1', fontWeight: 600 }}>
+                Account name
+                <input
+                  id="account-name"
+                  type="text"
+                  value={accountNameInput}
+                  onChange={(event) => setAccountNameInput(event.target.value)}
+                  placeholder="Verizon Consumer"
+                  style={{
+                    padding: '12px 14px',
+                    borderRadius: 10,
+                    border: '1px solid rgba(148,163,184,0.35)',
+                    background: '#0f172a',
+                    color: '#f8fafc',
+                    fontSize: 16,
+                    outline: 'none',
+                  }}
+                />
+              </label>
+
+              <button
+                type="submit"
+                disabled={!accountNameInput.trim()}
+                style={{
+                  border: 'none',
+                  borderRadius: 10,
+                  background: accountNameInput.trim() ? '#2563eb' : '#475569',
+                  color: '#ffffff',
+                  fontWeight: 700,
+                  fontSize: 15,
+                  padding: '12px 16px',
+                  cursor: accountNameInput.trim() ? 'pointer' : 'not-allowed',
+                }}
+              >
+                Continue
+              </button>
+            </form>
+          </div>
+        </div>
+      </ErrorBoundary>
+    );
+  }
+
+  if (!dashData.hasUploadedData) {
+    return (
+      <ErrorBoundary>
+        <div style={{ minHeight: '100vh', background: '#0b0b0a', padding: '24px', boxSizing: 'border-box' }}>
+          <UploadStatus uploadStatus={dashData.uploadStatus} />
+          <ImportLanding
+            accountName={normalizedAccountName}
+            uploadStatus={dashData.uploadStatus}
+            onFiles={(files) => dashData.handleFileDrop(files.length === 1 ? files[0] : files)}
+          />
+        </div>
+      </ErrorBoundary>
+    );
+  }
 
   return (
     <ErrorBoundary>

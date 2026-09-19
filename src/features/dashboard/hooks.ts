@@ -32,6 +32,8 @@ import {
 } from './import';
 import type { SheetTable, SheetGranularity, ImportResult, SkippedSheetInfo } from './import/types';
 import { detectFileType } from './import/fileTypeDetector';
+import { detectMetrics } from '../accountSetup/metric-detection-engine';
+import { loadAccountProfile, loadLearnedAliases } from '../accountSetup/account-profile-storage';
 
 // ============================================================================
 // FILE STRUCTURE:
@@ -65,7 +67,7 @@ export const DashboardContext = createContext(null);
 export const useDashboard = () => useContext(DashboardContext);
 
 // ─── Dashboard Data Management Hook ──────────────────────────────────────
-export const useDashboardData = (onDataReset = null) => {
+export const useDashboardData = (onDataReset = null, accountName = '') => {
   const persistedState = useMemo(() => readPersistedDashboardState(), []);
 
   const [activeTimeframe, setActiveTimeframe] = useState(() => persistedState?.activeTimeframe || 'monthly');
@@ -95,6 +97,32 @@ export const useDashboardData = (onDataReset = null) => {
   const closeImportPreview = useCallback(() => {
     setImportPreview(null);
   }, []);
+
+  const inspectAccountHeaders = useCallback((sheets) => {
+    const normalizedAccountName = String(accountName || '').trim();
+    if (!normalizedAccountName || !sheets?.length) return;
+
+    const profile = loadAccountProfile(normalizedAccountName);
+    if (profile) {
+      console.log('[Account setup] Existing profile loaded:', {
+        accountName: normalizedAccountName,
+        credit: profile.credit,
+      });
+      return;
+    }
+
+    const headers = Array.from(new Set(
+      sheets.flatMap((sheet) => (sheet.headerRow || []).map((header) => String(header ?? '').trim()).filter(Boolean))
+    ));
+    const detection = detectMetrics(headers, loadLearnedAliases());
+    console.log('[Account setup] Metric detection:', {
+      accountName: normalizedAccountName,
+      matched: detection.matched,
+      ambiguous: detection.ambiguous,
+      unmatched: detection.unmatched,
+      credit: detection.matched.credit || detection.ambiguous.credit || detection.unmatched.includes('credit'),
+    });
+  }, [accountName]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -610,6 +638,8 @@ export const useDashboardData = (onDataReset = null) => {
             })),
           ];
 
+          inspectAccountHeaders(filteredSheets);
+
           setUploadStatus(null);
 
           if ((!filteredSheets || filteredSheets.length === 0) && combinedSkipped.length === 0) {
@@ -657,6 +687,8 @@ export const useDashboardData = (onDataReset = null) => {
             },
           ];
 
+          inspectAccountHeaders(singleSheet);
+
           setUploadStatus(null);
           openImportPreview({
             fileName: file.name,
@@ -679,7 +711,7 @@ export const useDashboardData = (onDataReset = null) => {
       });
       setTimeout(() => setUploadStatus(null), 5000);
     },
-    [openImportPreview, setUploadStatus]
+    [openImportPreview, setUploadStatus, inspectAccountHeaders]
   );
 
   const handleFileUpload = useCallback(
