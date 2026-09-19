@@ -83,8 +83,8 @@ const resolveColumnIndices = (
       }
     }
   } else {
-    // If no mapping passed, derive from header row using normalizeSheetHeaders
-    const autoMappings = normalizeSheetHeaders(headerRow);
+    // If no mapping passed, derive from header row using normalizeSheetHeaders with table.rows sample
+    const autoMappings = normalizeSheetHeaders(headerRow, table.rows);
     for (const item of autoMappings) {
       assignField(item.mappedField, item.index);
     }

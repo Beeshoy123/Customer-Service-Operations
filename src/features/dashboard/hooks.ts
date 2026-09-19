@@ -351,7 +351,11 @@ export const useDashboardData = (onDataReset = null) => {
             } else if (Object.prototype.hasOwnProperty.call(userMappings, rawHeader)) {
               mappedField = userMappings[rawHeader];
             } else {
-              mappedField = normalizeHeaderToField(headerStr);
+              const sampleVals = rows
+                .slice(0, 50)
+                .map((r) => r?.[colIdx])
+                .filter((v) => v !== undefined && v !== null && String(v).trim() !== '');
+              mappedField = normalizeHeaderToField(headerStr, sampleVals);
             }
 
             if (mappedField) {

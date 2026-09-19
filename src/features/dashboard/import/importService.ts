@@ -37,6 +37,19 @@ const parseTextFile = async (file: File, options: ImportOptions = {}): Promise<{
 
   const normalizedRows: NormalizedRow[] = [];
 
+  // Pre-resolve header mappings ONCE with sample values for pattern fingerprinting & memory
+  const mappedHeaders: Array<{ index: number; mappedField: string }> = [];
+  for (let i = 0; i < headers.length; i += 1) {
+    const sampleVals = rows
+      .slice(0, 50)
+      .map((r) => r?.[i] as string | number | null | undefined)
+      .filter((v) => v !== undefined && v !== null && String(v).trim() !== '');
+    const mappedField = normalizeHeaderToField(headers[i], sampleVals);
+    if (mappedField) {
+      mappedHeaders.push({ index: i, mappedField });
+    }
+  }
+
   for (let index = 0; index < rows.length; index += 1) {
     throwIfAborted(options.signal);
 
@@ -46,10 +59,9 @@ const parseTextFile = async (file: File, options: ImportOptions = {}): Promise<{
 
     const row = rows[index];
     const mappedRow: NormalizedRow = {};
-    for (let i = 0; i < headers.length; i += 1) {
-      const mappedField = normalizeHeaderToField(headers[i]);
-      if (!mappedField) continue;
-      mappedRow[mappedField] = normalizeCellValue(row[i], mappedField);
+    for (let m = 0; m < mappedHeaders.length; m += 1) {
+      const { index: colIdx, mappedField } = mappedHeaders[m];
+      mappedRow[mappedField] = normalizeCellValue(row[colIdx], mappedField);
     }
 
     if (Object.keys(mappedRow).length > 0) {

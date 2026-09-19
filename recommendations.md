@@ -198,8 +198,8 @@ Wire `schemaNormalizer.ts` to leverage `scoreColumnMapping()` / `findCanonicalFi
 ## Remaining Implementation Sequence
 
 ```
-5. ImportPreviewModal.tsx   (uses scoring engine & memory: ranked dropdown, remembered badge, bulk ignore)
-6. schemaNormalizer.ts      (use new scorer for auto-import path)
+5. ImportPreviewModal.tsx   — COMPLETED (uses scoring engine & memory: ranked dropdown, remembered badge, bulk ignore, manage memory)
+6. schemaNormalizer.ts      — COMPLETED (uses pattern fingerprinting & memory scorer in auto-import and normalization paths)
 ```
 
 ---
@@ -210,6 +210,8 @@ Wire `schemaNormalizer.ts` to leverage `scoreColumnMapping()` / `findCanonicalFi
 - `columnFingerprinter.test.ts` — verified (18 tests passing)
 - `mappingMemory.test.ts` — verified (13 tests passing)
 - `importPolicy.test.ts` — verified (multi-signal scoring and false-positive tests passing)
+- `ImportPreviewModal.test.ts` — verified (6 tests passing: scoring, fingerprinting, remembered mappings, label lookup)
+- `schemaNormalizer.test.ts` — verified (10 tests passing: sample values, fingerprint integration, memory recall, row mapping)
 
 ### Manual Verification
 - Upload CSV with `IVR_Call_ID` and `Acss_Call_ID` → verify they are now **Unmapped** (not Low Confidence)

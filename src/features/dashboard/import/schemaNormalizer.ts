@@ -20,7 +20,10 @@ for (const [field, aliases] of Object.entries(CANONICAL_FIELDS)) {
   }
 }
 
-export const normalizeHeaderToField = (header: string): string | null => {
+export const normalizeHeaderToField = (
+  header: string,
+  sampleValues: (string | number | null | undefined)[] = []
+): string | null => {
   const paired = findPairedCountField(header);
   if (paired) {
     return paired.taggedField;
@@ -32,16 +35,28 @@ export const normalizeHeaderToField = (header: string): string | null => {
     return directMatch;
   }
 
-  return findCanonicalField(header);
+  return findCanonicalField(header, sampleValues);
 };
 
-export const normalizeSheetHeaders = (headers: string[]) => {
-  return headers.map((header, index) => ({
-    original: header,
-    normalized: normalizeHeader(header),
-    mappedField: normalizeHeaderToField(header),
-    index,
-  }));
+export const normalizeSheetHeaders = (
+  headers: string[],
+  rows?: unknown[][]
+) => {
+  return headers.map((header, index) => {
+    const sampleVals = rows
+      ? rows
+          .slice(0, 50)
+          .map((r) => r?.[index] as string | number | null | undefined)
+          .filter((v) => v !== undefined && v !== null && String(v).trim() !== '')
+      : [];
+
+    return {
+      original: header,
+      normalized: normalizeHeader(header),
+      mappedField: normalizeHeaderToField(header, sampleVals),
+      index,
+    };
+  });
 };
 
 export const normalizeCellValue = (value: unknown, fieldName?: string): string | number | null => {
@@ -59,11 +74,18 @@ export const mapTableToNormalizedRows = (table: SheetTable, fileName: string): N
     return [];
   }
 
-  // Pre-resolve header mappings ONCE per sheet, not per-row
+  const rows = table.rows ?? [];
+
+  // Pre-resolve header mappings ONCE per sheet with sample values, not per-row
   const mappedHeaders: Array<{ index: number; mappedField: string }> = [];
   for (let i = 0; i < headers.length; i += 1) {
     const header = String(headers[i] ?? '').trim();
-    const mappedField = normalizeHeaderToField(header);
+    const sampleVals = rows
+      .slice(0, 50)
+      .map((r) => r?.[i] as string | number | null | undefined)
+      .filter((v) => v !== undefined && v !== null && String(v).trim() !== '');
+
+    const mappedField = normalizeHeaderToField(header, sampleVals);
     if (mappedField) {
       mappedHeaders.push({ index: i, mappedField });
     }
@@ -74,7 +96,6 @@ export const mapTableToNormalizedRows = (table: SheetTable, fileName: string): N
   }
 
   const normalizedRows: NormalizedRow[] = [];
-  const rows = table.rows ?? [];
 
   for (let r = 0; r < rows.length; r += 1) {
     const rawRow = rows[r];
