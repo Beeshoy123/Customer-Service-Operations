@@ -1,5 +1,7 @@
+# Intelligent Column Mapping — Design Plan
 # Recommendations — Customer Service Operations Dashboard
 
+## The Core Problem
 ---
 
 ## Recommendation 1: Intelligent Column Mapping
@@ -134,6 +136,7 @@ So when an account sends a file named `IVR_Call_ID` it false-matches to `employe
 
 ---
 
+## What a Truly Smart Mapper Needs
 ### What a Truly Smart Mapper Needs
 
 Three independent evidence sources, combined into a **weighted confidence score** per candidate field:
@@ -150,6 +153,7 @@ When the user picks → store it. Never ask again for that header.
 
 ---
 
+## Open Questions
 ### Open Questions
 
 > [!IMPORTANT]
@@ -162,108 +166,19 @@ When the user picks → store it. Never ask again for that header.
 
 ---
 
-### Proposed Changes
+## Proposed Changes (Remaining)
 
-#### Layer 1 — Value Pattern Fingerprinting (New file: `columnFingerprinter.ts`)
-
-This is the biggest intelligence upgrade. Instead of only looking at the header name, we analyze a sample of the **actual cell values** in each column and produce a `ColumnFingerprint`.
-
-##### What it detects from values:
-
-| Fingerprint | Detection logic | Maps to |
-|-------------|----------------|---------|
-| `name-like` | Values look like "LASTNAME, FIRSTNAME" or "First Last" | `agentName`, `supervisor`, `oam` |
-| `employee-id-like` | 6-8 digit integers, no decimals, no leading zeros | `employeeId` |
-| `date-like` | Values parse as dates, or are Excel serials in plausible range | `date` |
-| `hour-of-day` | All integers 0–23, low cardinality | → **Unmapped** (irrelevant to dashboard) |
-| `percent-decimal` | Values between 0.0–1.0 with decimals | `vxs`, `resolve2hr`, `resolve3d`, `handoffs`, etc. |
-| `percent-whole` | Values between 0–100 with few unique values | same candidates |
-| `count-integer` | Positive integers with high range | `calls`, `surveys`, `promoters`, etc. |
-| `duration-seconds` | Integers in range 10–3600 | `aht`, `hold`, `dpc` |
-| `call-id-like` | Alphanumeric with underscores, very high cardinality | → **Unmapped** (system ID, irrelevant) |
-| `categorical-low` | < 10 unique string values (e.g. "CX Voice", "CXI") | → **Unmapped** (dept/group label) |
-| `free-text` | Long strings, high cardinality | → **Unmapped** |
-
-The fingerprint acts as a **blocker and booster**:
-- A column with a `call-id-like` fingerprint **can never match** `employeeId`, even if the name contains "id" → eliminates false positives
-- A column with a `percent-decimal` fingerprint **boosts** the score for `vxs`, `resolve2hr`, etc.
-
-##### [NEW] `columnFingerprinter.ts`
-Pure function, no side effects. Takes `sampleValues: string[]`, returns a `ColumnFingerprint` enum + stats (cardinality, min, max, nullRate, etc.).
-
----
-
-#### Layer 2 — Multi-Signal Scoring Engine (Replaces current logic in `importPolicy.ts`)
-
-Replace the current binary match/no-match with a **scored candidate list**.
-
-##### Scoring per candidate field (0–100 points total):
-
-```
-headerScore      = fuzzy similarity of normalized header to each alias  (0–30 pts)
-fingerprintScore = how compatible is the value fingerprint with this field  (0–50 pts)
-memoryScore      = was this exact header previously mapped to this field?  (0–20 pts)
-```
-
-**Result per column:** a ranked list of `{ field, score, signals[] }` instead of a single winner.
-
-- Score ≥ 85 → **Auto-map, Exact confidence** (green tick, no user input required)
-- Score 50–84 → **Suggest, Low confidence** (amber, show top 3 ranked suggestions in dropdown)
-- Score < 50 → **Unmapped** (grey, dropdown is empty but user can pick)
-
-This replaces the current `detectColumnMappingWithConfidence()` function.
-
-##### [MODIFY] `importPolicy.ts`
-- Keep `FIELD_ALIASES` and `PAIRED_COUNT_FIELDS` (they become the alias bank for the header scorer)
-- Remove the loose `tokenHintsMatch` function (this is what causes false positives today)
-- Replace `detectColumnMappingWithConfidence()` with `scoreColumnMapping()` which accepts the fingerprint and memory as inputs
-
----
-
-#### Layer 3 — Mapping Memory (New file: `mappingMemory.ts`)
-
-A thin `localStorage` wrapper that remembers user corrections.
-
-##### What gets stored:
-```json
-{
-  "version": 1,
-  "entries": [
-    {
-      "normalizedHeader": "rep id",
-      "mappedField": "employeeId",
-      "count": 4,
-      "lastSeen": "2026-09-15"
-    },
-    {
-      "normalizedHeader": "avg talk time",
-      "mappedField": "aht",
-      "count": 2,
-      "lastSeen": "2026-09-10"
-    }
-  ]
-}
-```
-
-##### [NEW] `mappingMemory.ts`
-- `rememberMapping(header, field)` — called when user manually picks from the dropdown
-- `recallMapping(header)` → `{ field, count } | null` — called during scoring
-- `forgetMapping(header)` — in case user wants to reset a wrong memory
-- `exportMemory()` / `importMemory(json)` — for backup/sharing across team
-
----
-
-#### Layer 4 — Updated UI in `ImportPreviewModal.tsx`
+### Layer 4 — Updated UI in `ImportPreviewModal.tsx`
 
 The modal gets smarter to reflect the new scoring system.
 
-##### Changes:
+#### Changes:
 - **Ranked dropdown suggestions**: For low-confidence columns, the dropdown pre-sorts the options with the top 3 scored candidates at the top (with their score shown), followed by a divider, then the full list. No more guessing which option to pick.
 - **"Remembered" badge**: When a mapping comes from memory, show a 🔁 "Remembered from previous import" badge instead of "Exact Match".
 - **Bulk-ignore button**: "Ignore all Unmapped columns" — one click to set all unresolved columns to None, instead of manually doing each one.
 - **Memory indicator in footer**: "🧠 12 mappings learned so far" with a "Manage Memory" link.
 
-##### [MODIFY] `ImportPreviewModal.tsx`
+#### [MODIFY] `ImportPreviewModal.tsx`
 - Wire `handleColumnMapChange` → call `rememberMapping()` on every user correction
 - Pass fingerprint info and score breakdown into each row for display
 - Add ranked options to the dropdown
@@ -271,48 +186,41 @@ The modal gets smarter to reflect the new scoring system.
 
 ---
 
-#### Layer 5 — Updated Types (Minor additions to `types.ts`)
+### Layer 6 — Schema Normalizer Integration (`schemaNormalizer.ts`)
 
-```typescript
-// New confidence level for memory-based matches
-export type ColumnMappingConfidence = 'exact' | 'remembered' | 'low' | 'none';
+Wire `schemaNormalizer.ts` to leverage `scoreColumnMapping()` / `findCanonicalField()` with value samples so that auto-import paths also benefit from pattern fingerprinting and memory.
 
-// New match type
-export type ColumnMatchType = 'exact_alias' | 'paired_count' | 'scored_high' | 'remembered' | 'token_hint' | 'unmapped';
-
-// Scored candidate — ranked list per column
-export type MappingCandidate = {
-  field: string;
-  score: number;           // 0–100
-  headerScore: number;
-  fingerprintScore: number;
-  memoryScore: number;
-};
-
-// Extended DetectedColumnMapping — adds ranked candidates + fingerprint
-export type DetectedColumnMapping = {
-  // ... existing fields ...
-  fingerprint: ColumnFingerprint;   // NEW
-  candidates: MappingCandidate[];   // NEW — ranked top suggestions
-};
-```
+#### [MODIFY] `schemaNormalizer.ts`
+- Pass sample values into column detection in auto-import path.
 
 ---
 
-### Implementation Sequence (Order matters — no circular deps)
+## Remaining Implementation Sequence
 
 ```
-1. columnFingerprinter.ts   (pure, no deps)
-2. mappingMemory.ts         (pure, localStorage only)
-3. importPolicy.ts          (uses fingerprinter, uses memory)
-4. types.ts                 (add new types)
-5. ImportPreviewModal.tsx   (uses all of the above)
+5. ImportPreviewModal.tsx   (uses scoring engine & memory: ranked dropdown, remembered badge, bulk ignore)
 6. schemaNormalizer.ts      (use new scorer for auto-import path)
 ```
 
 ---
 
-### What This Does NOT Require
+## Verification Plan
+
+### Automated Tests (Completed)
+- `columnFingerprinter.test.ts` — verified (18 tests passing)
+- `mappingMemory.test.ts` — verified (13 tests passing)
+- `importPolicy.test.ts` — verified (multi-signal scoring and false-positive tests passing)
+
+### Manual Verification
+- Upload CSV with `IVR_Call_ID` and `Acss_Call_ID` → verify they are now **Unmapped** (not Low Confidence)
+- Manually map `Avg Talk Time` → `aht`, re-upload → verify it auto-maps next time with "Remembered" badge
+- Upload an account file with completely different column names → verify scored suggestions appear ranked correctly in the dropdown
+
+---
+
+## What This Does NOT Require
 - No external AI/LLM API calls — everything runs client-side, offline, instant
 - No backend changes — memory lives in localStorage
 - No new npm packages — pure TypeScript logic
+
+

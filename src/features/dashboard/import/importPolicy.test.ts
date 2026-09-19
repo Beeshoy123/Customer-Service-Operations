@@ -7,7 +7,10 @@ import {
   findPairedCountField,
   findCanonicalFieldWithTag,
   normalizeImportedValue,
+  scoreColumnMapping,
+  detectColumnMappingWithConfidence,
 } from './importPolicy';
+import { rememberMapping, clearMemory } from './mappingMemory';
 import { normalizeHeaderToField } from './schemaNormalizer';
 import { aggregateTransactions } from './aggregateTransactions';
 import type { NormalizedRow } from './types';
@@ -244,4 +247,111 @@ describe('importPolicy extensions', () => {
       assert.equal(normalizeImportedValue('date', ''),           null);
     });
   });
+
+  describe('scoreColumnMapping (Step 3 Multi-Signal Scoring Engine)', () => {
+    it('auto-maps exact aliases with high confidence', () => {
+      const names = ['DOE, JOHN', 'SMITH, JANE', 'ALVAREZ, CARLOS'];
+      const mapping = scoreColumnMapping('Agent Name', 0, names);
+
+      assert.equal(mapping.mappedField, 'agentName');
+      assert.equal(mapping.confidence, 'exact');
+      assert.equal(mapping.isLowConfidence, false);
+      assert.equal(mapping.matchType, 'exact_alias');
+      assert.ok(mapping.score && mapping.score >= 85);
+      assert.ok(mapping.candidates && mapping.candidates.length > 0);
+      assert.equal(mapping.candidates[0].field, 'agentName');
+    });
+
+    it('blocks false positives for system call IDs like IVR_Call_ID and Acss_Call_ID', () => {
+      const ivrSamples = [
+        'IVR_20240915_9847120',
+        'IVR_20240915_9847121',
+        'IVR_20240915_9847122',
+      ];
+      const ivrMapping = scoreColumnMapping('IVR_Call_ID', 0, ivrSamples);
+
+      // Must be Unmapped — NOT employeeId and NOT calls!
+      assert.equal(ivrMapping.mappedField, null);
+      assert.equal(ivrMapping.confidence, 'none');
+      assert.equal(ivrMapping.matchType, 'unmapped');
+      assert.equal(ivrMapping.isLowConfidence, false);
+
+      const acssSamples = [
+        'Acss_Call_ID_001',
+        'Acss_Call_ID_002',
+        'Acss_Call_ID_003',
+      ];
+      const acssMapping = scoreColumnMapping('Acss_Call_ID', 0, acssSamples);
+
+      assert.equal(acssMapping.mappedField, null);
+      assert.equal(acssMapping.confidence, 'none');
+      assert.equal(acssMapping.matchType, 'unmapped');
+    });
+
+    it('suggests low confidence for fuzzy header + compatible values like Avg Talk Time', () => {
+      clearMemory();
+      const ahtSamples = ['320', '450', '185', '600'];
+      const mapping = scoreColumnMapping('Avg Talk Time', 0, ahtSamples);
+
+      // Score should be in 50–84 range -> low confidence suggestion
+      assert.equal(mapping.mappedField, 'aht');
+      assert.equal(mapping.confidence, 'low');
+      assert.equal(mapping.isLowConfidence, true);
+      assert.ok(mapping.score && mapping.score >= 50 && mapping.score < 85);
+      assert.ok(mapping.candidates && mapping.candidates[0].field === 'aht');
+    });
+
+    it('auto-maps with remembered confidence when header was previously learned in memory', () => {
+      clearMemory();
+      const ahtSamples = ['320', '450', '185', '600'];
+
+      // First run before memory
+      const initial = scoreColumnMapping('Avg Talk Time', 0, ahtSamples);
+      assert.equal(initial.confidence, 'low');
+
+      // User manually confirms/remembers mapping
+      rememberMapping('Avg Talk Time', 'aht');
+
+      // Re-score with memory active
+      const afterRemember = scoreColumnMapping('Avg Talk Time', 0, ahtSamples);
+      assert.equal(afterRemember.mappedField, 'aht');
+      assert.equal(afterRemember.confidence, 'remembered');
+      assert.equal(afterRemember.matchType, 'remembered');
+      assert.equal(afterRemember.isLowConfidence, false);
+      assert.ok(afterRemember.score && afterRemember.score >= 85);
+
+      clearMemory();
+    });
+
+    it('matches paired count fields with exact structural confidence', () => {
+      const passSamples = ['1', '0', '1', '1'];
+      const mapping = scoreColumnMapping('VXS_Overall_Rep_Pass', 0, passSamples);
+
+      assert.equal(mapping.mappedField, 'vxs_Pass');
+      assert.equal(mapping.confidence, 'exact');
+      assert.equal(mapping.matchType, 'paired_count');
+      assert.equal(mapping.isLowConfidence, false);
+    });
+
+    it('returns unmapped for empty or unmapped headers', () => {
+      const mapping1 = scoreColumnMapping('', 0, []);
+      assert.equal(mapping1.mappedField, null);
+      assert.equal(mapping1.confidence, 'none');
+      assert.equal(mapping1.matchType, 'unmapped');
+
+      const mapping2 = scoreColumnMapping('Completely Random Unrelated Header', 0, ['foo', 'bar']);
+      assert.equal(mapping2.mappedField, null);
+      assert.equal(mapping2.confidence, 'none');
+      assert.equal(mapping2.matchType, 'unmapped');
+    });
+
+    it('detectColumnMappingWithConfidence delegates seamlessly to scoreColumnMapping', () => {
+      const names = ['DOE, JOHN', 'SMITH, JANE'];
+      const res = detectColumnMappingWithConfidence('Agent Name', 0, names);
+      assert.equal(res.mappedField, 'agentName');
+      assert.equal(res.confidence, 'exact');
+      assert.ok(res.candidates && res.candidates.length > 0);
+    });
+  });
 });
+

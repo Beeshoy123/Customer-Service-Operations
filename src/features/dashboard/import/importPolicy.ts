@@ -1,4 +1,11 @@
-import type { DetectedColumnMapping } from './types';
+import type {
+  DetectedColumnMapping,
+  MappingCandidate,
+  ColumnMappingConfidence,
+  ColumnMatchType,
+} from './types';
+import { analyzeColumnValues, type ColumnFingerprint } from './columnFingerprinter';
+import { recallMapping } from './mappingMemory';
 
 export type ImportFieldKind = 'text' | 'number' | 'percent' | 'date';
 
@@ -484,51 +491,138 @@ export const findCanonicalFieldWithTag = (
   return null;
 };
 
-const tokenMatches = (header: string, hints: string[]) => {
-  const compact = compactHeader(header);
-  const normalized = normalizeHeader(header);
-  return hints.some((hint) => {
-    const key = normalizeHeader(hint).replace(/\s+/g, '');
-    if (!key) return false;
-    if (compact.includes(key)) return true;
-    if (normalized.includes(hint)) return true;
-    return key.length > 3 && compact.includes(key.slice(0, 3));
-  });
-};
+const STOP_WORDS = new Set([
+  'of', 'the', 'for', 'in', 'by', 'per', 'and', 'is', 'a', 'an', 'to', 'with', 'overall',
+]);
 
-export const findCanonicalField = (header: string): string | null => {
-  const paired = findPairedCountField(header);
-  if (paired) {
-    return paired.taggedField;
+function computeHeaderScore(
+  normalizedHeader: string,
+  aliases: string[],
+  originalHeader: string
+): { score: number; isExact: boolean } {
+  if (
+    aliases.some(
+      (alias) =>
+        normalizeHeader(alias) === normalizedHeader ||
+        compactHeader(alias) === compactHeader(originalHeader)
+    )
+  ) {
+    return { score: 35, isExact: true };
   }
 
-  const normalized = normalizeHeader(header);
-  if (!normalized) return null;
+  const wordsA = normalizedHeader
+    .split(/\s+/)
+    .filter((w) => !STOP_WORDS.has(w) && w.length > 1);
+  if (wordsA.length === 0) return { score: 0, isExact: false };
 
-  // 1. Direct matches for all fields first
-  for (const [field, config] of Object.entries(FIELD_ALIASES)) {
-    const aliases = config.aliases ?? [];
-    const directMatch = aliases.some((alias: string) => normalizeHeader(alias) === normalized || compactHeader(alias) === compactHeader(header));
-    if (directMatch) return field;
-  }
+  let maxScore = 0;
+  for (const alias of aliases) {
+    const normAlias = normalizeHeader(alias);
+    const wordsB = normAlias
+      .split(/\s+/)
+      .filter((w) => !STOP_WORDS.has(w) && w.length > 1);
+    if (wordsB.length === 0) continue;
 
-  // 2. Token hints match
-  for (const [field, config] of Object.entries(FIELD_ALIASES)) {
-    const aliases = config.aliases ?? [];
-    const tokenHint = HEADER_TOKEN_HINTS[field] ?? [];
-    if (tokenHintsMatch(normalized, field, aliases, tokenHint)) {
-      return field;
+    let common = 0;
+    for (const wa of wordsA) {
+      if (wordsB.includes(wa)) {
+        common++;
+      } else if (wordsB.some((wb) => wb.startsWith(wa) || wa.startsWith(wb))) {
+        common += 0.5;
+      }
+    }
+
+    if (common > 0) {
+      const overlapRatio = common / wordsB.length;
+      const jaccardRatio = common / new Set([...wordsA, ...wordsB]).size;
+      const combinedRatio = overlapRatio * 0.6 + jaccardRatio * 0.4;
+      let s = Math.round(combinedRatio * 30);
+      if (normalizedHeader.includes(normAlias) || normAlias.includes(normalizedHeader)) {
+        s = Math.max(s, 22);
+      }
+      maxScore = Math.max(maxScore, s);
     }
   }
 
-  for (const [field, hints] of Object.entries(HEADER_TOKEN_HINTS)) {
-    if (tokenMatches(header, hints)) {
-      return field;
-    }
+  return { score: Math.min(30, maxScore), isExact: false };
+}
+
+function computeFingerprintScore(
+  field: string,
+  fingerprint: ColumnFingerprint,
+  isExactAlias: boolean
+): number {
+  if (
+    fingerprint === 'call-id-like' ||
+    fingerprint === 'hour-of-day' ||
+    fingerprint === 'free-text'
+  ) {
+    return 0;
   }
 
-  return null;
-};
+  if (fingerprint === 'empty') {
+    return isExactAlias ? 50 : 20;
+  }
+
+  if (fingerprint === 'date-like') {
+    return field === 'date' ? 50 : 0;
+  }
+
+  if (fingerprint === 'employee-id-like') {
+    return field === 'employeeId' ? 50 : 0;
+  }
+
+  if (fingerprint === 'name-like') {
+    if (field === 'agentName' || field === 'supervisor' || field === 'oam') {
+      return 50;
+    }
+    return 0;
+  }
+
+  if (fingerprint === 'percent-decimal' || fingerprint === 'percent-whole') {
+    if (field === 'vxs' || field === 'resolve2hr' || field === 'resolve3d' || field === 'handoffs') {
+      return 50;
+    }
+    return 0;
+  }
+
+  if (fingerprint === 'duration-seconds') {
+    if (field === 'aht' || field === 'hold' || field === 'dpc') {
+      return 50;
+    }
+    if (field === 'calls' || field === 'surveys' || field === 'promoters') {
+      return 20;
+    }
+    return 0;
+  }
+
+  if (fingerprint === 'count-integer') {
+    if (
+      field === 'calls' ||
+      field === 'surveys' ||
+      field === 'promoters' ||
+      field === 'handoffsCount' ||
+      field === 'resolveTotalContacts' ||
+      field === 'resolveTotalContacts2hr' ||
+      field === 'resolveTotalContacts3d' ||
+      field.endsWith('_Pass') ||
+      field.endsWith('_Cnt')
+    ) {
+      return 50;
+    }
+    if (field === 'aht' || field === 'hold' || field === 'dpc') {
+      return 30;
+    }
+    return 0;
+  }
+
+  if (fingerprint === 'categorical-low') {
+    if (field === 'location' && isExactAlias) return 50;
+    return 0;
+  }
+
+  return 0;
+}
 
 export const CANONICAL_FIELD_OPTIONS: { value: string; label: string }[] = [
   { value: 'agentName', label: 'Agent Name' },
@@ -551,12 +645,24 @@ export const CANONICAL_FIELD_OPTIONS: { value: string; label: string }[] = [
   { value: 'resolve3d_Cnt', label: 'Resolve 3d Count' },
 ];
 
-export const detectColumnMappingWithConfidence = (
+/**
+ * Multi-signal scoring engine for column mapping.
+ * Combines header fuzzy matching (0-30 pts), value pattern fingerprint (0-50 pts),
+ * and learned user memory (0-20 pts).
+ */
+export const scoreColumnMapping = (
   header: string,
   index = 0,
-  sampleValues: string[] = []
+  sampleValues: (string | number | null | undefined)[] = [],
+  scope?: string
 ): DetectedColumnMapping => {
   const normalized = normalizeHeader(header);
+  const sampleStrings = sampleValues
+    .map((v) => (v === null || v === undefined ? '' : String(v).trim()))
+    .filter((v) => v !== '');
+
+  const { fingerprint } = analyzeColumnValues(sampleValues);
+
   if (!normalized) {
     return {
       header,
@@ -565,14 +671,25 @@ export const detectColumnMappingWithConfidence = (
       confidence: 'none',
       isLowConfidence: false,
       matchType: 'unmapped',
-      sampleValues,
+      sampleValues: sampleStrings,
       index,
+      fingerprint,
+      candidates: [],
+      score: 0,
     };
   }
 
-  // 1. Paired count exact match
+  // 1. Paired count exact structural match
   const paired = findPairedCountField(header);
-  if (paired) {
+  if (paired && fingerprint !== 'call-id-like' && fingerprint !== 'hour-of-day') {
+    const candidate: MappingCandidate = {
+      field: paired.taggedField,
+      score: 95,
+      headerScore: 35,
+      fingerprintScore: fingerprint === 'count-integer' ? 50 : (fingerprint === 'empty' ? 50 : 40),
+      memoryScore: 0,
+      signals: ['paired_count', 'exact_structure'],
+    };
     return {
       header,
       normalized,
@@ -580,107 +697,163 @@ export const detectColumnMappingWithConfidence = (
       confidence: 'exact',
       isLowConfidence: false,
       matchType: 'paired_count',
-      sampleValues,
+      sampleValues: sampleStrings,
       index,
+      fingerprint,
+      candidates: [candidate],
+      score: 95,
     };
   }
 
-  // 2. Direct alias match in FIELD_ALIASES
+  // 2. Recall memory for this header
+  const remembered = recallMapping(header, scope);
+
+  // 3. Score all canonical fields
+  const allFieldKeys = Array.from(
+    new Set([
+      ...CANONICAL_FIELD_OPTIONS.map((o) => o.value),
+      ...Object.keys(FIELD_ALIASES),
+    ])
+  );
+
+  const candidates: MappingCandidate[] = [];
+
+  for (const field of allFieldKeys) {
+    const policy = FIELD_ALIASES[field];
+    const aliases = policy?.aliases ?? [];
+
+    const { score: headerScore, isExact } = computeHeaderScore(normalized, aliases, header);
+    const memoryScore = remembered?.field === field ? 20 : 0;
+
+    // Without any header match and without any memory, fingerprint alone cannot guess a metric
+    if (headerScore === 0 && memoryScore === 0) {
+      continue;
+    }
+
+    const fingerprintScore = computeFingerprintScore(field, fingerprint, isExact);
+
+    let finalFingerprintScore = fingerprintScore;
+    if (fingerprint === 'call-id-like' || fingerprint === 'hour-of-day' || fingerprint === 'free-text') {
+      finalFingerprintScore = 0;
+    }
+
+    const totalScore = Math.min(100, headerScore + finalFingerprintScore + memoryScore);
+
+    const signals: string[] = [];
+    if (isExact) signals.push('exact_alias');
+    if (headerScore > 0) signals.push(`header:${headerScore}pts`);
+    if (finalFingerprintScore > 0) signals.push(`fingerprint:${fingerprint}(${finalFingerprintScore}pts)`);
+    if (memoryScore > 0) signals.push(`remembered:${memoryScore}pts`);
+
+    if (totalScore > 0) {
+      candidates.push({
+        field,
+        score: totalScore,
+        headerScore,
+        fingerprintScore: finalFingerprintScore,
+        memoryScore,
+        signals,
+      });
+    }
+  }
+
+  candidates.sort((a, b) => b.score - a.score);
+  const top = candidates[0];
+  const topCandidates = candidates.slice(0, 3);
+
+  // Score threshold logic:
+  // - Score >= 85 -> Auto-map, Exact confidence (or 'remembered' if from memory)
+  // - Score 50–84 -> Suggest, Low confidence
+  // - Score < 50 -> Unmapped
+  if (!top || top.score < 50) {
+    return {
+      header,
+      normalized,
+      mappedField: null,
+      confidence: 'none',
+      isLowConfidence: false,
+      matchType: 'unmapped',
+      sampleValues: sampleStrings,
+      index,
+      fingerprint,
+      candidates: topCandidates,
+      score: top?.score ?? 0,
+    };
+  }
+
+  if (top.score >= 85) {
+    const isRemembered = top.memoryScore > 0;
+    const isExact = top.signals?.includes('exact_alias') ?? false;
+    const confidence: ColumnMappingConfidence = isRemembered ? 'remembered' : 'exact';
+    const matchType: ColumnMatchType = isRemembered
+      ? 'remembered'
+      : (isExact ? 'exact_alias' : 'scored_high');
+
+    return {
+      header,
+      normalized,
+      mappedField: top.field,
+      confidence,
+      isLowConfidence: false,
+      matchType,
+      sampleValues: sampleStrings,
+      index,
+      fingerprint,
+      candidates: topCandidates,
+      score: top.score,
+    };
+  }
+
+  // Score 50 - 84: Suggest with low confidence
+  return {
+    header,
+    normalized,
+    mappedField: top.field,
+    confidence: 'low',
+    isLowConfidence: true,
+    matchType: 'token_hint',
+    sampleValues: sampleStrings,
+    index,
+    fingerprint,
+    candidates: topCandidates,
+    score: top.score,
+  };
+};
+
+export const detectColumnMappingWithConfidence = (
+  header: string,
+  index = 0,
+  sampleValues: (string | number | null | undefined)[] = [],
+  scope?: string
+): DetectedColumnMapping => {
+  return scoreColumnMapping(header, index, sampleValues, scope);
+};
+
+export const findCanonicalField = (
+  header: string,
+  sampleValues: (string | number | null | undefined)[] = []
+): string | null => {
+  const paired = findPairedCountField(header);
+  if (paired) {
+    return paired.taggedField;
+  }
+
+  const normalized = normalizeHeader(header);
+  if (!normalized) return null;
+
+  // Direct fast-path match
   for (const [field, config] of Object.entries(FIELD_ALIASES)) {
     const aliases = config.aliases ?? [];
     const directMatch = aliases.some(
       (alias: string) => normalizeHeader(alias) === normalized || compactHeader(alias) === compactHeader(header)
     );
-    if (directMatch) {
-      return {
-        header,
-        normalized,
-        mappedField: field,
-        confidence: 'exact',
-        isLowConfidence: false,
-        matchType: 'exact_alias',
-        sampleValues,
-        index,
-      };
-    }
+    if (directMatch) return field;
   }
 
-  // 3. Token-hint match (low confidence fallback)
-  for (const [field, config] of Object.entries(FIELD_ALIASES)) {
-    const aliases = config.aliases ?? [];
-    const tokenHint = HEADER_TOKEN_HINTS[field] ?? [];
-    if (tokenHintsMatch(normalized, field, aliases, tokenHint)) {
-      return {
-        header,
-        normalized,
-        mappedField: field,
-        confidence: 'low',
-        isLowConfidence: true,
-        matchType: 'token_hint',
-        sampleValues,
-        index,
-      };
-    }
-  }
-
-  for (const [field, hints] of Object.entries(HEADER_TOKEN_HINTS)) {
-    if (tokenMatches(header, hints)) {
-      return {
-        header,
-        normalized,
-        mappedField: field,
-        confidence: 'low',
-        isLowConfidence: true,
-        matchType: 'token_hint',
-        sampleValues,
-        index,
-      };
-    }
-  }
-
-  return {
-    header,
-    normalized,
-    mappedField: null,
-    confidence: 'none',
-    isLowConfidence: false,
-    matchType: 'unmapped',
-    sampleValues,
-    index,
-  };
+  const scored = scoreColumnMapping(header, 0, sampleValues);
+  return scored.mappedField;
 };
 
-const tokenHintsMatch = (normalized: string, field: string, aliases: string[], hints: string[]) => {
-  const compactAlias = aliases.map((alias: string) => compactHeader(alias));
-  if (compactAlias.some((alias) => alias === compactHeader(normalized))) {
-    return true;
-  }
-
-  if (field === 'agentName') {
-    const hasName = normalized.includes('name');
-    const hasAgentLike = normalized.includes('agent') || normalized.includes('employee') || normalized.includes('emp') || normalized.includes('rep') || normalized.includes('associate');
-    return hasName && hasAgentLike;
-  }
-
-  if (field === 'supervisor') {
-    const hasSupLike = normalized.includes('supervisor') || normalized.includes('spv') || normalized.includes('manager') || normalized.includes('mgr') || normalized.includes('lead');
-    return hasSupLike;
-  }
-
-  if (field === 'employeeId') {
-    const hasIdLike = normalized.includes('id') || normalized.includes('ccms') || normalized.includes('employee') || normalized.includes('emp');
-    return hasIdLike;
-  }
-
-  if (field === 'resolveTotalContacts') {
-    const hasResolve = normalized.includes('resolve') || normalized.includes('resolved');
-    const hasContact = normalized.includes('contact');
-    const isNot2hrOr3d = !normalized.includes('2hr') && !normalized.includes('3d') && !normalized.includes('2 hour') && !normalized.includes('3 day');
-    return hasResolve && hasContact && isNot2hrOr3d;
-  }
-
-  return hints.some((hint) => normalized.includes(hint));
-};
 
 // Excel's serial date epoch: days are counted from 1899-12-30 (not 1899-12-31)
 // because Excel perpetuates the Lotus 1-2-3 leap-year-1900 bug where serial 60

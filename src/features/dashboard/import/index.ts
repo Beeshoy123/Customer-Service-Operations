@@ -11,3 +11,5 @@ export * from './importService';
 export * from './granularityDetector';
 export * from './aggregateTransactions';
 export * from './ImportPreviewModal';
+export * from './columnFingerprinter';
+export * from './mappingMemory';

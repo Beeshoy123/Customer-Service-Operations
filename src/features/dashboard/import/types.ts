@@ -1,3 +1,5 @@
+import type { ColumnFingerprint } from './columnFingerprinter';
+
 export type SupportedImportFormat = 'csv' | 'tsv' | 'txt' | 'xlsx' | 'xls' | 'xlsm' | 'unknown';
 
 export type ImportProgress = {
@@ -92,8 +94,24 @@ export type ColumnFieldMapping =
   | SheetHeaderMapping[]
   | Record<string | number, string | null | undefined>
   | Map<string | number, string | null | undefined>;
+export type ColumnMappingConfidence = 'exact' | 'remembered' | 'low' | 'none';
 
-export type ColumnMappingConfidence = 'exact' | 'low' | 'none';
+export type ColumnMatchType =
+  | 'exact_alias'
+  | 'paired_count'
+  | 'scored_high'
+  | 'remembered'
+  | 'token_hint'
+  | 'unmapped';
+
+export type MappingCandidate = {
+  field: string;
+  score: number;
+  headerScore: number;
+  fingerprintScore: number;
+  memoryScore: number;
+  signals?: string[];
+};
 
 export type DetectedColumnMapping = {
   header: string;
@@ -101,9 +119,12 @@ export type DetectedColumnMapping = {
   mappedField: string | null;
   confidence: ColumnMappingConfidence;
   isLowConfidence: boolean;
-  matchType: 'exact_alias' | 'paired_count' | 'token_hint' | 'unmapped';
+  matchType: ColumnMatchType;
   sampleValues?: string[];
   index: number;
+  fingerprint?: ColumnFingerprint;
+  candidates?: MappingCandidate[];
+  score?: number;
 };
 
 export type SheetPreviewData = {
