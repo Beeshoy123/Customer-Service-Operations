@@ -3,6 +3,10 @@ import { FIELD_ALIASES, findCanonicalField, findPairedCountField } from './impor
 import { normalizeHeaderToField } from './schemaNormalizer';
 import type { NormalizedRow } from './types';
 
+// Calculation convention: add new account-specific aggregation styles as separate
+// profile-selected branches. Preserve existing aggregation behavior for other accounts;
+// do not replace or delete it unless explicitly requested.
+
 export type PassCntPair = {
   prefix: string;
   passField: string;

@@ -215,4 +215,8 @@ export interface AccountProfile {
   vtt: VttConfig;
   credit: CreditConfig;
   ncw: NcwConfig;
+  /** Optional account-specific calculation branches; existing defaults remain unchanged. */
+  calculationStyles?: {
+    rateMergeStyle?: 'arithmetic-average' | 'weighted-by-counts';
+  };
 }

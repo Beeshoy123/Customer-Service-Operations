@@ -9,6 +9,7 @@ import type { LearnedAliasCache } from './metric-detection-engine';
 
 const PROFILE_KEY_PREFIX = 'cs-ops:account-profile:';
 const ALIAS_CACHE_KEY = 'cs-ops:learned-aliases';
+const CALCULATION_STYLE_KEY_PREFIX = 'cs-ops:calculation-style:';
 
 function safeParse<T>(raw: string | null): T | null {
   if (!raw) return null;
@@ -50,4 +51,15 @@ export function loadLearnedAliases(): LearnedAliasCache {
 /** Saves the global learned-alias cache. */
 export function saveLearnedAliases(cache: LearnedAliasCache): void {
   localStorage.setItem(ALIAS_CACHE_KEY, JSON.stringify(cache));
+}
+
+export type AccountRateMergeStyle = 'arithmetic-average' | 'weighted-by-counts';
+
+export function loadRateMergeStyle(accountName: string): AccountRateMergeStyle {
+  const value = localStorage.getItem(CALCULATION_STYLE_KEY_PREFIX + accountName);
+  return value === 'weighted-by-counts' ? value : 'arithmetic-average';
+}
+
+export function saveRateMergeStyle(accountName: string, style: AccountRateMergeStyle): void {
+  localStorage.setItem(CALCULATION_STYLE_KEY_PREFIX + accountName, style);
 }

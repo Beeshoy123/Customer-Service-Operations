@@ -68,7 +68,11 @@ export const normalizeCellValue = (value: unknown, fieldName?: string): string |
   return normalizeImportedValue(fieldName ?? null, value);
 };
 
-export const mapTableToNormalizedRows = (table: SheetTable, fileName: string): NormalizedRow[] => {
+export const mapTableToNormalizedRows = (
+  table: SheetTable,
+  fileName: string,
+  mappingOverrides: Record<string, string | null> = {},
+): NormalizedRow[] => {
   const headers = table.headerRow ?? [];
   if (!headers.length) {
     return [];
@@ -85,7 +89,9 @@ export const mapTableToNormalizedRows = (table: SheetTable, fileName: string): N
       .map((r) => r?.[i] as string | number | null | undefined)
       .filter((v) => v !== undefined && v !== null && String(v).trim() !== '');
 
-    const mappedField = normalizeHeaderToField(header, sampleVals);
+    const mappedField = Object.prototype.hasOwnProperty.call(mappingOverrides, header)
+      ? mappingOverrides[header]
+      : normalizeHeaderToField(header, sampleVals);
     if (mappedField) {
       mappedHeaders.push({ index: i, mappedField });
     }
@@ -114,6 +120,60 @@ export const mapTableToNormalizedRows = (table: SheetTable, fileName: string): N
       row.sourceFile = fileName;
       row.sourceSheet = table.sheetName;
       normalizedRows.push(row);
+    }
+  }
+
+  return normalizedRows;
+};
+
+export const mapTableToNormalizedRowsAsync = async (
+  table: SheetTable,
+  fileName: string,
+  onProgress?: (processedRows: number, totalRows: number) => void,
+  mappingOverrides: Record<string, string | null> = {},
+): Promise<NormalizedRow[]> => {
+  const headers = table.headerRow ?? [];
+  if (!headers.length) return [];
+
+  const rows = table.rows ?? [];
+  const mappedHeaders: Array<{ index: number; mappedField: string }> = [];
+  for (let i = 0; i < headers.length; i += 1) {
+    const header = String(headers[i] ?? '').trim();
+    const sampleVals = rows
+      .slice(0, 50)
+      .map((r) => r?.[i] as string | number | null | undefined)
+      .filter((v) => v !== undefined && v !== null && String(v).trim() !== '');
+    const mappedField = Object.prototype.hasOwnProperty.call(mappingOverrides, header)
+      ? mappingOverrides[header]
+      : normalizeHeaderToField(header, sampleVals);
+    if (mappedField) mappedHeaders.push({ index: i, mappedField });
+  }
+
+  if (mappedHeaders.length === 0) return [];
+
+  const normalizedRows: NormalizedRow[] = [];
+  const yieldEvery = 5000;
+  for (let r = 0; r < rows.length; r += 1) {
+    const rawRow = rows[r];
+    const row: NormalizedRow = {};
+
+    for (let m = 0; m < mappedHeaders.length; m += 1) {
+      const { index, mappedField } = mappedHeaders[m];
+      const normalizedValue = normalizeCellValue(rawRow?.[index], mappedField);
+      if (normalizedValue !== null && normalizedValue !== undefined && normalizedValue !== '') {
+        row[mappedField] = normalizedValue;
+      }
+    }
+
+    if (Object.keys(row).length > 0) {
+      row.sourceFile = fileName;
+      row.sourceSheet = table.sheetName;
+      normalizedRows.push(row);
+    }
+
+    if ((r + 1) % yieldEvery === 0 || r === rows.length - 1) {
+      onProgress?.(r + 1, rows.length);
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
     }
   }
 

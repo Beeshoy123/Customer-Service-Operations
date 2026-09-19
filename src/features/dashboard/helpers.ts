@@ -11,6 +11,10 @@
 // └── Date & Calendar Helpers
 // ============================================================================
 
+// Calculation convention: new account-specific calculation styles are additive
+// options selected by AccountProfile. Preserve existing branches for other accounts;
+// never replace or delete an existing calculation unless explicitly requested.
+
 import { METRIC_CONFIG, TARGETS } from './config';
 
 // ─── Agent Search Filter ──────────────────────────────────────

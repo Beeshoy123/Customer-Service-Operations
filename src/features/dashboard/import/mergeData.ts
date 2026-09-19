@@ -1,5 +1,9 @@
 import type { ImportWarning, MergeOptions, MergeStrategy, NormalizedRow } from './types';
 
+// Calculation convention: new account-specific merge/calculation styles are additive
+// profile-selected options. Existing merge strategies remain active for other accounts
+// and must not be replaced or deleted without explicit instruction.
+
 const getRecordKey = (row: NormalizedRow): string => {
   const agent = String(row.agentName ?? row.name ?? '').trim();
   const date = String(row.date ?? '').trim();
@@ -139,6 +143,48 @@ const getFieldStrategy = (
   return null;
 };
 
+const RATE_DENOMINATORS: Record<string, string[]> = {
+  vxs: ['surveys'],
+  resolve2hr: ['resolveTotalContacts2hr', 'resolveTotalContacts'],
+  resolve3d: ['resolveTotalContacts3d', 'resolveTotalContacts'],
+  handoffs: ['calls'],
+  aht: ['calls'],
+  hold: ['calls'],
+  dpc: ['calls'],
+  viewTogether: ['calls'],
+  vtt: ['calls'],
+  netOcc: ['calls'],
+  creditFreq: ['calls'],
+};
+
+const weightedAverage = (rows: NormalizedRow[], field: string): number | null => {
+  const denominators = RATE_DENOMINATORS[field];
+  if (!denominators) return null;
+
+  let weightedTotal = 0;
+  let denominatorTotal = 0;
+  for (const row of rows) {
+    const value = Number(row[field]);
+    if (!Number.isFinite(value)) continue;
+
+    let denominator = 0;
+    for (const denominatorField of denominators) {
+      const candidate = Number(row[denominatorField]);
+      if (Number.isFinite(candidate) && candidate > 0) {
+        denominator = candidate;
+        break;
+      }
+    }
+
+    if (denominator > 0) {
+      weightedTotal += value * denominator;
+      denominatorTotal += denominator;
+    }
+  }
+
+  return denominatorTotal > 0 ? weightedTotal / denominatorTotal : null;
+};
+
 export const mergeNormalizedRows = (
   rows: NormalizedRow[],
   options: MergeOptions = {}
@@ -245,6 +291,13 @@ export const mergeNormalizedRows = (
           merged[field] = values.reduce((prev, curr) => choosePreferredValue(prev, curr));
         }
       } else if (strategy === 'average') {
+        const weighted = options.rateMergeStyle === 'weighted-by-counts'
+          ? weightedAverage(effectiveRows, field)
+          : null;
+        if (weighted !== null) {
+          merged[field] = weighted;
+          continue;
+        }
         const numValues = values.filter((v): v is number => typeof v === 'number' && !Number.isNaN(v));
         if (numValues.length > 0) {
           merged[field] = numValues.reduce((sum, val) => sum + val, 0) / numValues.length;

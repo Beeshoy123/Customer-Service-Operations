@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import './ImportLanding.css';
+import type { MappingDiagnostic } from '../import/types';
 
 type UploadStatus = {
   type?: 'info' | 'success' | 'error';
@@ -11,6 +12,10 @@ type ImportLandingProps = {
   accountName: string;
   uploadStatus?: UploadStatus | null;
   onFiles: (files: File[]) => void;
+  mappingReview?: MappingDiagnostic[];
+  onContinueImport?: (mappingOverrides: Record<string, string | null>) => void;
+  rateMergeStyle?: 'arithmetic-average' | 'weighted-by-counts';
+  onRateMergeStyleChange?: (style: 'arithmetic-average' | 'weighted-by-counts') => void;
 };
 
 type SelectedFile = {
@@ -24,13 +29,23 @@ const fileSize = (bytes: number): string => {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
-export const ImportLanding: React.FC<ImportLandingProps> = ({ accountName, uploadStatus, onFiles }) => {
+export const ImportLanding: React.FC<ImportLandingProps> = ({ accountName, uploadStatus, onFiles, mappingReview = [], onContinueImport, rateMergeStyle = 'arithmetic-average', onRateMergeStyleChange }) => {
   const inputRef = useRef<HTMLInputElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<SelectedFile[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
   const [isWaiting, setIsWaiting] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [mappingAnswers, setMappingAnswers] = useState<Record<string, string | null>>({});
+
+  const mappingOptions = [
+    ['agentName', 'Agent name'], ['employeeId', 'Employee ID'], ['date', 'Date'],
+    ['supervisor', 'Supervisor'], ['calls', 'Calls'], ['aht', 'AHT'],
+    ['resolveTotalContacts', 'Resolve total contacts'], ['resolveTotalContacts2hr', 'Resolve 2-hour contacts'],
+    ['resolveTotalContacts3d', 'Resolve 3-day contacts'], ['resolve2hr', 'Resolve 2-hour rate'],
+    ['resolve3d', 'Resolve 3-day rate'], ['handoffs', 'Handoff rate'], ['surveys', 'Surveys'],
+    ['promoters', 'Promoters'], ['none', 'Ignore this column'],
+  ] as const;
 
   useEffect(() => () => {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -53,7 +68,7 @@ export const ImportLanding: React.FC<ImportLandingProps> = ({ accountName, uploa
     window.setTimeout(() => {
       setSelectedFiles((current) => current.map((item) =>
         supported.some((file) => file === item.file)
-          ? { ...item, state: 'ready', detectedAs: 'Ready for preview' }
+          ? { ...item, state: 'ready', detectedAs: 'Ready to import' }
           : item
       ));
       setIsWaiting(true);
@@ -78,12 +93,13 @@ export const ImportLanding: React.FC<ImportLandingProps> = ({ accountName, uploa
 
   const progress = typeof uploadStatus?.progress === 'number'
     ? Math.max(0, Math.min(100, uploadStatus.progress))
-    : isProcessing ? 8 : 0;
+    : 0;
   const isImporting = isProcessing || uploadStatus?.type === 'info';
+  const needsReview = mappingReview.length > 0;
 
   return (
     <section className="import-landing" aria-label="Import dashboard data">
-      {!isImporting ? (
+      {!isImporting || needsReview ? (
         <div className="import-landing-panel">
           <header className="import-landing-header">
             <div>
@@ -123,7 +139,47 @@ export const ImportLanding: React.FC<ImportLandingProps> = ({ accountName, uploa
           )}
 
           {selectedFiles.length > 0 && (
-            <p className="import-notice success">Files will be classified from their real headers in the import preview.</p>
+            <p className="import-notice success">Files will be mapped automatically from their real headers.</p>
+          )}
+
+          <label className="import-calculation-style">
+            Rate calculation
+            <select value={rateMergeStyle} onChange={(event) => onRateMergeStyleChange?.(event.target.value as 'arithmetic-average' | 'weighted-by-counts')}>
+              <option value="arithmetic-average">Arithmetic average (existing default)</option>
+              <option value="weighted-by-counts">Weighted by counts</option>
+            </select>
+          </label>
+
+          {needsReview && (
+            <div className="import-mapping-review" role="alert">
+              <strong>Some columns need your attention</strong>
+              <p>Import paused before dashboard calculations. These mappings may affect the big picture:</p>
+              <ul>
+                {mappingReview.slice(0, 12).map((item, index) => (
+                  <li
+                    key={`${item.fileName}-${item.sheetName}-${item.header}`}
+                    style={{ animationDelay: `${index * 70}ms` }}
+                  >
+                    <span>{item.header}</span>
+                    <small>
+                      {item.collisionWith?.length
+                        ? `collision with ${item.collisionWith.join(', ')}`
+                        : item.mappedField
+                          ? `${item.mappedField} (${item.confidence})`
+                          : 'unmapped'}
+                    </small>
+                    <select
+                      value={mappingAnswers[item.header] ?? item.mappedField ?? 'none'}
+                      onChange={(event) => setMappingAnswers((current) => ({ ...current, [item.header]: event.target.value === 'none' ? null : event.target.value }))}
+                    >
+                      {mappingOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                    </select>
+                  </li>
+                ))}
+              </ul>
+              {mappingReview.length > 12 && <small>+ {mappingReview.length - 12} more fields</small>}
+              <button type="button" onClick={() => onContinueImport?.(mappingAnswers)}>Continue with answers</button>
+            </div>
           )}
 
           {isWaiting && (

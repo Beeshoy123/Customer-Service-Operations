@@ -1,8 +1,10 @@
 import { parseWorkbookBuffer } from './workbookLoader';
 import { selectSheets } from './sheetSelector';
-import { mapTableToNormalizedRows } from './schemaNormalizer';
+import { mapTableToNormalizedRowsAsync } from './schemaNormalizer';
 import { validateNormalizedRows } from './validation';
 import { mergeNormalizedRows } from './mergeData';
+import { aggregateTransactions } from './aggregateTransactions';
+import { detectGranularity } from './granularityDetector';
 import type {
   ImportOptions,
   ImportProgress,
@@ -131,14 +133,37 @@ export const handleWorkerMessage = async (
           },
         });
 
-        const mappedRows = mapTableToNormalizedRows(sheet, fileName);
-        for (let i = 0; i < mappedRows.length; i += 1) {
-          mergedRows.push(mappedRows[i]);
+        const mappedRows = await mapTableToNormalizedRowsAsync(sheet, fileName, (processedRows, totalRows) => {
+          const sheetFraction = totalRows > 0 ? processedRows / totalRows : 1;
+          const percent = Math.min(
+            94,
+            Math.max(5, Math.round(((sheetIndex + sheetFraction) / Math.max(filteredSheets.length, 1)) * 90)),
+          );
+          postMessage({
+            type: 'progress',
+            progress: {
+              phase: 'parsing',
+              fileName,
+              currentSheet: sheet.sheetName,
+              currentSheetIndex: sheetIndex + 1,
+              totalSheets: filteredSheets.length,
+              currentRow: processedRows,
+              totalRows,
+              percent,
+              message: `Mapping ${sheet.sheetName}: ${processedRows.toLocaleString()} / ${totalRows.toLocaleString()} rows`,
+            },
+          });
+        }, options.mappingOverrides || {});
+        const finalRows = detectGranularity(sheet).classification === 'transaction'
+          ? aggregateTransactions(mappedRows)
+          : mappedRows;
+        for (let i = 0; i < finalRows.length; i += 1) {
+          mergedRows.push(finalRows[i]);
         }
         sourceSummary.push({
           fileName,
           sheetName: sheet.sheetName,
-          rowCount: mappedRows.length,
+          rowCount: finalRows.length,
         });
       }
 
@@ -158,7 +183,9 @@ export const handleWorkerMessage = async (
       });
 
       const validated = validateNormalizedRows(mergedRows, fileName);
-      warnings.push(...validated.warnings);
+      for (const warning of validated.warnings) {
+        warnings.push(warning);
+      }
 
       if (currentAbortController.signal.aborted) {
         throw createAbortError();
@@ -175,7 +202,9 @@ export const handleWorkerMessage = async (
         },
       });
 
-      const finalMergedRows = mergeNormalizedRows(validated.rows);
+      const finalMergedRows = mergeNormalizedRows(validated.rows, {
+        rateMergeStyle: options.rateMergeStyle,
+      });
 
       postMessage({
         type: 'progress',
@@ -205,7 +234,7 @@ export const handleWorkerMessage = async (
             index: s.index,
             rowCount: s.rowCount,
             headerRow: s.headerRow,
-            rows: [], // Omit raw rows across thread boundary to avoid memory duplication
+            rows: options.includeRawRowsForPreview ? s.rows : [],
           })),
         },
       });

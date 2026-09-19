@@ -42,7 +42,6 @@ import {
 } from './features/dashboard/hooks';
 import { useDashboardMetrics } from './features/dashboard/metrics';
 import { SettingsMenu, TimeframeMenu } from './components/menus';
-import { ImportPreviewModal } from './features/dashboard/import';
 import { ImportLanding } from './features/dashboard/upload/ImportLanding';
 
 if (typeof window !== 'undefined') {
@@ -195,18 +194,10 @@ const ChartActionPlanModal = () => {
 
 // ─── Top Navigation Bar ──────────────────────────────────────
 const TopNavbar = React.memo(() => {
-  const { dashData, uiState, uiHandlers, batchImportSelection, setBatchImportSelection } = useDashboard();
+  const { dashData, uiState, uiHandlers, resetToLanding } = useDashboard();
   const menuRef = useRef(null);
   const timeframeRef = useRef(null);
   const batchSummary = dashData.batchImportSummary;
-
-  const toggleBatchImportSource = (sourceKey) => {
-    setBatchImportSelection((prev) => {
-      const next = { ...(prev || {}) };
-      next[sourceKey] = !next[sourceKey];
-      return next;
-    });
-  };
 
 
   useEffect(() => {
@@ -268,17 +259,18 @@ const TopNavbar = React.memo(() => {
               🔍
             </button>
 
-            <input type="file" accept=".csv, .txt, .tsv, .xls, .xlsx, .xlsm" id="csv-upload" style={{ display: 'none' }} multiple onChange={dashData.handleFileUpload} />
-            <label 
-              htmlFor="csv-upload" 
-              title="Upload CSV or Excel Data" 
+            <button
+              type="button"
+              title="Exit to import landing page"
+              aria-label="Exit to import landing page"
               className="py-1 px-4 rounded-full cursor-pointer transition-all flex items-center justify-center text-lg text-white" 
               style={{ background: 'transparent', border: '1px solid transparent', opacity: 0.7 }}
+              onClick={resetToLanding}
               onMouseOver={(e) => e.currentTarget.style.opacity = 1}
               onMouseOut={(e) => e.currentTarget.style.opacity = 0.7}
             >
-              📤
-            </label>
+              🚪
+            </button>
 
             <div className="column-menu-container flex" ref={timeframeRef}>
               <button 
@@ -335,52 +327,6 @@ const TopNavbar = React.memo(() => {
             </div>
           </div>
 
-          {batchSummary && (
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-300">
-              {batchSummary.warnings?.length > 0 && (
-                <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-amber-200">
-                  {batchSummary.warnings.length} warning(s)
-                </span>
-              )}
-              {batchSummary.errors?.length > 0 && (
-                <span className="rounded-full border border-rose-500/40 bg-rose-500/10 px-2 py-1 text-rose-200">
-                  {batchSummary.errors.length} error(s)
-                </span>
-              )}
-              <button
-                type="button"
-                onClick={() => dashData.applyBatchImport(batchImportSelection)}
-                className="rounded-full border border-emerald-400/40 bg-emerald-500/10 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-200 hover:bg-emerald-500/20"
-              >
-                Apply to dashboard
-              </button>
-            </div>
-          )}
-
-          {batchSummary?.sources?.length > 0 && (
-            <div className="mt-2 rounded-xl border border-slate-700 bg-slate-900/70 p-3 text-[11px] text-slate-300">
-              <div className="mb-2 text-[10px] uppercase tracking-[0.18em] text-slate-400">Import preview</div>
-              <div className="flex flex-wrap gap-2">
-                {batchSummary.sources.map((source) => {
-                  const sourceKey = `${source.fileName}|${source.sheetName}`;
-                  const isSelected = !!batchImportSelection?.[sourceKey];
-                  return (
-                    <label key={sourceKey} className="flex cursor-pointer items-center gap-2 rounded-full border border-slate-600 bg-slate-800 px-2 py-1">
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => toggleBatchImportSource(sourceKey)}
-                        className="accent-emerald-500"
-                      />
-                      <span>
-                        {source.fileName} • {source.sheetName} • {source.rowCount} rows
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </div>
@@ -1714,6 +1660,11 @@ export default function App() {
   const [accountName, setAccountName] = useState("");
   const [accountNameInput, setAccountNameInput] = useState("");
   const dashData = useDashboardData(() => { if (aiResetRef.current) aiResetRef.current(); }, accountName);
+  const resetToLanding = useCallback(() => {
+    dashData.resetDashboard();
+    setAccountName('');
+    setAccountNameInput('');
+  }, [dashData.resetDashboard]);
   const [modalState, dispatchModal] = React.useReducer((s, a) => ({ ...s, ...a }), MODAL_INITIAL);
   const { activeModal, selectedSupervisorObj, expandedBurnoutAgentId, highlightedAgentId, supTab } = modalState;
   const setActiveModal = (v) => dispatchModal({ activeModal: v });
@@ -1723,7 +1674,6 @@ export default function App() {
   const setSupTab = (v) => dispatchModal({ supTab: v });
   const [searchQuery, setSearchQuery] = useState("");
   const [inputValue, setInputValue] = useState("");
-  const [batchImportSelection, setBatchImportSelection] = useState({});
   const [sortConfig, setSortConfig] = useState({ key: 'outlier', direction: 'asc' }); 
   const [agentSortConfig, setAgentSortConfig] = useState({ key: 'name', direction: 'asc' });
   // 12 UI display states → single reducer: one subscription, one render per change
@@ -1755,22 +1705,6 @@ export default function App() {
     }, 300);
     return () => clearTimeout(timer);
   }, [inputValue]);
-
-  useEffect(() => {
-    const sources = dashData.batchImportSummary?.sources || [];
-    if (!sources.length) {
-      setBatchImportSelection({});
-      return;
-    }
-
-    const nextSelection = {};
-    for (const source of sources) {
-      const sourceKey = `${source.fileName}|${source.sheetName}`;
-      nextSelection[sourceKey] = true;
-    }
-    setBatchImportSelection(nextSelection);
-  }, [dashData.batchImportSummary?.sources]);
-
 
   const linkedEntities = useMemo(() => {
       const entities = [];
@@ -1864,8 +1798,8 @@ export default function App() {
   const hasAccountName = normalizedAccountName.length > 0;
 
   const ctxValue = useMemo(
-    () => ({ dashData, metrics, aiTools, uiState, uiHandlers, batchImportSelection, setBatchImportSelection, accountName: normalizedAccountName }),
-    [dashData, metrics, aiTools, uiState, uiHandlers, batchImportSelection, setBatchImportSelection, normalizedAccountName]
+    () => ({ dashData, metrics, aiTools, uiState, uiHandlers, accountName: normalizedAccountName, resetToLanding }),
+    [dashData, metrics, aiTools, uiState, uiHandlers, normalizedAccountName, resetToLanding]
   );
 
   if (!hasAccountName) {
@@ -1936,11 +1870,14 @@ export default function App() {
     return (
       <ErrorBoundary>
         <div style={{ minHeight: '100vh', background: '#0b0b0a', padding: '24px', boxSizing: 'border-box' }}>
-          <UploadStatus uploadStatus={dashData.uploadStatus} />
           <ImportLanding
             accountName={normalizedAccountName}
             uploadStatus={dashData.uploadStatus}
-            onFiles={(files) => dashData.handleFileDrop(files.length === 1 ? files[0] : files)}
+            onFiles={(files) => dashData.handleAutomaticImport(files)}
+            mappingReview={dashData.mappingReview}
+            onContinueImport={dashData.continueAutomaticImport}
+            rateMergeStyle={dashData.rateMergeStyle}
+            onRateMergeStyleChange={dashData.setRateMergeStyle}
           />
         </div>
       </ErrorBoundary>
@@ -1986,14 +1923,6 @@ export default function App() {
 
           {/* ==== Detail modal / AI modal layer ==== */}
           <MainModal />
-          <ImportPreviewModal
-            isOpen={Boolean(dashData.importPreview?.isOpen)}
-            sheets={dashData.importPreview?.sheets || []}
-            skippedSheets={dashData.importPreview?.skippedSheets || []}
-            fileName={dashData.importPreview?.fileName}
-            onConfirm={dashData.confirmImportPreview}
-            onCancel={dashData.closeImportPreview}
-          />
         </div>
       </DashboardContext.Provider>
     </ErrorBoundary>

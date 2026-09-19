@@ -18,10 +18,13 @@ export type ImportProgress = {
 
 export type MergeStrategy = 'sum' | 'average' | 'last-seen' | 'first-seen';
 export type MergeFieldStrategy = MergeStrategy;
+export type RateMergeStyle = 'arithmetic-average' | 'weighted-by-counts';
 
 export type MergeOptions = {
   /** Per-field merge strategy overrides */
   mergeStrategy?: Record<string, MergeStrategy>;
+  /** Selects how already-calculated rate fields are combined across sources. */
+  rateMergeStyle?: RateMergeStyle;
   /**
    * How to handle duplicate entries from the exact same source (same sourceFile + sourceSheet):
    * - 'dedupe' (default): Keep last-seen value and avoid double-counting additive metrics.
@@ -43,8 +46,13 @@ export type ImportOptions = {
   fileName?: string;
   /** When true, workbook files are always parsed via the Web Worker regardless of file size. */
   forceWorker?: boolean;
+  /** Keep raw sheet rows when the worker result will be opened in the verification preview. */
+  includeRawRowsForPreview?: boolean;
+  mappingOverrides?: Record<string, string | null>;
   /** Optional per-field merge strategy overrides for mergeNormalizedRows */
   mergeStrategy?: Record<string, MergeStrategy>;
+  /** Account-selected style for combining calculated rate fields across files. */
+  rateMergeStyle?: RateMergeStyle;
   /** Whether to detect and skip duplicate file uploads (defaults to true) */
   detectDuplicateFiles?: boolean;
 };
@@ -98,6 +106,18 @@ export type ImportSummary = {
 
 export type ImportResult = ImportSummary & {
   rows: NormalizedRow[];
+  mappingDiagnostics?: MappingDiagnostic[];
+};
+
+export type MappingDiagnostic = {
+  fileName: string;
+  sheetName: string;
+  header: string;
+  mappedField: string | null;
+  confidence: ColumnMappingConfidence;
+  score?: number;
+  candidates?: MappingCandidate[];
+  collisionWith?: string[];
 };
 
 export type SheetGranularity = 'aggregate' | 'transaction' | 'unknown';

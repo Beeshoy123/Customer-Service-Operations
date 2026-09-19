@@ -9,6 +9,10 @@
 // └── AI Persona Configuration
 // ============================================================================
 
+// Calculation convention: account-specific metric styles must be added as new
+// profile-selected options. Existing defaults and branches remain active for other
+// accounts and must not be replaced or deleted without explicit instruction.
+
 // ─── Date & Default Constants ──────────────────────────────────────
 export const getYesterdayDateString = () => {
   const d = new Date();

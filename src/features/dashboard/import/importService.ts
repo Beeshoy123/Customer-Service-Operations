@@ -3,9 +3,12 @@ import { detectFileType, isSupportedImportType } from './fileTypeDetector';
 import { convertWorkbookToSheets, convertWorkbookToSheetsViaWorker, DEFAULT_LARGE_FILE_SIZE_THRESHOLD } from './workbookLoader';
 import { selectSheets } from './sheetSelector';
 import { mapTableToNormalizedRows, normalizeCellValue, normalizeHeaderToField } from './schemaNormalizer';
+import { detectColumnMappingWithConfidence } from './importPolicy';
 import { mergeNormalizedRows, detectDuplicateFiles } from './mergeData';
+import { aggregateTransactions } from './aggregateTransactions';
+import { detectGranularity } from './granularityDetector';
 import { validateNormalizedRows } from './validation';
-import type { ImportOptions, ImportProgress, ImportResult, ImportSourceSummary, ImportWarning, NormalizedRow } from './types';
+import type { ImportOptions, ImportProgress, ImportResult, ImportSourceSummary, ImportWarning, MappingDiagnostic, NormalizedRow } from './types';
 
 const yieldToEventLoop = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -25,14 +28,14 @@ const notifyProgress = (options: ImportOptions, progress: ImportProgress) => {
   options.onProgress?.(progress);
 };
 
-const parseTextFile = async (file: File, options: ImportOptions = {}): Promise<{ rows: NormalizedRow[]; sourceSummary: ImportSourceSummary[] }> => {
+const parseTextFile = async (file: File, options: ImportOptions = {}): Promise<{ rows: NormalizedRow[]; sourceSummary: ImportSourceSummary[]; headers: string[]; sampleRows: unknown[][] }> => {
   throwIfAborted(options.signal);
 
   const text = await file.text();
   const { headers, rows } = parseDelimitedText(text);
 
   if (!headers.length) {
-    return { rows: [], sourceSummary: [] };
+    return { rows: [], sourceSummary: [], headers: [], sampleRows: [] };
   }
 
   const normalizedRows: NormalizedRow[] = [];
@@ -44,7 +47,9 @@ const parseTextFile = async (file: File, options: ImportOptions = {}): Promise<{
       .slice(0, 50)
       .map((r) => r?.[i] as string | number | null | undefined)
       .filter((v) => v !== undefined && v !== null && String(v).trim() !== '');
-    const mappedField = normalizeHeaderToField(headers[i], sampleVals);
+    const mappedField = Object.prototype.hasOwnProperty.call(options.mappingOverrides || {}, headers[i])
+      ? options.mappingOverrides?.[headers[i]]
+      : normalizeHeaderToField(headers[i], sampleVals);
     if (mappedField) {
       mappedHeaders.push({ index: i, mappedField });
     }
@@ -82,13 +87,27 @@ const parseTextFile = async (file: File, options: ImportOptions = {}): Promise<{
     }
   }
 
+  const normalizedTable = {
+    workbookName: file.name,
+    sheetName: 'CSV',
+    index: 0,
+    headerRow: headers,
+    rows,
+    rowCount: rows.length,
+  };
+  const finalRows = detectGranularity(normalizedTable).classification === 'transaction'
+    ? aggregateTransactions(normalizedRows)
+    : normalizedRows;
+
   return {
-    rows: normalizedRows,
-    sourceSummary: [{ fileName: file.name, sheetName: 'CSV', rowCount: normalizedRows.length }],
+    rows: finalRows,
+    sourceSummary: [{ fileName: file.name, sheetName: 'CSV', rowCount: finalRows.length }],
+    headers,
+    sampleRows: rows.slice(0, 50),
   };
 };
 
-const parseWorkbookFile = async (file: File, options: ImportOptions = {}): Promise<{ rows: NormalizedRow[]; sourceSummary: ImportSourceSummary[]; warnings: ImportWarning[] }> => {
+const parseWorkbookFile = async (file: File, options: ImportOptions = {}): Promise<{ rows: NormalizedRow[]; sourceSummary: ImportSourceSummary[]; warnings: ImportWarning[]; mappingDiagnostics: MappingDiagnostic[] }> => {
   throwIfAborted(options.signal);
 
   const threshold = options.largeFileSizeThreshold ?? DEFAULT_LARGE_FILE_SIZE_THRESHOLD;
@@ -105,6 +124,20 @@ const parseWorkbookFile = async (file: File, options: ImportOptions = {}): Promi
       rows: workerResult.rows || [],
       sourceSummary: workerResult.sourceSummary || [],
       warnings: workerResult.warnings || [],
+      mappingDiagnostics: (workerResult.sheets || []).flatMap((sheet) =>
+        (sheet.headerRow || []).map((header, index) => {
+          const mapping = detectColumnMappingWithConfidence(String(header ?? ''), index, []);
+          return {
+            fileName: file.name,
+            sheetName: sheet.sheetName,
+            header: mapping.header,
+            mappedField: mapping.mappedField,
+            confidence: mapping.confidence,
+            score: mapping.score,
+            candidates: mapping.candidates,
+          };
+        })
+      ),
     };
   }
 
@@ -129,11 +162,14 @@ const parseWorkbookFile = async (file: File, options: ImportOptions = {}): Promi
     throwIfAborted(options.signal);
 
     const sheet = filteredSheets[sheetIndex];
-    const mappedRows = mapTableToNormalizedRows(sheet, file.name);
-    for (let i = 0; i < mappedRows.length; i += 1) {
-      mergedRows.push(mappedRows[i]);
+    const mappedRows = mapTableToNormalizedRows(sheet, file.name, options.mappingOverrides);
+    const finalRows = detectGranularity(sheet).classification === 'transaction'
+      ? aggregateTransactions(mappedRows)
+      : mappedRows;
+    for (let i = 0; i < finalRows.length; i += 1) {
+      mergedRows.push(finalRows[i]);
     }
-    sourceSummary.push({ fileName: file.name, sheetName: sheet.sheetName, rowCount: mappedRows.length });
+    sourceSummary.push({ fileName: file.name, sheetName: sheet.sheetName, rowCount: finalRows.length });
 
     notifyProgress(options, {
       phase: 'parsing',
@@ -146,7 +182,23 @@ const parseWorkbookFile = async (file: File, options: ImportOptions = {}): Promi
     });
   }
 
-  return { rows: mergedRows, sourceSummary, warnings };
+  const sheetMappingDiagnostics = filteredSheets.flatMap((sheet) =>
+    (sheet.headerRow || []).map((header, index) => {
+      const sampleValues = (sheet.rows || []).slice(0, 50).map((row) => row?.[index] as string | number | null | undefined);
+      const mapping = detectColumnMappingWithConfidence(String(header ?? ''), index, sampleValues);
+      return {
+        fileName: file.name,
+        sheetName: sheet.sheetName,
+        header: mapping.header,
+        mappedField: mapping.mappedField,
+        confidence: mapping.confidence,
+        score: mapping.score,
+        candidates: mapping.candidates,
+      };
+    })
+  );
+
+  return { rows: mergedRows, sourceSummary, warnings, mappingDiagnostics: sheetMappingDiagnostics };
 };
 
 /** Maximum number of files parsed concurrently during a multi-file batch. */
@@ -184,12 +236,15 @@ export const runImportService = async (files: File[], options: ImportOptions = {
 
   // Detect duplicate files in the upload list
   const initialWarnings: ImportWarning[] = [];
+  const mappingDiagnostics: MappingDiagnostic[] = [];
   let filesToProcess = files;
 
   if (options.detectDuplicateFiles !== false && files.length > 1) {
     const { uniqueFiles, duplicateWarnings } = detectDuplicateFiles(files);
     filesToProcess = uniqueFiles;
-    initialWarnings.push(...duplicateWarnings);
+    for (const warning of duplicateWarnings) {
+      initialWarnings.push(warning);
+    }
   }
 
   const isMultiFile = filesToProcess.length > 1;
@@ -201,13 +256,17 @@ export const runImportService = async (files: File[], options: ImportOptions = {
     filePercents[fileIndex] = filePercent;
     const completedFiles = filePercents.filter((p) => p >= 100).length;
     const overallPercent = Math.round(filePercents.reduce((sum, p) => sum + p, 0) / filesToProcess.length);
+    const currentFile = Math.min(
+      completedFiles + (filePercent >= 100 ? 0 : 1),
+      filesToProcess.length,
+    );
     notifyProgress(options, {
       phase: 'parsing',
       fileName,
-      currentFile: completedFiles + 1,
+      currentFile,
       totalFiles: filesToProcess.length,
       percent: Math.min(overallPercent, 99),
-      message: `File ${completedFiles + 1} of ${filesToProcess.length} — ${fileName} — ${filePercent}%`,
+      message: `File ${currentFile} of ${filesToProcess.length} — ${fileName} — ${filePercent}%`,
     });
   };
 
@@ -216,6 +275,7 @@ export const runImportService = async (files: File[], options: ImportOptions = {
     sourceSummary: ImportSourceSummary[];
     warnings: ImportWarning[];
     errors: ImportWarning[];
+    mappingDiagnostics: MappingDiagnostic[];
     fileIndex: number;
   };
 
@@ -235,6 +295,7 @@ export const runImportService = async (files: File[], options: ImportOptions = {
         sourceSummary: [],
         warnings: [],
         errors: [],
+        mappingDiagnostics: [],
         fileIndex,
       };
 
@@ -262,6 +323,19 @@ export const runImportService = async (files: File[], options: ImportOptions = {
 
         if (fileType === 'csv' || fileType === 'tsv' || fileType === 'txt') {
           const parsed = await parseTextFile(file, fileOptions);
+          for (let index = 0; index < parsed.headers.length; index += 1) {
+            const sampleValues = (parsed.sampleRows[index] || []) as (string | number | null | undefined)[];
+            const mapping = detectColumnMappingWithConfidence(parsed.headers[index], index, sampleValues);
+            result.mappingDiagnostics.push({
+              fileName: file.name,
+              sheetName: 'CSV',
+              header: mapping.header,
+              mappedField: mapping.mappedField,
+              confidence: mapping.confidence,
+              score: mapping.score,
+              candidates: mapping.candidates,
+            });
+          }
           const validated = validateNormalizedRows(parsed.rows, file.name);
           result.rows = validated.rows;
           result.sourceSummary = parsed.sourceSummary;
@@ -271,6 +345,9 @@ export const runImportService = async (files: File[], options: ImportOptions = {
           const isLargeFile = typeof fileSize === 'number' && fileSize >= threshold;
 
           const parsed = await parseWorkbookFile(file, fileOptions);
+          for (const source of parsed.mappingDiagnostics || []) {
+            result.mappingDiagnostics.push(source);
+          }
           if (isLargeFile || fileOptions.forceWorker) {
             // Worker already mapped, validated, and merged the rows.
             result.rows = parsed.rows;
@@ -308,10 +385,38 @@ export const runImportService = async (files: File[], options: ImportOptions = {
   const sourceSummary: ImportSourceSummary[] = [];
 
   for (const result of fileResults) {
-    warnings.push(...result.warnings);
-    errors.push(...result.errors);
-    aggregatedRows.push(...result.rows);
-    sourceSummary.push(...result.sourceSummary);
+    for (const warning of result.warnings) {
+      warnings.push(warning);
+    }
+    for (const error of result.errors) {
+      errors.push(error);
+    }
+    for (const row of result.rows) {
+      aggregatedRows.push(row);
+    }
+    for (const source of result.sourceSummary) {
+      sourceSummary.push(source);
+    }
+    for (const diagnostic of result.mappingDiagnostics) {
+      mappingDiagnostics.push(diagnostic);
+    }
+  }
+
+  const diagnosticsByMapping = new Map<string, MappingDiagnostic[]>();
+  for (const diagnostic of mappingDiagnostics) {
+    if (!diagnostic.mappedField) continue;
+    const key = `${diagnostic.fileName}::${diagnostic.sheetName}::${diagnostic.mappedField}`;
+    const group = diagnosticsByMapping.get(key);
+    if (group) group.push(diagnostic);
+    else diagnosticsByMapping.set(key, [diagnostic]);
+  }
+
+  for (const group of diagnosticsByMapping.values()) {
+    if (group.length < 2) continue;
+    const headers = group.map((diagnostic) => diagnostic.header);
+    for (const diagnostic of group) {
+      diagnostic.collisionWith = headers.filter((header) => header !== diagnostic.header);
+    }
   }
 
   const isSingleLargeFile = filesToProcess.length === 1 && (typeof filesToProcess[0]?.size === 'number' && filesToProcess[0].size >= threshold);
@@ -319,6 +424,7 @@ export const runImportService = async (files: File[], options: ImportOptions = {
     ? aggregatedRows
     : mergeNormalizedRows(aggregatedRows, {
         mergeStrategy: options.mergeStrategy,
+        rateMergeStyle: options.rateMergeStyle,
         onWarning: (w) => warnings.push(w),
       });
   const sheetNames = new Set(
@@ -341,5 +447,6 @@ export const runImportService = async (files: File[], options: ImportOptions = {
     warnings,
     errors,
     sources: sourceSummary,
+    mappingDiagnostics,
   } as ImportResult;
 };

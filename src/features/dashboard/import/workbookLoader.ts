@@ -544,6 +544,9 @@ export const convertWorkbookToSheetsViaWorker = async (
       maxRowsPerSheet: options.maxRowsPerSheet,
       fileSize,
       fileName: file.name,
+      includeRawRowsForPreview: options.includeRawRowsForPreview,
+      mappingOverrides: options.mappingOverrides,
+      rateMergeStyle: options.rateMergeStyle,
     };
 
     const parseMessage: WorkerInMessage = {

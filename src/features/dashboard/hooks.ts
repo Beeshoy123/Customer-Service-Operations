@@ -27,13 +27,14 @@ import {
   aggregateTransactions,
   validateNormalizedRows,
   mergeNormalizedRows,
+  runImportService,
   normalizeCellValue,
   normalizeHeaderToField,
 } from './import';
-import type { SheetTable, SheetGranularity, ImportResult, SkippedSheetInfo } from './import/types';
+import type { SheetTable, SheetGranularity, ImportResult, MappingDiagnostic, SkippedSheetInfo } from './import/types';
 import { detectFileType } from './import/fileTypeDetector';
-import { detectMetrics } from '../accountSetup/metric-detection-engine';
-import { loadAccountProfile, loadLearnedAliases } from '../accountSetup/account-profile-storage';
+import { detectMetrics, learnAlias } from '../accountSetup/metric-detection-engine';
+import { loadAccountProfile, loadLearnedAliases as loadStoredLearnedAliases, loadRateMergeStyle, saveLearnedAliases, saveRateMergeStyle } from '../accountSetup/account-profile-storage';
 
 // ============================================================================
 // FILE STRUCTURE:
@@ -83,6 +84,10 @@ export const useDashboardData = (onDataReset = null, accountName = '') => {
   const [uploadStatus, setUploadStatus] = useState(null);
   const [batchImportSummary, setBatchImportSummary] = useState(null);
   const [importPreview, setImportPreview] = useState(null);
+  const [mappingReview, setMappingReview] = useState<MappingDiagnostic[]>([]);
+  const [pendingAutomaticImport, setPendingAutomaticImport] = useState(null);
+  const [pendingAutomaticFiles, setPendingAutomaticFiles] = useState<File[]>([]);
+  const [rateMergeStyle, setRateMergeStyleState] = useState(() => loadRateMergeStyle(accountName));
   const importAbortControllerRef = useRef(null);
 
   const openImportPreview = useCallback((config) => {
@@ -97,6 +102,30 @@ export const useDashboardData = (onDataReset = null, accountName = '') => {
   const closeImportPreview = useCallback(() => {
     setImportPreview(null);
   }, []);
+
+  const resetDashboard = useCallback(() => {
+    importAbortControllerRef.current?.abort();
+    importAbortControllerRef.current = null;
+    setAgents([]);
+    setSupervisors([]);
+    setHistoricalData({});
+    setHasUploadedData(false);
+    setBatchImportSummary(null);
+    setImportPreview(null);
+    setMappingReview([]);
+    setPendingAutomaticImport(null);
+    setPendingAutomaticFiles([]);
+    setUploadStatus(null);
+    setActiveTimeframe('monthly');
+    setSelectedWeek('Week 1');
+    setSelectedDate(DEFAULT_DATE);
+    setSelectedDow('Monday');
+
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem(DASHBOARD_STORAGE_KEY);
+    }
+    onDataReset?.();
+  }, [onDataReset]);
 
   const inspectAccountHeaders = useCallback((sheets) => {
     const normalizedAccountName = String(accountName || '').trim();
@@ -195,9 +224,13 @@ export const useDashboardData = (onDataReset = null, accountName = '') => {
         const overallPercent = Math.round(
           filePercents.reduce((sum, p) => sum + p, 0) / totalFiles
         );
+        const currentFile = Math.min(
+          completedFiles + (filePercent >= 100 ? 0 : 1),
+          totalFiles,
+        );
         setUploadStatus({
           type: 'info',
-          message: `File ${completedFiles + 1} of ${totalFiles} — ${fileName} — ${filePercent}%`,
+          message: `File ${currentFile} of ${totalFiles} — ${fileName} — ${filePercent}%`,
           progress: Math.min(overallPercent, 99),
           cancelAction: cancelBatch,
         });
@@ -226,6 +259,7 @@ export const useDashboardData = (onDataReset = null, accountName = '') => {
             if (fileType === 'xlsx' || fileType === 'xls' || fileType === 'xlsm') {
               const { sheets, skippedSheets: rawSkipped } = await convertWorkbookToSheetsViaWorker(file, {
                 signal: controller.signal,
+                includeRawRowsForPreview: true,
                 onProgress: (progress) => {
                   emitBatchProgress(i, progress.percent ?? 0, file.name);
                 },
@@ -296,9 +330,10 @@ export const useDashboardData = (onDataReset = null, accountName = '') => {
       const combinedSheets = results.flat().filter(Boolean);
       const combinedSkipped = skippedResults.flat().filter(Boolean);
 
-      setUploadStatus(null);
+      inspectAccountHeaders(combinedSheets);
 
       if (combinedSheets.length === 0 && combinedSkipped.length === 0) {
+        setUploadStatus(null);
         setUploadStatus({ type: 'error', message: 'No usable sheets detected across the selected files.' });
         setTimeout(() => setUploadStatus(null), 5000);
         return;
@@ -309,8 +344,9 @@ export const useDashboardData = (onDataReset = null, accountName = '') => {
         sheets: combinedSheets,
         skippedSheets: combinedSkipped,
       });
+      setUploadStatus(null);
     },
-    [openImportPreview, setUploadStatus]
+    [openImportPreview, setUploadStatus, inspectAccountHeaders]
   );
 
 
@@ -460,6 +496,116 @@ export const useDashboardData = (onDataReset = null, accountName = '') => {
     setUploadStatus({ type: 'success', message: `Applied ${rowsToApply.length} imported rows from the selected sheets.` });
     setTimeout(() => setUploadStatus(null), 5000);
   }, [agents, batchImportSummary, historicalData, setActiveTimeframe, setAgents, setHasUploadedData, setHistoricalData, setSelectedDate, setSupervisors, supervisors]);
+
+  const handleAutomaticImport = useCallback(
+    async (files, mappingOverrides = {}) => {
+      const filesToImport = Array.from(files || []).filter(Boolean);
+      if (!filesToImport.length) return;
+
+      importAbortControllerRef.current?.abort();
+      const controller = new AbortController();
+      importAbortControllerRef.current = controller;
+
+      setUploadStatus({
+        type: 'info',
+        message: `Preparing ${filesToImport.length} file${filesToImport.length > 1 ? 's' : ''}...`,
+        progress: 0,
+        cancelAction: () => controller.abort(),
+      });
+
+      try {
+        const result = await runImportService(filesToImport, {
+          signal: controller.signal,
+          detectDuplicateFiles: true,
+          mappingOverrides,
+          rateMergeStyle: loadAccountProfile(accountName)?.calculationStyles?.rateMergeStyle || rateMergeStyle,
+          onProgress: (progress) => {
+            setUploadStatus({
+              type: 'info',
+              message: progress.message || 'Importing your files...',
+              progress: typeof progress.percent === 'number' ? progress.percent : 0,
+              cancelAction: () => controller.abort(),
+            });
+          },
+        });
+
+        if (!result.rows?.length) {
+          throw new Error(result.errors?.[0]?.message || 'No valid rows were found in the selected files.');
+        }
+
+        setBatchImportSummary(result);
+        const diagnostics = result.mappingDiagnostics || [];
+        const unmappedCount = diagnostics.filter((item) => !item.mappedField).length;
+        const lowConfidenceCount = diagnostics.filter((item) => item.mappedField && item.confidence === 'low').length;
+        const collisionCount = diagnostics.filter((item) => item.collisionWith?.length).length;
+        const reviewItems = diagnostics.filter((item) =>
+          !item.mappedField || item.confidence === 'low' || Boolean(item.collisionWith?.length)
+        );
+        if (reviewItems.length > 0 && Object.keys(mappingOverrides).length === 0) {
+          setPendingAutomaticImport(result);
+          setPendingAutomaticFiles(filesToImport);
+          setMappingReview(reviewItems);
+          setUploadStatus(null);
+          return;
+        }
+        setUploadStatus({
+          type: 'info',
+          message: `Mapped ${diagnostics.length - unmappedCount} of ${diagnostics.length} columns. ${unmappedCount + lowConfidenceCount} field${unmappedCount + lowConfidenceCount === 1 ? '' : 's'} need attention${collisionCount ? `; ${collisionCount} collision${collisionCount === 1 ? '' : 's'} detected` : ''}. Applying ${result.rows.length.toLocaleString()} rows...`,
+          progress: 100,
+          cancelAction: null,
+        });
+        await applyBatchImport(null, result);
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          setUploadStatus({ type: 'info', message: 'Import cancelled.' });
+          setTimeout(() => setUploadStatus(null), 2000);
+          return;
+        }
+
+        console.error('Automatic import failed:', error);
+        setUploadStatus({
+          type: 'error',
+          message: error instanceof Error ? error.message : 'The files could not be imported.',
+        });
+        setTimeout(() => setUploadStatus(null), 6000);
+      } finally {
+        if (importAbortControllerRef.current?.signal === controller.signal) {
+          importAbortControllerRef.current = null;
+        }
+      }
+    },
+    [applyBatchImport, rateMergeStyle, setBatchImportSummary, setUploadStatus]
+  );
+
+  const setRateMergeStyle = useCallback((style) => {
+    setRateMergeStyleState(style);
+    saveRateMergeStyle(accountName, style);
+  }, [accountName]);
+
+  const continueAutomaticImport = useCallback(async (mappingOverrides = {}) => {
+    if (!pendingAutomaticImport || !pendingAutomaticFiles.length) return;
+    const existingAliases = loadStoredLearnedAliases();
+    let learnedAliases = existingAliases;
+    for (const [header, field] of Object.entries(mappingOverrides)) {
+      if (field) {
+        learnedAliases = learnAlias(learnedAliases, header, field as any);
+      }
+    }
+    if (learnedAliases !== existingAliases) saveLearnedAliases(learnedAliases);
+    setPendingAutomaticImport(null);
+    setPendingAutomaticFiles([]);
+    setMappingReview([]);
+    await handleAutomaticImport(pendingAutomaticFiles, mappingOverrides);
+  }, [handleAutomaticImport, pendingAutomaticFiles, pendingAutomaticImport]);
+
+  const handleAutomaticFileUpload = useCallback(
+    (event) => {
+      const files = Array.from(event.target.files || []);
+      event.target.value = '';
+      void handleAutomaticImport(files);
+    },
+    [handleAutomaticImport]
+  );
 
   const confirmImportPreview = useCallback(
     async (config) => {
@@ -840,7 +986,7 @@ export const useDashboardData = (onDataReset = null, accountName = '') => {
 
   return {
     agents, supervisors, oamName, historicalData, hasUploadedData, uploadStatus, batchImportSummary,
-    handleFileUpload, handleFileDrop, applyBatchImport,
+    handleFileUpload, handleFileDrop, handleAutomaticImport, handleAutomaticFileUpload, continueAutomaticImport, mappingReview, rateMergeStyle, setRateMergeStyle, applyBatchImport, resetDashboard,
     importPreview, openImportPreview, closeImportPreview, confirmImportPreview,
     activeTimeframe, setActiveTimeframe, selectedWeek, setSelectedWeek, selectedDate, setSelectedDate,
     selectedDow, setSelectedDow,
