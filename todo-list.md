@@ -7,15 +7,12 @@
 - [ ] Hardcoded OAM names for phase detection
 - [ ] searchedOams computed 3x in 3 different components
 - [ ] supAgentsList/liveSupObj computed in modal render body
-- [ ] No data validation/schema layer between parser and consumers
-- [ ] CSV parser is a 100+ line untested heuristic embedded in a UI event handler
 
 ### Data safety and persistence
 
 - [ ] No backend — all business logic and data storage runs client-side
 - [ ] No environment/config separation
 - [ ] Business logic is tightly coupled to React hooks
-- [ ] Zero automated tests anywhere in the codebase
 
 ### Existing code cleanup already completed
 

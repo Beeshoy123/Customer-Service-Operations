@@ -16,6 +16,22 @@ export type ImportProgress = {
   message?: string;
 };
 
+export type MergeStrategy = 'sum' | 'average' | 'last-seen' | 'first-seen';
+export type MergeFieldStrategy = MergeStrategy;
+
+export type MergeOptions = {
+  /** Per-field merge strategy overrides */
+  mergeStrategy?: Record<string, MergeStrategy>;
+  /**
+   * How to handle duplicate entries from the exact same source (same sourceFile + sourceSheet):
+   * - 'dedupe' (default): Keep last-seen value and avoid double-counting additive metrics.
+   * - 'allow': Merges same-source rows according to field merge strategies.
+   */
+  duplicateSourceHandling?: 'dedupe' | 'allow';
+  /** Optional callback triggered when duplicate source records or files are detected */
+  onWarning?: (warning: ImportWarning) => void;
+};
+
 export type ImportOptions = {
   signal?: AbortSignal;
   onProgress?: (progress: ImportProgress) => void;
@@ -27,6 +43,10 @@ export type ImportOptions = {
   fileName?: string;
   /** When true, workbook files are always parsed via the Web Worker regardless of file size. */
   forceWorker?: boolean;
+  /** Optional per-field merge strategy overrides for mergeNormalizedRows */
+  mergeStrategy?: Record<string, MergeStrategy>;
+  /** Whether to detect and skip duplicate file uploads (defaults to true) */
+  detectDuplicateFiles?: boolean;
 };
 
 export type ImportWarning = {

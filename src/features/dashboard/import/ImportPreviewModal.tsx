@@ -222,24 +222,24 @@ export const ManageMemoryModal: React.FC<ManageMemoryModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[2100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
+    <div className="ipm-memory-backdrop">
       <div
-        className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden"
+        className="ipm-memory-card"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex justify-between items-center px-6 py-4 border-b border-slate-200 bg-slate-50/90">
+        <div className="ipm-memory-header">
           <div>
-            <h3 className="text-base font-bold text-slate-900 m-0 flex items-center gap-2">
+            <h3 className="ipm-section-title">
               <span>🧠</span> Learned Column Mappings
             </h3>
-            <p className="text-xs text-slate-500 m-0 mt-0.5">
+            <p className="ipm-section-desc">
               These mappings are saved in your browser from previous manual corrections.
             </p>
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-700 bg-transparent border-none text-xl cursor-pointer p-1 rounded-lg"
+            className="ipm-close-btn"
             title="Close"
           >
             ✕
@@ -247,18 +247,18 @@ export const ManageMemoryModal: React.FC<ManageMemoryModalProps> = ({
         </div>
 
         {/* Toolbar */}
-        <div className="p-4 border-b border-slate-100 flex items-center justify-between gap-3 bg-white">
+        <div className="ipm-memory-toolbar">
           <input
             type="text"
             placeholder="Search learned mappings..."
             value={filterText}
             onChange={(e) => setFilterText(e.target.value)}
-            className="flex-1 text-xs px-3 py-1.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="ipm-memory-input"
           />
           {entries.length > 0 && (
             <button
               onClick={handleClearAll}
-              className="text-xs text-rose-600 hover:text-rose-800 hover:bg-rose-50 border border-rose-200 rounded-lg px-3 py-1.5 font-medium transition-colors cursor-pointer"
+              className="ipm-clear-btn"
             >
               Clear All Memory
             </button>
@@ -266,52 +266,62 @@ export const ManageMemoryModal: React.FC<ManageMemoryModalProps> = ({
         </div>
 
         {/* Table Body */}
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="ipm-memory-body">
           {entries.length === 0 ? (
-            <div className="text-center py-10 text-slate-400 text-xs">
-              <span className="text-2xl block mb-2">💡</span>
+            <div style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8', fontSize: '0.8rem' }}>
+              <span style={{ fontSize: '1.8rem', display: 'block', marginBottom: '8px' }}>💡</span>
               No learned mappings yet. Whenever you manually map a column in the preview modal, it will be remembered here!
             </div>
           ) : filteredEntries.length === 0 ? (
-            <div className="text-center py-8 text-slate-400 text-xs">
+            <div style={{ textAlign: 'center', padding: '32px 0', color: '#94a3b8', fontSize: '0.8rem' }}>
               No mappings match &quot;{filterText}&quot;.
             </div>
           ) : (
-            <table className="w-full text-left text-xs border-collapse">
+            <table className="ipm-table">
               <thead>
-                <tr className="border-b border-slate-200 text-slate-500 font-semibold bg-slate-50">
-                  <th className="p-2.5">Header</th>
-                  <th className="p-2.5">Mapped Field</th>
-                  <th className="p-2.5 text-center">Uses</th>
-                  <th className="p-2.5">Last Seen</th>
-                  <th className="p-2.5 text-right">Action</th>
+                <tr>
+                  <th>Header</th>
+                  <th>Mapped Field</th>
+                  <th style={{ textAlign: 'center' }}>Uses</th>
+                  <th>Last Seen</th>
+                  <th style={{ textAlign: 'right' }}>Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody>
                 {filteredEntries.map((item) => (
-                  <tr key={`${item.normalizedHeader}-${item.scope || 'global'}`} className="hover:bg-slate-50/70">
-                    <td className="p-2.5 font-mono text-[11px] text-slate-800 font-semibold">
-                      {item.normalizedHeader}
+                  <tr key={`${item.normalizedHeader}-${item.scope || 'global'}`}>
+                    <td>
+                      <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#0f172a' }}>
+                        {item.normalizedHeader}
+                      </span>
                       {item.scope && (
-                        <span className="ml-1.5 px-1.5 py-0.5 rounded text-[9px] bg-slate-100 text-slate-500 font-normal">
+                        <span className="ipm-pattern-badge" style={{ marginLeft: '6px' }}>
                           {item.scope}
                         </span>
                       )}
                     </td>
-                    <td className="p-2.5 text-slate-700">
-                      <span className="font-medium">{getCanonicalFieldLabel(item.mappedField)}</span>{' '}
-                      <span className="text-slate-400 font-mono text-[10px]">({item.mappedField})</span>
+                    <td>
+                      <span style={{ fontWeight: 600 }}>{getCanonicalFieldLabel(item.mappedField)}</span>{' '}
+                      <span style={{ color: '#94a3b8', fontFamily: 'monospace', fontSize: '0.7rem' }}>({item.mappedField})</span>
                     </td>
-                    <td className="p-2.5 text-center text-slate-500 font-mono">
+                    <td style={{ textAlign: 'center', fontFamily: 'monospace', color: '#64748b' }}>
                       {item.count}
                     </td>
-                    <td className="p-2.5 text-slate-500 text-[11px]">
+                    <td style={{ color: '#64748b', fontSize: '0.75rem' }}>
                       {item.lastSeen || '—'}
                     </td>
-                    <td className="p-2.5 text-right">
+                    <td style={{ textAlign: 'right' }}>
                       <button
                         onClick={() => handleDelete(item.normalizedHeader, item.scope)}
-                        className="text-xs text-rose-500 hover:text-rose-700 hover:bg-rose-50 border-none p-1 rounded transition-colors cursor-pointer"
+                        style={{
+                          fontSize: '0.75rem',
+                          color: '#e11d48',
+                          background: 'transparent',
+                          border: 'none',
+                          cursor: 'pointer',
+                          padding: '4px 8px',
+                          borderRadius: '4px'
+                        }}
                         title="Forget this mapping"
                       >
                         🗑️ Delete
@@ -325,13 +335,14 @@ export const ManageMemoryModal: React.FC<ManageMemoryModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="flex justify-between items-center px-6 py-3 border-t border-slate-200 bg-slate-50/80">
-          <span className="text-xs text-slate-500">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 20px', borderTop: '1px solid #e2e8f0', backgroundColor: '#f8fafc' }}>
+          <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
             {entries.length} total mapping{entries.length === 1 ? '' : 's'} stored
           </span>
           <button
             onClick={onClose}
-            className="px-4 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
+            className="ipm-btn-cancel"
+            style={{ padding: '6px 14px' }}
           >
             Close
           </button>
@@ -602,18 +613,18 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
 
   return (
     <>
-      <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-sm animate-fade-in">
+      <div className="ipm-backdrop">
         <div
-          className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-scale-up"
+          className="ipm-dialog"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Modal Header */}
-          <div className="flex justify-between items-center px-6 py-4 border-b border-slate-200 bg-slate-50/80">
+          <div className="ipm-header">
             <div>
-              <h2 className="text-xl font-bold text-slate-900 m-0 flex items-center gap-2">
+              <h2 className="ipm-header-title">
                 <span>📥</span> Import Preview &amp; Verification
               </h2>
-              <p className="text-xs text-slate-500 m-0 mt-0.5">
+              <p className="ipm-header-subtitle">
                 {fileName ? `${fileName} • ` : ''}
                 {sheetStates.length} sheet{sheetStates.length !== 1 ? 's' : ''} detected
                 {workbookGroups.length > 1 ? ` across ${workbookGroups.length} workbooks` : ''}
@@ -625,7 +636,7 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
             </div>
             <button
               onClick={onCancel}
-              className="text-slate-400 hover:text-slate-700 bg-transparent border-none text-2xl cursor-pointer p-1 leading-none rounded-lg"
+              className="ipm-close-btn"
               title="Cancel import"
             >
               ✕
@@ -634,24 +645,24 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
 
           {/* Sheet Tabs grouped by workbook if multi-sheet */}
           {sheetStates.length > 1 && (
-            <div className="flex items-center gap-3 px-6 pt-3 border-b border-slate-200 bg-slate-100/50 overflow-x-auto">
+            <div className="ipm-tabs-container">
               {workbookGroups.length > 1
                 ? workbookGroups.map((group) => (
                     <div
                       key={group.workbookName}
-                      className="flex items-center gap-1.5 p-1 bg-slate-200/50 rounded-lg shrink-0 border border-slate-200/60"
+                      className="ipm-workbook-group"
                     >
                       <div
-                        className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-slate-700 bg-white/90 rounded-md border border-slate-300/60 shadow-2xs whitespace-nowrap"
+                        className="ipm-workbook-badge"
                         title={group.workbookName}
                       >
                         <span>📁</span>
-                        <span className="truncate max-w-[140px]">{group.workbookName}</span>
-                        <span className="text-[10px] text-slate-400 font-normal">
+                        <span className="ipm-workbook-name">{group.workbookName}</span>
+                        <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 'normal' }}>
                           ({group.sheets.length})
                         </span>
                       </div>
-                      <div className="flex items-center gap-1">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                         {group.sheets.map(({ sheet, globalIndex }) => {
                           const isActive = globalIndex === activeSheetIndex;
                           const isReady =
@@ -661,17 +672,13 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
                             <button
                               key={`${sheet.workbookName}::${sheet.sheetName}::${globalIndex}`}
                               onClick={() => setActiveSheetIndex(globalIndex)}
-                              className={`flex items-center gap-1.5 px-3 py-1.5 border-b-2 font-medium text-xs rounded-t-md transition-colors cursor-pointer whitespace-nowrap ${
-                                isActive
-                                  ? 'border-blue-600 text-blue-700 bg-white shadow-xs font-semibold'
-                                  : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/60'
-                              }`}
+                              className={`ipm-tab-btn ${isActive ? 'active' : ''}`}
                               title={`${sheet.workbookName} › ${sheet.sheetName}`}
                             >
                               <span>{isReady ? '✅' : '⚠️'}</span>
-                              <span className="font-semibold">{sheet.sheetName}</span>
-                              <span className="text-[10px] text-slate-400 font-mono">
-                                ({sheet.rowCount.toLocaleString()} rows)
+                              <span>{sheet.sheetName}</span>
+                              <span style={{ fontSize: '0.7rem', opacity: 0.7, fontFamily: 'monospace' }}>
+                                ({sheet.rowCount.toLocaleString()})
                               </span>
                             </button>
                           );
@@ -688,15 +695,11 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
                       <button
                         key={`${sheet.workbookName}::${sheet.sheetName}::${idx}`}
                         onClick={() => setActiveSheetIndex(idx)}
-                        className={`flex items-center gap-2 px-4 py-2 border-b-2 font-medium text-xs rounded-t-lg transition-colors cursor-pointer ${
-                          isActive
-                            ? 'border-blue-600 text-blue-700 bg-white shadow-sm'
-                            : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
-                        }`}
+                        className={`ipm-tab-btn ${isActive ? 'active' : ''}`}
                       >
                         <span>{isReady ? '✅' : '⚠️'}</span>
-                        <span className="font-semibold">{sheet.sheetName}</span>
-                        <span className="text-[10px] text-slate-400 font-mono">
+                        <span>{sheet.sheetName}</span>
+                        <span style={{ fontSize: '0.7rem', opacity: 0.7, fontFamily: 'monospace' }}>
                           ({sheet.rowCount.toLocaleString()} rows)
                         </span>
                       </button>
@@ -706,46 +709,52 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
           )}
 
           {/* Modal Scrollable Body */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          <div className="ipm-body">
             {/* Skipped Sheets Banner */}
             {skippedList.length > 0 && (
-              <div className="bg-amber-50/90 border border-amber-200 rounded-xl p-4 space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-base">⚠️</span>
-                    <span className="text-xs font-bold text-amber-900">
+              <div className="ipm-skipped-banner">
+                <div className="ipm-skipped-header">
+                  <div className="ipm-skipped-title">
+                    <span>⚠️</span>
+                    <span>
                       {skippedList.length} sheet{skippedList.length > 1 ? 's were' : ' was'} skipped during auto-detection
                     </span>
                   </div>
-                  <span className="text-[11px] text-amber-700">
+                  <span className="ipm-skipped-subtitle">
                     Review reasons below or click &ldquo;+ Include Sheet&rdquo; to import
                   </span>
                 </div>
-                <div className="flex flex-col gap-2 pt-1">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {skippedList.map((item, idx) => (
                     <div
                       key={`${item.sheetName}-${idx}`}
-                      className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 rounded-lg bg-white border border-amber-200 text-xs shadow-xs"
+                      className="ipm-skipped-item"
                     >
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-semibold text-slate-800">{item.sheetName}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <span style={{ fontWeight: 700, color: '#0f172a' }}>{item.sheetName}</span>
                         {item.workbookName && (
-                          <span className="text-[10px] text-slate-500 font-mono">[{item.workbookName}]</span>
+                          <span style={{ fontSize: '0.7rem', color: '#64748b', fontFamily: 'monospace' }}>
+                            [{item.workbookName}]
+                          </span>
                         )}
-                        <span className="text-slate-400">•</span>
-                        <span className="text-[11px] text-amber-800 italic">{item.reason}</span>
+                        <span style={{ color: '#94a3b8' }}>•</span>
+                        <span style={{ fontSize: '0.75rem', color: '#92400e', fontStyle: 'italic' }}>
+                          {item.reason}
+                        </span>
                       </div>
                       {item.table ? (
                         <button
                           type="button"
                           onClick={() => handleIncludeSkippedSheet(item)}
-                          className="px-2.5 py-1 text-[11px] font-semibold text-blue-700 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 rounded-md border border-blue-200 transition-colors cursor-pointer self-start sm:self-auto shrink-0"
+                          className="ipm-include-btn"
                           title={`Include "${item.sheetName}" in import`}
                         >
                           + Include Sheet
                         </button>
                       ) : (
-                        <span className="text-[10px] text-slate-400 italic shrink-0">No data rows</span>
+                        <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontStyle: 'italic' }}>
+                          No data rows
+                        </span>
                       )}
                     </div>
                   ))}
@@ -754,294 +763,287 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
             )}
 
             {!currentSheet ? (
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-8 text-center space-y-3">
-                <div className="text-3xl">📋</div>
-                <h3 className="text-sm font-bold text-slate-800">No Sheets Currently Selected</h3>
-                <p className="text-xs text-slate-500 max-w-md mx-auto">
-                  No sheets were automatically recognized as operational data. If your workbook contains valid data, click <span className="font-semibold text-blue-600">+ Include Sheet</span> in the notice above to import and configure that sheet.
+              <div style={{ padding: '48px 24px', textAlign: 'center', backgroundColor: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontSize: '2rem', marginBottom: '8px' }}>📋</div>
+                <h3 style={{ margin: '0 0 6px 0', fontSize: '1rem', fontWeight: 700, color: '#0f172a' }}>
+                  No Sheets Currently Selected
+                </h3>
+                <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b', maxWidth: '440px', marginInline: 'auto' }}>
+                  No sheets were automatically recognized as operational data. If your workbook contains valid data, click <strong style={{ color: '#2563eb' }}>+ Include Sheet</strong> in the notice above to import and configure that sheet.
                 </p>
               </div>
             ) : (
               <>
                 {/* Section 1: Granularity Verification */}
-                <div className="bg-slate-50/80 rounded-xl border border-slate-200 p-5 space-y-3">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="ipm-section">
+                  <div className="ipm-section-header">
                     <div>
-                      <h3 className="text-sm font-bold text-slate-900 m-0 flex items-center gap-2">
+                      <h3 className="ipm-section-title">
                         <span>📊</span> 1. Sheet Data Granularity:{' '}
                         {currentSheet.workbookName && (
-                          <span className="text-slate-500 font-normal">{currentSheet.workbookName} › </span>
+                          <span style={{ color: '#64748b', fontWeight: 500 }}>{currentSheet.workbookName} › </span>
                         )}
-                        <span className="text-blue-700">{currentSheet.sheetName}</span>
+                        <span style={{ color: '#2563eb' }}>{currentSheet.sheetName}</span>
                       </h3>
-                      <p className="text-xs text-slate-500 m-0 mt-0.5">
+                      <p className="ipm-section-desc">
                         {currentSheet.granularityReason || 'Determines whether rows are daily summaries or call/ticket-level transactions.'}
                       </p>
                     </div>
 
-                {/* Status Badge */}
-                <div>
-                  {currentSheet.isConfirmed && currentSheet.selectedGranularity !== 'unknown' ? (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                      <span>✓</span> {currentSheet.isManuallySet ? 'Manually Confirmed' : 'Auto-Confirmed (High Confidence)'}
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300 animate-pulse">
-                      <span>⚠️</span> Needs Confirmation
-                    </span>
-                  )}
-                </div>
-              </div>
+                    {/* Status Badge */}
+                    <div>
+                      {currentSheet.isConfirmed && currentSheet.selectedGranularity !== 'unknown' ? (
+                        <span className="ipm-badge ipm-badge-exact">
+                          <span>✓</span> {currentSheet.isManuallySet ? 'Manually Confirmed' : 'Auto-Confirmed (High Confidence)'}
+                        </span>
+                      ) : (
+                        <span className="ipm-badge ipm-badge-low">
+                          <span>⚠️</span> Needs Confirmation
+                        </span>
+                      )}
+                    </div>
+                  </div>
 
-              {/* Granularity Selector / Override */}
-              <div className="flex flex-col sm:flex-row sm:items-center gap-3 pt-2">
-                <label htmlFor="granularity-select" className="text-xs font-bold text-slate-700 whitespace-nowrap">
-                  Granularity Setting:
-                </label>
-                <select
-                  id="granularity-select"
-                  value={currentSheet.selectedGranularity}
-                  onChange={(e) => handleGranularityChange(activeSheetIndex, e.target.value)}
-                  className={`flex-1 max-w-md text-xs font-medium p-2.5 rounded-lg border bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer ${
-                    currentSheet.selectedGranularity === 'unknown'
-                      ? 'border-amber-400 bg-amber-50/30 text-amber-900'
-                      : 'border-slate-300 text-slate-800'
-                  }`}
-                >
-                  <option value="aggregate">Aggregate (Daily Summary — ~1 row per agent/day)</option>
-                  <option value="transaction">Transaction (Call/Ticket Level — will be aggregated by agent &amp; date)</option>
-                  {currentSheet.selectedGranularity === 'unknown' && (
-                    <option value="unknown" disabled>
-                      ⚠️ Please select granularity to confirm...
-                    </option>
-                  )}
-                </select>
+                  {/* Granularity Selector / Override */}
+                  <div className="ipm-granularity-row">
+                    <label htmlFor="granularity-select" className="ipm-label">
+                      Granularity Setting:
+                    </label>
+                    <select
+                      id="granularity-select"
+                      value={currentSheet.selectedGranularity}
+                      onChange={(e) => handleGranularityChange(activeSheetIndex, e.target.value)}
+                      className={`ipm-select ${currentSheet.selectedGranularity === 'unknown' ? 'ipm-select-warning' : ''}`}
+                      style={{ flex: '1 1 320px', maxWidth: '460px' }}
+                    >
+                      <option value="aggregate">Aggregate (Daily Summary — ~1 row per agent/day)</option>
+                      <option value="transaction">Transaction (Call/Ticket Level — will be aggregated by agent &amp; date)</option>
+                      {currentSheet.selectedGranularity === 'unknown' && (
+                        <option value="unknown" disabled>
+                          ⚠️ Please select granularity to confirm...
+                        </option>
+                      )}
+                    </select>
 
-                {currentSheet.isManuallySet && (
-                  <span className="text-[11px] text-blue-600 font-medium">Manual override applied</span>
-                )}
-              </div>
-            </div>
-
-            {/* Section 2: Column Mapping Verification */}
-            <div className="space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900 m-0 flex items-center gap-2">
-                    <span>🗺️</span> 2. Column Mapping &amp; Confidence Table:{' '}
-                    {currentSheet.workbookName && (
-                      <span className="text-slate-500 font-normal">{currentSheet.workbookName} › </span>
+                    {currentSheet.isManuallySet && (
+                      <span style={{ fontSize: '0.75rem', color: '#2563eb', fontWeight: 600 }}>
+                        Manual override applied
+                      </span>
                     )}
-                    <span className="text-blue-700">{currentSheet.sheetName}</span>
-                  </h3>
-                  <p className="text-xs text-slate-500 m-0 mt-0.5">
-                    Headers matched using multi-signal scoring (header, data patterns, and learned memory). Verify or adjust mappings before importing.
-                  </p>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
-                  <span className="text-xs text-slate-500 font-mono">
-                    {currentSheet.columnMappings.filter((c) => c.mappedField).length} of {currentSheet.columnMappings.length} mapped
-                  </span>
-                  {unmappedCount > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => handleBulkIgnoreUnmapped(activeSheetIndex)}
-                      className="px-2.5 py-1 text-xs font-medium text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg transition-colors cursor-pointer flex items-center gap-1 shadow-xs"
-                      title="Set all unresolved columns on this sheet to None (Ignore)"
-                    >
-                      <span>🚫</span> Ignore All Unmapped ({unmappedCount})
-                    </button>
-                  )}
-                  {sheetStates.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={handleApplyMappingsToMatching}
-                      disabled={matchingSheetIndices.length === 0}
-                      className={`px-2.5 py-1 text-xs font-medium rounded-lg border transition-colors flex items-center gap-1 shadow-xs ${
-                        matchingSheetIndices.length > 0
-                          ? 'text-blue-700 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 border-blue-300 cursor-pointer'
-                          : 'text-slate-400 bg-slate-50 border-slate-200 cursor-not-allowed'
-                      }`}
-                      title={
-                        matchingSheetIndices.length > 0
-                          ? `Copy this sheet's column mappings to ${matchingSheetIndices.length} other sheet${matchingSheetIndices.length > 1 ? 's' : ''} with the same headers`
-                          : 'No other loaded sheets share the same headers as this sheet'
-                      }
-                    >
-                      <span>⚡</span>
-                      {matchingSheetIndices.length > 0
-                        ? `Apply to ${matchingSheetIndices.length} matching sheet${matchingSheetIndices.length > 1 ? 's' : ''}`
-                        : 'No matching sheets'}
-                    </button>
-                  )}
-                </div>
-              </div>
 
-              {/* Apply-all success notice */}
-              {applyAllNotice && (
-                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-50 border border-blue-200 text-xs text-blue-800 font-medium animate-fade-in">
-                  <span>✅</span>
-                  <span>{applyAllNotice}</span>
-                  <button
-                    type="button"
-                    onClick={() => setApplyAllNotice(null)}
-                    className="ml-auto text-blue-500 hover:text-blue-700 bg-transparent border-none cursor-pointer text-sm leading-none"
-                    aria-label="Dismiss"
-                  >
-                    ✕
-                  </button>
-                </div>
-              )}
+                {/* Section 2: Column Mapping Verification */}
+                <div className="ipm-section">
+                  <div className="ipm-section-header">
+                    <div>
+                      <h3 className="ipm-section-title">
+                        <span>🗺️</span> 2. Column Mapping &amp; Confidence Table:{' '}
+                        {currentSheet.workbookName && (
+                          <span style={{ color: '#64748b', fontWeight: 500 }}>{currentSheet.workbookName} › </span>
+                        )}
+                        <span style={{ color: '#2563eb' }}>{currentSheet.sheetName}</span>
+                      </h3>
+                      <p className="ipm-section-desc">
+                        Headers matched using multi-signal scoring (header, data patterns, and learned memory). Verify or adjust mappings before importing.
+                      </p>
+                    </div>
 
-              {/* Column Mapping Table */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '0.78rem', color: '#64748b', fontFamily: 'monospace', fontWeight: 600 }}>
+                        {currentSheet.columnMappings.filter((c) => c.mappedField).length} of {currentSheet.columnMappings.length} mapped
+                      </span>
 
-              <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-                <table className="w-full text-left text-xs border-collapse">
-                  <thead className="bg-slate-100/80 text-slate-700 font-bold border-b border-slate-200">
-                    <tr>
-                      <th className="p-3">Original Header</th>
-                      <th className="p-3">Sample Value</th>
-                      <th className="p-3">Match Confidence</th>
-                      <th className="p-3">Mapped Field</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 bg-white">
-                    {currentSheet.columnMappings.map((col) => {
-                      const sample = col.sampleValues && col.sampleValues.length > 0 ? col.sampleValues[0] : '—';
-                      const isRemembered = col.confidence === 'remembered' || col.matchType === 'remembered';
-
-                      return (
-                        <tr
-                          key={`${currentSheet.sheetName}-${col.index}-${col.header}`}
-                          className={`hover:bg-slate-50/70 transition-colors ${
-                            isRemembered
-                              ? 'bg-purple-50/30'
-                              : col.isLowConfidence
-                                ? 'bg-amber-50/40'
-                                : ''
-                          }`}
+                      {unmappedCount > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => handleBulkIgnoreUnmapped(activeSheetIndex)}
+                          className="ipm-btn ipm-btn-secondary"
+                          title="Set all unresolved columns on this sheet to None (Ignore)"
                         >
-                          <td className="p-3">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="font-semibold text-slate-800">
-                                {col.header || <span className="italic text-slate-400">Empty Header</span>}
-                              </span>
-                              {col.fingerprint && col.fingerprint !== 'empty' && (
-                                <span
-                                  className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-100 text-slate-600 border border-slate-200"
-                                  title={`Detected value pattern: ${col.fingerprint}`}
-                                >
-                                  {col.fingerprint}
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="p-3 text-slate-500 font-mono text-[11px] max-w-[150px] truncate" title={sample}>
-                            {sample}
-                          </td>
-                          <td className="p-3">
-                            {isRemembered ? (
-                              <span
-                                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800 border border-purple-300"
-                                title={
-                                  col.score !== undefined
-                                    ? `Remembered from memory • Score: ${col.score}/100`
-                                    : 'Remembered from previous imports in this browser'
-                                }
-                              >
-                                <span>🔁</span> Remembered
-                              </span>
-                            ) : col.confidence === 'exact' ? (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                                ✓ Exact Match
-                              </span>
-                            ) : col.isLowConfidence ? (
-                              <span
-                                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300"
-                                title={
-                                  col.score !== undefined
-                                    ? `Confidence score: ${col.score}/100${col.candidates?.[0]?.signals ? ' (' + col.candidates[0].signals.join(', ') + ')' : ''}`
-                                    : 'Matched only through token-hint fallback or low-confidence score'
-                                }
-                              >
-                                <span>⚠️</span> Low Confidence {col.score !== undefined ? `(${col.score}%)` : ''}
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] text-slate-500 bg-slate-100 border border-slate-200">
-                                — Unmapped
-                              </span>
-                            )}
-                          </td>
-                          <td className="p-3">
-                            <select
-                              value={col.mappedField ?? ''}
-                              onChange={(e) => handleColumnMapChange(activeSheetIndex, col.index, e.target.value)}
-                              className={`w-full max-w-xs text-xs p-1.5 rounded-md border bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer ${
-                                isRemembered
-                                  ? 'border-purple-300 bg-purple-50/20 text-purple-950 font-medium'
-                                  : col.isLowConfidence
-                                    ? 'border-amber-400 bg-amber-50/20 text-amber-950 font-medium'
-                                    : col.mappedField
-                                      ? 'border-slate-300 text-slate-900'
-                                      : 'border-slate-200 text-slate-400 italic'
-                              }`}
-                            >
-                              <option value="">(None / Ignore Column)</option>
-                              {col.candidates && col.candidates.length > 0 && (
-                                <optgroup label="🎯 Top Suggestions (Ranked)">
-                                  {col.candidates.map((cand) => (
-                                    <option key={`cand-${cand.field}`} value={cand.field}>
-                                      {getCanonicalFieldLabel(cand.field)} ({cand.field}) — {cand.score}% match
-                                    </option>
-                                  ))}
-                                </optgroup>
-                              )}
-                              <optgroup label="All Canonical Fields">
-                                {CANONICAL_FIELD_OPTIONS.filter(
-                                  (opt) => !col.candidates?.some((cand) => cand.field === opt.value)
-                                ).map((opt) => (
-                                  <option key={opt.value} value={opt.value}>
-                                    {opt.label} ({opt.value})
-                                  </option>
-                                ))}
-                              </optgroup>
-                              {col.mappedField &&
-                                !CANONICAL_FIELD_OPTIONS.some((o) => o.value === col.mappedField) &&
-                                !col.candidates?.some((c) => c.field === col.mappedField) && (
-                                  <option value={col.mappedField}>{col.mappedField}</option>
-                              )}
-                            </select>
-                          </td>
+                          <span>🚫</span> Ignore All Unmapped ({unmappedCount})
+                        </button>
+                      )}
+
+                      {sheetStates.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={handleApplyMappingsToMatching}
+                          disabled={matchingSheetIndices.length === 0}
+                          className="ipm-btn ipm-btn-primary"
+                          title={
+                            matchingSheetIndices.length > 0
+                              ? `Copy this sheet's column mappings to ${matchingSheetIndices.length} other sheet${matchingSheetIndices.length > 1 ? 's' : ''} with the same headers`
+                              : 'No other loaded sheets share the same headers as this sheet'
+                          }
+                        >
+                          <span>⚡</span>
+                          {matchingSheetIndices.length > 0
+                            ? `Apply to ${matchingSheetIndices.length} matching sheet${matchingSheetIndices.length > 1 ? 's' : ''}`
+                            : 'No matching sheets'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Apply-all success notice */}
+                  {applyAllNotice && (
+                    <div className="ipm-success-toast">
+                      <span>✅</span>
+                      <span>{applyAllNotice}</span>
+                      <button
+                        type="button"
+                        onClick={() => setApplyAllNotice(null)}
+                        style={{ marginLeft: 'auto', background: 'transparent', border: 'none', cursor: 'pointer', color: '#1e40af', fontSize: '0.9rem' }}
+                        aria-label="Dismiss"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Column Mapping Table */}
+                  <div className="ipm-table-card">
+                    <table className="ipm-table">
+                      <thead>
+                        <tr>
+                          <th>Original Header</th>
+                          <th>Sample Value</th>
+                          <th>Match Confidence</th>
+                          <th>Mapped Field</th>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </>
-        )}
-      </div>
+                      </thead>
+                      <tbody>
+                        {currentSheet.columnMappings.map((col) => {
+                          const sample = col.sampleValues && col.sampleValues.length > 0 ? col.sampleValues[0] : '—';
+                          const isRemembered = col.confidence === 'remembered' || col.matchType === 'remembered';
+
+                          return (
+                            <tr
+                              key={`${currentSheet.sheetName}-${col.index}-${col.header}`}
+                              className={isRemembered ? 'row-remembered' : col.isLowConfidence ? 'row-low-confidence' : ''}
+                            >
+                              <td>
+                                <div className="ipm-header-name-cell">
+                                  <span className="ipm-col-header-text">
+                                    {col.header || <span style={{ fontStyle: 'italic', color: '#94a3b8' }}>Empty Header</span>}
+                                  </span>
+                                  {col.fingerprint && col.fingerprint !== 'empty' && (
+                                    <span
+                                      className="ipm-pattern-badge"
+                                      title={`Detected value pattern: ${col.fingerprint}`}
+                                    >
+                                      {col.fingerprint}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="ipm-sample-val" title={String(sample)}>
+                                {String(sample)}
+                              </td>
+                              <td>
+                                {isRemembered ? (
+                                  <span
+                                    className="ipm-badge ipm-badge-remembered"
+                                    title={
+                                      col.score !== undefined
+                                        ? `Remembered from memory • Score: ${col.score}/100`
+                                        : 'Remembered from previous imports in this browser'
+                                    }
+                                  >
+                                    <span>🔁</span> Remembered
+                                  </span>
+                                ) : col.confidence === 'exact' ? (
+                                  <span className="ipm-badge ipm-badge-exact">
+                                    ✓ Exact Match
+                                  </span>
+                                ) : col.isLowConfidence ? (
+                                  <span
+                                    className="ipm-badge ipm-badge-low"
+                                    title={
+                                      col.score !== undefined
+                                        ? `Confidence score: ${col.score}/100${col.candidates?.[0]?.signals ? ' (' + col.candidates[0].signals.join(', ') + ')' : ''}`
+                                        : 'Matched only through token-hint fallback or low-confidence score'
+                                    }
+                                  >
+                                    <span>⚠️</span> Low Confidence {col.score !== undefined ? `(${col.score}%)` : ''}
+                                  </span>
+                                ) : (
+                                  <span className="ipm-badge ipm-badge-unmapped">
+                                    — Unmapped
+                                  </span>
+                                )}
+                              </td>
+                              <td>
+                                <select
+                                  value={col.mappedField ?? ''}
+                                  onChange={(e) => handleColumnMapChange(activeSheetIndex, col.index, e.target.value)}
+                                  className="ipm-select"
+                                  style={{
+                                    width: '100%',
+                                    maxWidth: '280px',
+                                    borderColor: isRemembered ? '#c084fc' : col.isLowConfidence ? '#f59e0b' : col.mappedField ? '#94a3b8' : '#cbd5e1',
+                                    backgroundColor: isRemembered ? '#faf5ff' : col.isLowConfidence ? '#fffbeb' : '#ffffff',
+                                    color: col.mappedField ? '#0f172a' : '#94a3b8',
+                                    fontStyle: col.mappedField ? 'normal' : 'italic'
+                                  }}
+                                >
+                                  <option value="">(None / Ignore Column)</option>
+                                  {col.candidates && col.candidates.length > 0 && (
+                                    <optgroup label="🎯 Top Suggestions (Ranked)">
+                                      {col.candidates.map((cand) => (
+                                        <option key={`cand-${cand.field}`} value={cand.field}>
+                                          {getCanonicalFieldLabel(cand.field)} ({cand.field}) — {cand.score}% match
+                                        </option>
+                                      ))}
+                                    </optgroup>
+                                  )}
+                                  <optgroup label="All Canonical Fields">
+                                    {CANONICAL_FIELD_OPTIONS.filter(
+                                      (opt) => !col.candidates?.some((cand) => cand.field === opt.value)
+                                    ).map((opt) => (
+                                      <option key={opt.value} value={opt.value}>
+                                        {opt.label} ({opt.value})
+                                      </option>
+                                    ))}
+                                  </optgroup>
+                                  {col.mappedField &&
+                                    !CANONICAL_FIELD_OPTIONS.some((o) => o.value === col.mappedField) &&
+                                    !col.candidates?.some((c) => c.field === col.mappedField) && (
+                                      <option value={col.mappedField}>{col.mappedField}</option>
+                                  )}
+                                </select>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
 
           {/* Modal Footer */}
-          <div className="flex flex-col sm:flex-row justify-between items-center px-6 py-4 border-t border-slate-200 bg-slate-50/80 gap-3">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-3 text-xs">
+          <div className="ipm-footer">
+            <div className="ipm-footer-left">
               {sheetStates.length === 0 ? (
-                <span className="text-amber-800 font-semibold flex items-center gap-1.5">
+                <span className="ipm-status-pending">
                   <span>ℹ️</span> No sheets included yet. Click &ldquo;+ Include Sheet&rdquo; on any skipped sheet above to import it.
                 </span>
               ) : allConfirmed ? (
-                <span className="text-emerald-700 font-bold flex items-center gap-1.5">
+                <span className="ipm-status-ready">
                   <span>✅</span> All {sheetStates.length} sheet{sheetStates.length > 1 ? 's' : ''} confirmed and ready to import.
                 </span>
               ) : (
-                <span className="text-amber-800 font-semibold flex items-center gap-1.5">
+                <span className="ipm-status-pending">
                   <span>⚠️</span> Please confirm granularity for all sheets before importing ({confirmedCount}/{sheetStates.length} confirmed).
                 </span>
               )}
 
               {/* Memory Indicator */}
-              <div className="flex items-center gap-1.5 text-slate-500 pl-0 sm:pl-3 sm:border-l border-slate-300">
+              <div className="ipm-memory-counter">
                 <span>🧠</span>
                 <span>
                   {learnedCount} mapping{learnedCount === 1 ? '' : 's'} learned
@@ -1049,28 +1051,24 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowManageMemory(true)}
-                  className="text-blue-600 hover:text-blue-800 hover:underline font-medium ml-1 cursor-pointer bg-transparent border-none p-0"
+                  className="ipm-manage-link"
                 >
                   Manage
                 </button>
               </div>
             </div>
 
-            <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+            <div className="ipm-footer-actions">
               <button
                 onClick={onCancel}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
+                className="ipm-btn-cancel"
               >
                 Cancel
               </button>
               <button
                 onClick={handleCommit}
                 disabled={!allConfirmed || sheetStates.length === 0}
-                className={`px-5 py-2 text-xs font-bold rounded-lg transition-all flex items-center gap-2 cursor-pointer ${
-                  allConfirmed && sheetStates.length > 0
-                    ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg'
-                    : 'bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed'
-                }`}
+                className="ipm-btn-commit"
                 title={
                   sheetStates.length === 0
                     ? 'Please include at least one sheet to import'

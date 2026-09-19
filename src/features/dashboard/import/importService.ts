@@ -3,7 +3,7 @@ import { detectFileType, isSupportedImportType } from './fileTypeDetector';
 import { convertWorkbookToSheets, convertWorkbookToSheetsViaWorker, DEFAULT_LARGE_FILE_SIZE_THRESHOLD } from './workbookLoader';
 import { selectSheets } from './sheetSelector';
 import { mapTableToNormalizedRows, normalizeCellValue, normalizeHeaderToField } from './schemaNormalizer';
-import { mergeNormalizedRows } from './mergeData';
+import { mergeNormalizedRows, detectDuplicateFiles } from './mergeData';
 import { validateNormalizedRows } from './validation';
 import type { ImportOptions, ImportProgress, ImportResult, ImportSourceSummary, ImportWarning, NormalizedRow } from './types';
 
@@ -181,22 +181,33 @@ export const runImportService = async (files: File[], options: ImportOptions = {
   throwIfAborted(options.signal);
 
   const threshold = options.largeFileSizeThreshold ?? DEFAULT_LARGE_FILE_SIZE_THRESHOLD;
-  const isMultiFile = files.length > 1;
+
+  // Detect duplicate files in the upload list
+  const initialWarnings: ImportWarning[] = [];
+  let filesToProcess = files;
+
+  if (options.detectDuplicateFiles !== false && files.length > 1) {
+    const { uniqueFiles, duplicateWarnings } = detectDuplicateFiles(files);
+    filesToProcess = uniqueFiles;
+    initialWarnings.push(...duplicateWarnings);
+  }
+
+  const isMultiFile = filesToProcess.length > 1;
 
   // Per-file progress tracking for unified status messages during concurrent loads.
-  const filePercents: number[] = new Array(files.length).fill(0);
+  const filePercents: number[] = new Array(filesToProcess.length).fill(0);
 
   const emitBatchProgress = (fileIndex: number, filePercent: number, fileName: string) => {
     filePercents[fileIndex] = filePercent;
     const completedFiles = filePercents.filter((p) => p >= 100).length;
-    const overallPercent = Math.round(filePercents.reduce((sum, p) => sum + p, 0) / files.length);
+    const overallPercent = Math.round(filePercents.reduce((sum, p) => sum + p, 0) / filesToProcess.length);
     notifyProgress(options, {
       phase: 'parsing',
       fileName,
       currentFile: completedFiles + 1,
-      totalFiles: files.length,
+      totalFiles: filesToProcess.length,
       percent: Math.min(overallPercent, 99),
-      message: `File ${completedFiles + 1} of ${files.length} — ${fileName} — ${filePercent}%`,
+      message: `File ${completedFiles + 1} of ${filesToProcess.length} — ${fileName} — ${filePercent}%`,
     });
   };
 
@@ -210,13 +221,13 @@ export const runImportService = async (files: File[], options: ImportOptions = {
 
   notifyProgress(options, {
     phase: 'preparing',
-    totalFiles: files.length,
+    totalFiles: filesToProcess.length,
     percent: 0,
-    message: `Preparing ${files.length} file${files.length > 1 ? 's' : ''}...`,
+    message: `Preparing ${filesToProcess.length} file${filesToProcess.length > 1 ? 's' : ''}...`,
   });
 
   const fileResults = await runConcurrently<File, FileResult>(
-    files,
+    filesToProcess,
     BATCH_CONCURRENCY,
     async (file, fileIndex) => {
       const result: FileResult = {
@@ -291,7 +302,7 @@ export const runImportService = async (files: File[], options: ImportOptions = {
   );
 
   // Merge results in original file order.
-  const warnings: ImportWarning[] = [];
+  const warnings: ImportWarning[] = [...initialWarnings];
   const errors: ImportWarning[] = [];
   const aggregatedRows: NormalizedRow[] = [];
   const sourceSummary: ImportSourceSummary[] = [];
@@ -303,8 +314,13 @@ export const runImportService = async (files: File[], options: ImportOptions = {
     sourceSummary.push(...result.sourceSummary);
   }
 
-  const isSingleLargeFile = files.length === 1 && (typeof files[0]?.size === 'number' && files[0].size >= threshold);
-  const mergedRows = isSingleLargeFile ? aggregatedRows : mergeNormalizedRows(aggregatedRows);
+  const isSingleLargeFile = filesToProcess.length === 1 && (typeof filesToProcess[0]?.size === 'number' && filesToProcess[0].size >= threshold);
+  const mergedRows = isSingleLargeFile
+    ? aggregatedRows
+    : mergeNormalizedRows(aggregatedRows, {
+        mergeStrategy: options.mergeStrategy,
+        onWarning: (w) => warnings.push(w),
+      });
   const sheetNames = new Set(
     sourceSummary
       .map((source) => source.sheetName)
@@ -313,13 +329,13 @@ export const runImportService = async (files: File[], options: ImportOptions = {
 
   notifyProgress(options, {
     phase: 'validating',
-    totalFiles: files.length,
+    totalFiles: filesToProcess.length,
     percent: 100,
     message: `Import complete: ${mergedRows.length} rows normalized.`,
   });
 
   return {
-    files: files.length,
+    files: filesToProcess.length,
     sheets: sheetNames.size || 1,
     rows: mergedRows,
     warnings,

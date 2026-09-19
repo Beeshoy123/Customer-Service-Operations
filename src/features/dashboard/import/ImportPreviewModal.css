@@ -1,0 +1,719 @@
+/* ==========================================================================
+   Import Preview Modal Styles
+   Zero-dependency, scoped styles for the mixed-format import preview & verification
+   ========================================================================== */
+
+/* Outer Backdrop Overlay */
+.ipm-backdrop {
+  position: fixed;
+  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 9999;
+  background-color: rgba(11, 15, 25, 0.85);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  box-sizing: border-box;
+  overflow-y: auto;
+  animation: ipmFadeIn 0.2s ease-out;
+}
+
+@keyframes ipmFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes ipmScaleUp {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* Modal Window Card */
+.ipm-dialog {
+  background-color: #ffffff;
+  color: #0f172a;
+  border-radius: 16px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(15, 23, 42, 0.08);
+  border: 1px solid #cbd5e1;
+  width: 100%;
+  max-width: 1040px;
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  animation: ipmScaleUp 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  box-sizing: border-box;
+  text-align: left;
+}
+
+/* Header */
+.ipm-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 24px;
+  border-bottom: 1px solid #e2e8f0;
+  background-color: #f8fafc;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+.ipm-header-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #0f172a;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  line-height: 1.3;
+}
+
+.ipm-header-subtitle {
+  margin: 4px 0 0 0;
+  font-size: 0.8rem;
+  color: #64748b;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.ipm-close-btn {
+  background: transparent;
+  border: none;
+  font-size: 1.5rem;
+  line-height: 1;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: 8px;
+  transition: all 0.15s ease;
+}
+
+.ipm-close-btn:hover {
+  background-color: #e2e8f0;
+  color: #0f172a;
+}
+
+/* Workbook & Sheet Tabs Strip */
+.ipm-tabs-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 24px 0 24px;
+  border-bottom: 1px solid #e2e8f0;
+  background-color: #f1f5f9;
+  overflow-x: auto;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+.ipm-workbook-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  background: rgba(226, 232, 240, 0.7);
+  border-radius: 10px;
+  border: 1px solid #cbd5e1;
+  flex-shrink: 0;
+  margin-bottom: 8px;
+}
+
+.ipm-workbook-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #334155;
+  background-color: #ffffff;
+  border-radius: 6px;
+  border: 1px solid #cbd5e1;
+  white-space: nowrap;
+}
+
+.ipm-workbook-name {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ipm-tab-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border-radius: 6px 6px 0 0;
+  background: transparent;
+  color: #475569;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.ipm-tab-btn:hover {
+  background-color: rgba(255, 255, 255, 0.8);
+  color: #0f172a;
+}
+
+.ipm-tab-btn.active {
+  background-color: #ffffff;
+  color: #2563eb;
+  border-bottom-color: #2563eb;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  font-weight: 700;
+}
+
+/* Scrollable Body */
+.ipm-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  box-sizing: border-box;
+}
+
+/* Skipped Sheets Alert Banner */
+.ipm-skipped-banner {
+  background-color: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-sizing: border-box;
+}
+
+.ipm-skipped-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ipm-skipped-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #78350f;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ipm-skipped-subtitle {
+  font-size: 0.75rem;
+  color: #92400e;
+}
+
+.ipm-skipped-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background-color: #ffffff;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  gap: 8px;
+}
+
+.ipm-include-btn {
+  background-color: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.ipm-include-btn:hover {
+  background-color: #dbeafe;
+  color: #1e40af;
+}
+
+/* Section Containers */
+.ipm-section {
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-sizing: border-box;
+}
+
+.ipm-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.ipm-section-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #0f172a;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ipm-section-desc {
+  margin: 4px 0 0 0;
+  font-size: 0.78rem;
+  color: #64748b;
+  line-height: 1.4;
+}
+
+/* Granularity Control Row */
+.ipm-granularity-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-top: 6px;
+}
+
+.ipm-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #334155;
+  white-space: nowrap;
+}
+
+.ipm-select {
+  padding: 8px 12px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #0f172a;
+  background-color: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  box-sizing: border-box;
+}
+
+.ipm-select:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.ipm-select-warning {
+  border-color: #f59e0b !important;
+  background-color: #fffbeb !important;
+  color: #78350f !important;
+}
+
+/* Table Container & Table */
+.ipm-table-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  overflow: hidden;
+  background-color: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.ipm-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  text-align: left;
+}
+
+.ipm-table thead {
+  background-color: #f1f5f9;
+  border-bottom: 2px solid #e2e8f0;
+}
+
+.ipm-table th {
+  padding: 12px 16px;
+  font-weight: 700;
+  color: #334155;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.ipm-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid #f1f5f9;
+  color: #1e293b;
+  vertical-align: middle;
+}
+
+.ipm-table tbody tr:hover {
+  background-color: #f8fafc;
+}
+
+.ipm-table tbody tr.row-remembered {
+  background-color: rgba(243, 232, 255, 0.4);
+}
+
+.ipm-table tbody tr.row-low-confidence {
+  background-color: rgba(254, 243, 199, 0.35);
+}
+
+/* Column Header Cell (Prevents text concatenation) */
+.ipm-header-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ipm-col-header-text {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+/* Badges & Tags */
+.ipm-pattern-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  font-size: 0.68rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 600;
+  background-color: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.ipm-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.ipm-badge-exact {
+  background-color: #d1fae5;
+  color: #065f46;
+  border: 1px solid #6ee7b7;
+}
+
+.ipm-badge-remembered {
+  background-color: #f3e8ff;
+  color: #581c87;
+  border: 1px solid #d8b4fe;
+}
+
+.ipm-badge-low {
+  background-color: #fef3c7;
+  color: #78350f;
+  border: 1px solid #fcd34d;
+}
+
+.ipm-badge-unmapped {
+  background-color: #f1f5f9;
+  color: #64748b;
+  border: 1px solid #cbd5e1;
+  font-weight: 500;
+}
+
+/* Sample Value Cell */
+.ipm-sample-val {
+  font-family: ui-monospace, monospace;
+  font-size: 0.75rem;
+  color: #64748b;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Toolbar Buttons */
+.ipm-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.ipm-btn-secondary {
+  background-color: #f1f5f9;
+  color: #334155;
+  border-color: #cbd5e1;
+}
+
+.ipm-btn-secondary:hover {
+  background-color: #e2e8f0;
+  color: #0f172a;
+}
+
+.ipm-btn-primary {
+  background-color: #eff6ff;
+  color: #1d4ed8;
+  border-color: #93c5fd;
+}
+
+.ipm-btn-primary:hover:not(:disabled) {
+  background-color: #dbeafe;
+  color: #1e40af;
+}
+
+.ipm-btn-primary:disabled {
+  background-color: #f8fafc;
+  color: #94a3b8;
+  border-color: #e2e8f0;
+  cursor: not-allowed;
+}
+
+/* Success Banner */
+.ipm-success-toast {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background-color: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1e40af;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+/* Modal Footer */
+.ipm-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  border-top: 1px solid #e2e8f0;
+  background-color: #f8fafc;
+  flex-shrink: 0;
+  gap: 16px;
+  flex-wrap: wrap;
+  box-sizing: border-box;
+}
+
+.ipm-footer-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.8rem;
+  flex-wrap: wrap;
+}
+
+.ipm-status-ready {
+  color: #047857;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ipm-status-pending {
+  color: #b45309;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ipm-memory-counter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #64748b;
+  padding-left: 12px;
+  border-left: 1px solid #cbd5e1;
+}
+
+.ipm-manage-link {
+  background: transparent;
+  border: none;
+  color: #2563eb;
+  cursor: pointer;
+  padding: 0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.ipm-manage-link:hover {
+  color: #1d4ed8;
+}
+
+.ipm-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ipm-btn-cancel {
+  padding: 9px 18px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #475569;
+  background-color: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ipm-btn-cancel:hover {
+  background-color: #f1f5f9;
+  color: #0f172a;
+}
+
+.ipm-btn-commit {
+  padding: 9px 22px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #ffffff;
+  background-color: #2563eb;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+  transition: all 0.15s ease;
+}
+
+.ipm-btn-commit:hover:not(:disabled) {
+  background-color: #1d4ed8;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.35);
+}
+
+.ipm-btn-commit:disabled {
+  background-color: #cbd5e1;
+  color: #64748b;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
+/* ==========================================================================
+   Manage Learned Memory Modal (Child Dialog)
+   ========================================================================== */
+.ipm-memory-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background-color: rgba(11, 15, 25, 0.88);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  animation: ipmFadeIn 0.2s ease-out;
+}
+
+.ipm-memory-card {
+  background-color: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  border: 1px solid #cbd5e1;
+  width: 100%;
+  max-width: 680px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: ipmScaleUp 0.2s ease-out;
+  text-align: left;
+}
+
+.ipm-memory-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e2e8f0;
+  background-color: #f8fafc;
+}
+
+.ipm-memory-toolbar {
+  padding: 12px 20px;
+  border-bottom: 1px solid #f1f5f9;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background-color: #ffffff;
+}
+
+.ipm-memory-input {
+  flex: 1;
+  padding: 8px 12px;
+  font-size: 0.8rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  outline: none;
+}
+
+.ipm-memory-input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.ipm-clear-btn {
+  padding: 6px 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #e11d48;
+  background-color: #fff1f2;
+  border: 1px solid #fecdd3;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ipm-clear-btn:hover {
+  background-color: #ffe4e6;
+  color: #be123c;
+}
+
+.ipm-memory-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+}
+

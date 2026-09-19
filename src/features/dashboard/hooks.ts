@@ -126,7 +126,27 @@ export const useDashboardData = (onDataReset = null) => {
       const controller = new AbortController();
       importAbortControllerRef.current = controller;
 
-      const totalFiles = files.length;
+      // Filter out duplicate files by name and size to prevent redundant parses
+      const seenFiles = new Set<string>();
+      const uniqueFiles: any[] = [];
+      const duplicateFiles: string[] = [];
+
+      for (const file of files) {
+        const key = `${(file.name || '').trim().toLowerCase()}|${file.size ?? 0}`;
+        if (seenFiles.has(key)) {
+          duplicateFiles.push(file.name);
+        } else {
+          seenFiles.add(key);
+          uniqueFiles.push(file);
+        }
+      }
+
+      if (duplicateFiles.length > 0) {
+        console.warn(`[handleMultipleFiles] Duplicate files skipped: ${duplicateFiles.join(', ')}`);
+      }
+
+      const filesToProcess = uniqueFiles;
+      const totalFiles = filesToProcess.length;
       // Track per-file progress percent (0–100) for live aggregation.
       const filePercents = new Array(totalFiles).fill(0);
 
@@ -172,7 +192,7 @@ export const useDashboardData = (onDataReset = null) => {
           if (controller.signal.aborted) break;
           const i = nextIndex;
           nextIndex += 1;
-          const file = files[i];
+          const file = filesToProcess[i];
           const fileType = detectFileType(file.name);
           try {
             if (fileType === 'xlsx' || fileType === 'xls' || fileType === 'xlsm') {
@@ -504,7 +524,9 @@ export const useDashboardData = (onDataReset = null) => {
         }
 
         // 4. mergeNormalizedRows
-        const mergedRows = mergeNormalizedRows(validated.rows);
+        const mergedRows = mergeNormalizedRows(validated.rows, {
+          onWarning: (w) => warnings.push(w),
+        });
 
         const summary = {
           files: new Set(importPreview.sheets.map((s) => s.workbookName || fileName)).size || 1,

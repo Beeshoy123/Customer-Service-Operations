@@ -21,13 +21,13 @@ Upgrade the dashboard from a single-file CSV/text importer to a full mixed-forma
 | 🟡 Medium | Sheet selector silently drops valid sheets — user gets no feedback | Low | ✅ Completed |
 | 🟡 Medium | Modal shows flat sheet list with no workbook grouping | Medium | ✅ Completed |
 | 🟡 Medium | No "apply mapping to all matching sheets" shortcut | Medium | ✅ Completed |
-| 🟢 Low | Blind averaging across workbooks / duplicate upload detection | Medium | ⏳ Pending |
+| 🟢 Low | Blind averaging across workbooks / duplicate upload detection | Medium | ✅ Completed |
 
 ---
 
-## Remaining Open Problem
+## Resolved Open Problems
 
-### Problem 7: `mergeNormalizedRows` averages rate fields blindly across workbooks
+### Problem 7: `mergeNormalizedRows` averages rate fields blindly across workbooks — ✅ COMPLETED
 
 `mergeData.ts` treats `aht`, `vxs`, `resolve2hr`, etc., as simple averages when the same agent+date key appears more than once. When merging two workbooks from different scopes (e.g. phone AHT vs chat AHT for the same agent on the same day), the average blends metrics that should remain distinct.
 
@@ -95,8 +95,8 @@ User selects files
 | Numeric values with `%`, `$`, `,` separators | `validation.ts` cleaning |
 | Hidden or summary tabs imported accidentally | Shape + keyword scoring in `sheetSelector.ts` |
 | Invalid date values in Excel serial format | `workbookLoader.ts` serial-date conversion |
-| Blind metric averaging across different scopes | ⚠️ Problem 7 — not yet fixed |
-| Duplicate file upload doubling summed fields | ⚠️ Problem 7 — not yet fixed |
+| Blind metric averaging across different scopes | `mergeStrategy` per-field overrides in `mergeData.ts` |
+| Duplicate file upload doubling summed fields | `detectDuplicateFiles` & source deduplication in `mergeData.ts` |
 
 ---
 
@@ -111,8 +111,8 @@ The import system is complete when it can:
 - [x] Merge data into one dashboard-compatible dataset
 - [x] Show validation warnings before final import
 - [x] Successfully import realistic team-lead metric exports without manual reformatting
-- [ ] Detect and reject/warn on duplicate file uploads
-- [ ] Support per-field merge strategies (sum vs average vs last-seen)
+- [x] Detect and reject/warn on duplicate file uploads
+- [x] Support per-field merge strategies (sum vs average vs last-seen)
 
 ---
 
@@ -149,3 +149,15 @@ The import system is complete when it can:
   - Added **"⚡ Apply to N matching sheets"** button in the Section 2 column mapping toolbar, visible only when multiple sheets are loaded. Button is disabled (greyed) when no other sheet shares the same header set, and shows the live match count when active.
   - Added a dismissible inline success notice that auto-hides after 4 seconds confirming how many sheets were updated.
   - `ImportPreviewModal.test.ts`: Added 6 unit tests covering match detection, source exclusion, no false positives, order-insensitivity, field propagation by normalized header, and partial-overlap safety.
+- [x] **Recommendation 2 — Problem 7**: Per-field merge strategies & duplicate upload detection:
+  - `mergeData.ts`: Implemented `detectDuplicateFiles` to identify duplicate uploads by filename and size and emit `DUPLICATE_FILE_UPLOAD` warnings. Implemented same-source deduplication in `mergeNormalizedRows` via `sourceFile` + `sourceSheet` tracking to prevent additive fields like `calls` from doubling upon re-upload. Added per-field `mergeStrategy` parameter (`sum`, `average`, `last-seen`, `first-seen`) allowing conflicting scope metrics (e.g. phone vs chat AHT) to be resolved explicitly without blind averaging. Exported `mergeNormalizedRowsWithDetails` returning rows, warnings, and duplicate count.
+  - `importService.ts`: Filtered out duplicate file uploads at the batch ingestion level and wired `options.mergeStrategy` into `mergeNormalizedRows`.
+  - `hooks.ts`: Added duplicate file filtering to `handleMultipleFiles` and collected merge warnings in `confirmImportPreview`.
+  - `types.ts`: Added `MergeStrategy`, `MergeFieldStrategy`, `MergeOptions`, and updated `ImportOptions`.
+  - `mergeData.test.ts`: Added 9 unit tests covering duplicate source deduplication, prevention of double-counting, per-field merge strategies (`last-seen`, `first-seen`, `sum`, `average`), `mergeNormalizedRowsWithDetails`, and `detectDuplicateFiles`.
+- [x] **Recommendation 2 — Problem 8**: Zero-Dependency Scoped Styling for Import Preview Modal:
+  - `ImportPreviewModal.css`: Created dedicated scoped CSS with solid backdrop overlay (`rgba(11, 15, 25, 0.85)` + backdrop-blur) and `z-index: 9999` to eliminate bleed-through from underlying dashboard elements (`Floor Details`, search bar, navigation tabs).
+  - Constrained modal card dialog with `max-height: calc(100vh - 48px)` so header, tabs, and granularity sections remain visible without being clipped off the top of the viewport.
+  - Replaced missing Tailwind CSS utility dependencies in `ImportPreviewModal.tsx` and `ManageMemoryModal` with dedicated `.ipm-*` classes.
+  - Separated column headers and pattern fingerprint tags into clean, spaced badge elements to eliminate text concatenation (e.g. `RECOVERYKEYcount-Integer`).
+  - Loaded styles through `main.tsx` so the browser bundle renders properly while Node.js test execution (`tsx --test`) remains free of CSS loader errors.
