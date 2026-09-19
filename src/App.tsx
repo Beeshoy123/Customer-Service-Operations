@@ -1933,6 +1933,7 @@ export default function App() {
           <ImportPreviewModal
             isOpen={Boolean(dashData.importPreview?.isOpen)}
             sheets={dashData.importPreview?.sheets || []}
+            skippedSheets={dashData.importPreview?.skippedSheets || []}
             fileName={dashData.importPreview?.fileName}
             onConfirm={dashData.confirmImportPreview}
             onCancel={dashData.closeImportPreview}

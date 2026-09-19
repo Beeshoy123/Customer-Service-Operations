@@ -22,6 +22,7 @@ import {
   convertWorkbookToSheets,
   convertWorkbookToSheetsViaWorker,
   selectSheets,
+  selectSheetsWithDetails,
   parseCsvFileText,
   aggregateTransactions,
   validateNormalizedRows,
@@ -29,7 +30,7 @@ import {
   normalizeCellValue,
   normalizeHeaderToField,
 } from './import';
-import type { SheetTable, SheetGranularity, ImportResult } from './import/types';
+import type { SheetTable, SheetGranularity, ImportResult, SkippedSheetInfo } from './import/types';
 import { detectFileType } from './import/fileTypeDetector';
 
 // ============================================================================
@@ -87,6 +88,7 @@ export const useDashboardData = (onDataReset = null) => {
       isOpen: true,
       fileName: config.fileName,
       sheets: config.sheets,
+      skippedSheets: config.skippedSheets || [],
     });
   }, []);
 
@@ -162,6 +164,7 @@ export const useDashboardData = (onDataReset = null) => {
 
       // Concurrency pool: process up to MULTI_FILE_CONCURRENCY files in parallel.
       const results = new Array(totalFiles).fill(null);
+      const skippedResults = new Array(totalFiles).fill(null);
       let nextIndex = 0;
 
       const runWorker = async () => {
@@ -173,14 +176,23 @@ export const useDashboardData = (onDataReset = null) => {
           const fileType = detectFileType(file.name);
           try {
             if (fileType === 'xlsx' || fileType === 'xls' || fileType === 'xlsm') {
-              const { sheets } = await convertWorkbookToSheetsViaWorker(file, {
+              const { sheets, skippedSheets: rawSkipped } = await convertWorkbookToSheetsViaWorker(file, {
                 signal: controller.signal,
                 onProgress: (progress) => {
                   emitBatchProgress(i, progress.percent ?? 0, file.name);
                 },
               });
               emitBatchProgress(i, 100, file.name);
-              results[i] = selectSheets(sheets);
+              const selection = selectSheetsWithDetails(sheets);
+              results[i] = selection.selectedSheets;
+              skippedResults[i] = [
+                ...selection.skippedSheets,
+                ...(rawSkipped || []).map((name) => ({
+                  sheetName: name,
+                  workbookName: file.name,
+                  reason: 'Empty sheet or no data rows',
+                })),
+              ];
             } else if (fileType === 'csv' || fileType === 'tsv' || fileType === 'txt') {
               emitBatchProgress(i, 50, file.name);
               const textTable = await parseCsvFileText(file);
@@ -195,6 +207,7 @@ export const useDashboardData = (onDataReset = null) => {
                   rowCount: textTable.rows.length,
                 },
               ];
+              skippedResults[i] = [];
             }
           } catch (error) {
             if (error instanceof Error && error.name === 'AbortError') {
@@ -202,6 +215,7 @@ export const useDashboardData = (onDataReset = null) => {
             }
             console.error(`Failed to parse file "${file.name}":`, error);
             results[i] = [];
+            skippedResults[i] = [];
           }
         }
       };
@@ -232,10 +246,11 @@ export const useDashboardData = (onDataReset = null) => {
       if (controller.signal.aborted) return;
 
       const combinedSheets = results.flat().filter(Boolean);
+      const combinedSkipped = skippedResults.flat().filter(Boolean);
 
       setUploadStatus(null);
 
-      if (combinedSheets.length === 0) {
+      if (combinedSheets.length === 0 && combinedSkipped.length === 0) {
         setUploadStatus({ type: 'error', message: 'No usable sheets detected across the selected files.' });
         setTimeout(() => setUploadStatus(null), 5000);
         return;
@@ -244,6 +259,7 @@ export const useDashboardData = (onDataReset = null) => {
       openImportPreview({
         fileName: `${totalFiles} files batch`,
         sheets: combinedSheets,
+        skippedSheets: combinedSkipped,
       });
     },
     [openImportPreview, setUploadStatus]
@@ -414,7 +430,11 @@ export const useDashboardData = (onDataReset = null) => {
         // 1. Column mapping with user overrides & 2. aggregateTransactions for transaction-classified sheets
         for (let sheetIdx = 0; sheetIdx < importPreview.sheets.length; sheetIdx += 1) {
           const sheet = importPreview.sheets[sheetIdx];
-          const sheetConfig = sheetConfigs[sheet.sheetName] || sheetConfigs[sheetIdx];
+          const namespacedKey = sheet.workbookName ? `${sheet.workbookName}::${sheet.sheetName}` : null;
+          const sheetConfig =
+            (namespacedKey ? sheetConfigs[namespacedKey] : null) ||
+            sheetConfigs[sheet.sheetName] ||
+            sheetConfigs[sheetIdx];
           const userMappings = sheetConfig?.columnMappings || {};
           const headers = sheet.headerRow ?? [];
           const rows = sheet.rows ?? [];
@@ -547,7 +567,7 @@ export const useDashboardData = (onDataReset = null) => {
         });
 
         try {
-          const { sheets } = await convertWorkbookToSheets(file, {
+          const { sheets, skippedSheets: rawSkipped } = await convertWorkbookToSheets(file, {
             signal: controller.signal,
             onProgress: (progress) => {
               setUploadStatus({
@@ -558,11 +578,19 @@ export const useDashboardData = (onDataReset = null) => {
               });
             },
           });
-          const filteredSheets = selectSheets(sheets);
+          const { selectedSheets: filteredSheets, skippedSheets } = selectSheetsWithDetails(sheets);
+          const combinedSkipped = [
+            ...skippedSheets,
+            ...(rawSkipped || []).map((name) => ({
+              sheetName: name,
+              workbookName: file.name,
+              reason: 'Empty sheet or no data rows',
+            })),
+          ];
 
           setUploadStatus(null);
 
-          if (!filteredSheets || filteredSheets.length === 0) {
+          if ((!filteredSheets || filteredSheets.length === 0) && combinedSkipped.length === 0) {
             setUploadStatus({ type: 'error', message: 'No usable data sheets detected in the workbook.' });
             setTimeout(() => setUploadStatus(null), 5000);
             return;
@@ -570,7 +598,8 @@ export const useDashboardData = (onDataReset = null) => {
 
           openImportPreview({
             fileName: file.name,
-            sheets: filteredSheets,
+            sheets: filteredSheets || [],
+            skippedSheets: combinedSkipped,
           });
         } catch (error) {
           if (error instanceof Error && error.name === 'AbortError') {

@@ -1,57 +1,33 @@
-# Recommendations — Customer Service Operations Dashboard
+# Customer Service Operations Dashboard — Import Recommendations & Plan
 
-## Multi-File & Multi-Sheet Import — Improvement Plan
+## Objective
 
-### Summary of Remaining Work
+Upgrade the dashboard from a single-file CSV/text importer to a full mixed-format ingestion pipeline that can:
+
+- Read multiple files in one upload
+- Read CSV, TSV, TXT, XLS, and XLSX files
+- Read multiple sheets inside each workbook
+- Normalize inconsistent column names across sources
+- Merge all data into one unified dataset
+- Validate and preview before final import
+- Keep compatibility with the current dashboard logic
+
+---
+
+## Status Overview
 
 | Priority | Problem | Effort | Status |
 |----------|---------|--------|--------|
-| 🟡 Medium | Sheet selector silently drops valid sheets — user gets no feedback | Low | Pending |
-| 🟡 Medium | Modal shows flat sheet list with no workbook grouping | Medium | Pending |
-| 🟡 Medium | No "apply mapping to all matching sheets" shortcut | Medium | Pending |
-| 🟢 Low | Blind averaging across workbooks / duplicate upload detection | Medium | Pending |
+| 🟡 Medium | Sheet selector silently drops valid sheets — user gets no feedback | Low | ✅ Completed |
+| 🟡 Medium | Modal shows flat sheet list with no workbook grouping | Medium | ✅ Completed |
+| 🟡 Medium | No "apply mapping to all matching sheets" shortcut | Medium | ✅ Completed |
+| 🟢 Low | Blind averaging across workbooks / duplicate upload detection | Medium | ⏳ Pending |
 
 ---
 
-### Remaining Problems & Implementation Details
+## Remaining Open Problem
 
-#### Problem 4: Sheet selector (`sheetSelector.ts`) is too narrow for multi-account use
-
-`isLikelyDataSheet` filters sheets by checking if headers contain keywords like `agent`, `employee`, `name`, `date`, `calls`, `aht`, `vxs`, `supervisor`. Sheets are silently dropped if none of these are present.
-
-With diverse account files, valid data sheets with headers like `Rep`, `Interaction Date`, `Handle Time` pass zero keywords and get rejected with no user feedback.
-
-**Fix**:
-- Lower the signal threshold: a sheet with ≥ 5 non-empty columns and > 5 rows should be retained by default.
-- Show a visible UI notice or banner in the preview modal listing which sheets were skipped and why, allowing users to override/include them.
-- Integrate detection with `analyzeColumnValues` from the column fingerprinter.
-
----
-
-#### Problem 5: The modal shows all sheets from all files in one flat list — no workbook grouping
-
-When uploading 3 workbooks with 4 sheets each, the modal renders 12 flat tabs with names like `Sheet1`, `Sheet1`, `Sheet1` without clear workbook attribution. Sheet names are not namespaced by filename.
-
-The `SheetTable` type carries `workbookName`, but the tab UI in `ImportPreviewModal.tsx` only displays `sheet.sheetName`.
-
-**Fix**:
-- Group tabs by workbook in the preview modal.
-- Show the filename as a section header or badge, with sheets grouped underneath.
-- Display both `workbookName` and `sheetName` on each tab.
-
----
-
-#### Problem 6: Column mapping is configured per-sheet but applied identically
-
-When the modal is open for multiple sheets with the same schema (e.g., weekly files across teams or accounts), the user currently has to configure mappings repeatedly on each sheet.
-
-**Fix**:
-- Add an **"Apply to all matching sheets"** button in the modal.
-- When a user corrects or verifies a mapping on one sheet, check if any other loaded sheets share matching headers and apply the mapping across all matching sheets.
-
----
-
-#### Problem 7: `mergeNormalizedRows` averages rate fields blindly across workbooks
+### Problem 7: `mergeNormalizedRows` averages rate fields blindly across workbooks
 
 `mergeData.ts` treats `aht`, `vxs`, `resolve2hr`, etc., as simple averages when the same agent+date key appears more than once. When merging two workbooks from different scopes (e.g. phone AHT vs chat AHT for the same agent on the same day), the average blends metrics that should remain distinct.
 
@@ -60,6 +36,83 @@ Also, if a user accidentally uploads the same file twice, summed fields (like `c
 **Fix**:
 - Track `sourceFile` + `sourceSheet` on each row and detect duplicate source uploads.
 - Add an optional `mergeStrategy` parameter per field (sum, average, or last-seen for conflicting sources).
+
+---
+
+## Architecture Reference
+
+### Import folder structure (`src/features/dashboard/import/`)
+
+| File | Responsibility |
+|------|---------------|
+| `fileTypeDetector.ts` | Detect file extension and format; reject unsupported types |
+| `csvParser.ts` | Parse CSV/TSV/TXT safely — handles quoting, BOM, delimiter detection |
+| `workbookLoader.ts` | Read Excel workbooks, enumerate sheets, convert to row arrays |
+| `workbookWorker.ts` | Web Worker wrapper — keeps main thread free for large files |
+| `sheetSelector.ts` | Filter out blank/non-data tabs; return selected + skipped sheets with reasons |
+| `schemaNormalizer.ts` | Map incoming headers to canonical fields; normalize casing and whitespace |
+| `importPolicy.ts` | Multi-signal scoring engine (header + fingerprint + memory) for column matching |
+| `columnFingerprinter.ts` | Value pattern detection — dates, durations, percentages, IDs, false-positive blockers |
+| `mappingMemory.ts` | LocalStorage persistence for user mapping corrections |
+| `granularityDetector.ts` | Classify sheets as aggregate vs transaction granularity |
+| `mergeData.ts` | Combine rows across workbooks; deduplicate by agent+date key; sum/average fields |
+| `validation.ts` | Clean numeric values, fix date formats, flag missing/duplicate rows |
+| `importService.ts` | Orchestrate full pipeline end-to-end with concurrency limit (4 files at a time) |
+| `ImportPreviewModal.tsx` | Preview UI — workbook-grouped tabs, column mapping table, granularity confirmation |
+| `aggregateTransactions.ts` | Roll up transaction-level rows to daily aggregates |
+| `types.ts` | All shared import types and normalized record contract |
+| `index.ts` | Public barrel export |
+
+### Data flow
+
+```
+User selects files
+  → fileTypeDetector     detect CSV / Excel
+  → csvParser            parse text files
+  → workbookLoader       expand Excel into sheets  (via Web Worker)
+  → sheetSelector        filter blank/non-data tabs, surface skippedSheets
+  → ImportPreviewModal   user verifies granularity + column mappings
+      └─ importPolicy + columnFingerprinter + mappingMemory  (auto-map columns)
+      └─ "Apply to N matching sheets" shortcut  (Problem 6 fix)
+  → schemaNormalizer     normalize all rows to canonical fields
+  → validation           clean values, flag issues
+  → mergeData            deduplicate and merge across sources
+  → dashboard state      agents / supervisors / historicalData
+```
+
+### Canonical field set
+
+`agentName` · `supervisor` · `oam` · `employeeId` · `date` · `location` · `calls` · `aht` · `resolve2hr` · `resolve3d` · `vxs` · `satisfaction` · `handoffs` · `transferRate` · `sourceFile` · `sourceSheet`
+
+### Risk areas and mitigations
+
+| Risk | Mitigation |
+|------|-----------|
+| Sheet naming inconsistency across workbooks | `sheetSelector.ts` + skipped-sheet override banner in modal |
+| Different delimiter standards in CSVs | `csvParser.ts` auto-detects comma / tab / semicolon |
+| Column alias mismatches between data sources | Scored matching in `importPolicy.ts` + `mappingMemory.ts` |
+| Duplicate records across files | Key-based deduplication in `mergeData.ts` |
+| Numeric values with `%`, `$`, `,` separators | `validation.ts` cleaning |
+| Hidden or summary tabs imported accidentally | Shape + keyword scoring in `sheetSelector.ts` |
+| Invalid date values in Excel serial format | `workbookLoader.ts` serial-date conversion |
+| Blind metric averaging across different scopes | ⚠️ Problem 7 — not yet fixed |
+| Duplicate file upload doubling summed fields | ⚠️ Problem 7 — not yet fixed |
+
+---
+
+## Acceptance Criteria
+
+The import system is complete when it can:
+
+- [x] Upload multiple files at once
+- [x] Accept CSV and Excel inputs
+- [x] Detect and process multiple workbook sheets
+- [x] Map fields from different export naming conventions
+- [x] Merge data into one dashboard-compatible dataset
+- [x] Show validation warnings before final import
+- [x] Successfully import realistic team-lead metric exports without manual reformatting
+- [ ] Detect and reject/warn on duplicate file uploads
+- [ ] Support per-field merge strategies (sum vs average vs last-seen)
 
 ---
 
@@ -77,3 +130,22 @@ Also, if a user accidentally uploads the same file twice, summed fields (like `c
   - `types.ts`: Added `forceWorker?: boolean` to `ImportOptions`.
 - [x] **Recommendation 2 — Problem 3**: Live progress reporting and cancel capability for multi-file batch loads:
   - `hooks.ts`: `handleMultipleFiles` rewritten — creates an `AbortController`, exposes a **Cancel** button in the status toast, processes up to 4 files concurrently via `convertWorkbookToSheetsViaWorker`, and emits live `"File N of M — filename — X%"` updates on every progress tick. Per-file errors are isolated and logged without aborting the rest of the batch.
+- [x] **Recommendation 2 — Problem 4**: Intelligent Sheet Selector & Skipped Sheets Override Banner:
+  - `sheetSelector.ts`: Lowered signal threshold (≥ 5 non-empty columns and > 5 rows retained by default), expanded operational keyword and regex matching (e.g. `Rep`, `Interaction Date`, `Handle Time`), and integrated column pattern fingerprinting via `analyzeColumnValues` from `columnFingerprinter.ts`.
+  - Added `evaluateSheet` and `selectSheetsWithDetails` returning `selectedSheets` alongside `skippedSheets` carrying descriptive exclusion reasons and source table references.
+  - `ImportPreviewModal.tsx`: Rendered a visible alert banner for skipped sheets displaying reasons and an **"+ Include Sheet"** manual override button that dynamically promotes skipped sheets to active import tabs with full column mapping and granularity confirmation.
+  - `hooks.ts` & `App.tsx`: Captured and forwarded skipped sheet metadata into `ImportPreviewModal` across both single-file and concurrent multi-file batch uploads.
+  - `sheetSelector.test.ts` & `ImportPreviewModal.test.ts`: Added 16 unit tests covering default shape retention, diverse account headers, column value fingerprinting detection, skipped sheet exclusion reasons, and override inclusion flows.
+- [x] **Recommendation 2 — Problem 5**: Workbook Grouping for Multi-File & Multi-Sheet Preview:
+  - `ImportPreviewModal.tsx`: Computed `workbookGroups` from loaded sheets. Grouped tab strips by workbook file with visual container cards and `📁 {workbookName}` header badges.
+  - Section Headers: Updated Section 1 and Section 2 headers to display `{workbookName} › {sheetName}` for unambiguous sheet attribution.
+  - Collision-Free Configs: Namespaced configurations and tab keys using `${sheet.workbookName}::${sheet.sheetName}` so workbooks with identical sheet names (e.g. `Sheet1`) never collide or overwrite each other.
+  - `hooks.ts`: Updated `confirmImportPreview` to resolve configs using namespaced keys.
+  - `ImportPreviewModal.test.ts`: Added unit tests verifying independent state and namespaced key generation across workbooks with identical sheet names.
+- [x] **Recommendation 2 — Problem 6**: "Apply to all matching sheets" column mapping shortcut:
+  - `ImportPreviewModal.tsx`: Added `findMatchingSheets` helper — compares sheets' normalized, sorted header arrays to detect same-schema sheets (order-insensitive, case-insensitive).
+  - Added `applyMappingsToSheets` helper — propagates `mappedField`, `confidence`, `isLowConfidence`, and `matchType` from source sheet to all matching target sheets by normalized header name lookup.
+  - Added `handleApplyMappingsToMatching` handler and `matchingSheetIndices` memo inside the modal component.
+  - Added **"⚡ Apply to N matching sheets"** button in the Section 2 column mapping toolbar, visible only when multiple sheets are loaded. Button is disabled (greyed) when no other sheet shares the same header set, and shows the live match count when active.
+  - Added a dismissible inline success notice that auto-hides after 4 seconds confirming how many sheets were updated.
+  - `ImportPreviewModal.test.ts`: Added 6 unit tests covering match detection, source exclusion, no false positives, order-insensitivity, field propagation by normalized header, and partial-overlap safety.

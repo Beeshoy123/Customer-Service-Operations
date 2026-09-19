@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {
   buildInitialSheetStates,
   getCanonicalFieldLabel,
+  findMatchingSheets,
+  applyMappingsToSheets,
 } from './ImportPreviewModal';
 import { rememberMapping, clearMemory, getAllLearnedMappings, forgetMapping } from './mappingMemory';
 import type { SheetTable } from './types';
@@ -136,5 +138,172 @@ describe('ImportPreviewModal & UI integration', () => {
       assert.equal(getAllLearnedMappings().length, 0);
     });
   });
+
+  describe('Skipped sheets inclusion flow', () => {
+    it('builds initial state correctly when a skipped sheet is included', () => {
+      const skippedSummaryTable: SheetTable = {
+        workbookName: 'q1_ops.xlsx',
+        sheetName: 'Summary',
+        index: 1,
+        rowCount: 8,
+        headerRow: ['Agent Name', 'Call Date', 'Calls Handled', 'Handle Duration'],
+        rows: [
+          ['John Doe', '2024-01-15', '45', '00:05:12'],
+          ['Jane Smith', '2024-01-15', '50', '00:04:30'],
+        ],
+      };
+
+      const states = buildInitialSheetStates([skippedSummaryTable]);
+      assert.equal(states.length, 1);
+      assert.equal(states[0].sheetName, 'Summary');
+      assert.equal(states[0].columnMappings.length, 4);
+
+      // Verify column mappings were populated
+      const agentCol = states[0].columnMappings[0];
+      assert.equal(agentCol.mappedField, 'agentName');
+      const callsCol = states[0].columnMappings[2];
+      assert.equal(callsCol.mappedField, 'calls');
+    });
+  });
+
+  describe('Multi-workbook grouping and namespacing', () => {
+    it('handles identical sheet names across different workbooks independently', () => {
+      const sheetA: SheetTable = {
+        workbookName: 'North_Region.xlsx',
+        sheetName: 'Sheet1',
+        index: 0,
+        rowCount: 10,
+        headerRow: ['Rep Name', 'Calls Handled'],
+        rows: [['Agent A', '50']],
+      };
+
+      const sheetB: SheetTable = {
+        workbookName: 'South_Region.xlsx',
+        sheetName: 'Sheet1',
+        index: 1,
+        rowCount: 20,
+        headerRow: ['Employee', 'Handled Calls'],
+        rows: [['Agent B', '75']],
+      };
+
+      const states = buildInitialSheetStates([sheetA, sheetB]);
+      assert.equal(states.length, 2);
+
+      assert.equal(states[0].workbookName, 'North_Region.xlsx');
+      assert.equal(states[0].sheetName, 'Sheet1');
+      assert.equal(states[0].rowCount, 10);
+
+      assert.equal(states[1].workbookName, 'South_Region.xlsx');
+      assert.equal(states[1].sheetName, 'Sheet1');
+      assert.equal(states[1].rowCount, 20);
+
+      // Confirm namespaced keys are distinct
+      const keyA = `${states[0].workbookName}::${states[0].sheetName}`;
+      const keyB = `${states[1].workbookName}::${states[1].sheetName}`;
+      assert.notEqual(keyA, keyB);
+      assert.equal(keyA, 'North_Region.xlsx::Sheet1');
+      assert.equal(keyB, 'South_Region.xlsx::Sheet1');
+    });
+  });
+
+  describe('Apply mappings to matching sheets', () => {
+    const makeSheet = (
+      workbookName: string,
+      sheetName: string,
+      headerRow: string[]
+    ): SheetTable => ({
+      workbookName,
+      sheetName,
+      index: 0,
+      rowCount: 5,
+      headerRow,
+      rows: [headerRow.map((_, i) => `val${i}`)],
+    });
+
+    it('findMatchingSheets returns indices of sheets with identical headers', () => {
+      const headers = ['Rep Name', 'Calls Handled', 'Date'];
+      const states = buildInitialSheetStates([
+        makeSheet('wbA.xlsx', 'Sheet1', headers),
+        makeSheet('wbB.xlsx', 'Sheet1', headers),
+        makeSheet('wbC.xlsx', 'Sheet1', headers),
+      ]);
+
+      const matches = findMatchingSheets(0, states);
+      assert.deepEqual(matches, [1, 2]);
+    });
+
+    it('findMatchingSheets excludes the source index itself', () => {
+      const headers = ['Rep Name', 'Calls Handled'];
+      const states = buildInitialSheetStates([
+        makeSheet('wbA.xlsx', 'Sheet1', headers),
+        makeSheet('wbB.xlsx', 'Sheet1', headers),
+      ]);
+
+      const matches = findMatchingSheets(0, states);
+      assert.ok(!matches.includes(0), 'source index should not be in results');
+      assert.deepEqual(matches, [1]);
+    });
+
+    it('findMatchingSheets returns empty array when no other sheet shares headers', () => {
+      const states = buildInitialSheetStates([
+        makeSheet('wbA.xlsx', 'Sheet1', ['Agent Name', 'Calls']),
+        makeSheet('wbB.xlsx', 'Sheet2', ['Employee', 'Interactions', 'Date']),
+      ]);
+
+      const matches = findMatchingSheets(0, states);
+      assert.deepEqual(matches, []);
+    });
+
+    it('findMatchingSheets is order-insensitive across sheets', () => {
+      const states = buildInitialSheetStates([
+        makeSheet('wbA.xlsx', 'Sheet1', ['Rep Name', 'Calls Handled']),
+        makeSheet('wbB.xlsx', 'Sheet1', ['Calls Handled', 'Rep Name']), // reversed order
+      ]);
+
+      const matches = findMatchingSheets(0, states);
+      assert.deepEqual(matches, [1]);
+    });
+
+    it('applyMappingsToSheets copies mappedField to target sheets by normalized header', () => {
+      const headers = ['Rep Name', 'Calls Handled', 'Call Date'];
+      const states = buildInitialSheetStates([
+        makeSheet('wbA.xlsx', 'Sheet1', headers),
+        makeSheet('wbB.xlsx', 'Sheet1', headers),
+      ]);
+
+      // Simulate user setting a mapping on sheet 0 — we'll just use the auto-detected ones
+      // Verify propagation: sheet 1 should have same mappedField as sheet 0 after apply
+      const updated = applyMappingsToSheets(0, [1], states);
+
+      const src = states[0].columnMappings;
+      const tgt = updated[1].columnMappings;
+
+      assert.equal(tgt.length, src.length);
+      for (let i = 0; i < src.length; i++) {
+        assert.equal(
+          tgt[i].mappedField,
+          src[i].mappedField,
+          `Column "${src[i].header}" mappedField should match`
+        );
+      }
+    });
+
+    it('applyMappingsToSheets does not crash when target has a subset of source headers', () => {
+      const sourceSheet = makeSheet('wbA.xlsx', 'Full', ['Rep Name', 'Calls Handled', 'Date']);
+      const targetSheet = makeSheet('wbB.xlsx', 'Partial', ['Rep Name', 'Calls Handled']);
+
+      const states = buildInitialSheetStates([sourceSheet, targetSheet]);
+      // No matching index (different header sets), but we can still call directly
+      const updated = applyMappingsToSheets(0, [1], states);
+
+      // Should not throw, target should still have its 2 columns
+      assert.equal(updated[1].columnMappings.length, 2);
+      // Columns that exist in source should have source's mappedField
+      const repCol = updated[1].columnMappings.find((c) => c.header === 'Rep Name');
+      const srcRepCol = states[0].columnMappings.find((c) => c.header === 'Rep Name');
+      assert.equal(repCol?.mappedField, srcRepCol?.mappedField);
+    });
+  });
 });
+
 

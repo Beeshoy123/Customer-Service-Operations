@@ -46,6 +46,13 @@ export type SheetTable = {
   rowCount: number;
 };
 
+export type SkippedSheetInfo = {
+  sheetName: string;
+  workbookName?: string;
+  reason: string;
+  table?: SheetTable;
+};
+
 export type WorkbookResult = {
   sheets: SheetTable[];
   skippedSheets: string[];
@@ -147,5 +154,5 @@ export type ImportPreviewState = {
   isOpen: boolean;
   fileName: string;
   sheets: SheetPreviewData[];
-  skippedSheets?: string[];
+  skippedSheets?: (string | SkippedSheetInfo)[];
 };

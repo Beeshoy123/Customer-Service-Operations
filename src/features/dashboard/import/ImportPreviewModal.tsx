@@ -1,5 +1,11 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import type { SheetTable, SheetGranularity, SheetHeaderMapping, DetectedColumnMapping } from './types';
+import type {
+  SheetTable,
+  SheetGranularity,
+  SheetHeaderMapping,
+  DetectedColumnMapping,
+  SkippedSheetInfo,
+} from './types';
 import { detectGranularity, evaluateGranularityConfidence } from './granularityDetector';
 import { CANONICAL_FIELD_OPTIONS, detectColumnMappingWithConfidence } from './importPolicy';
 import {
@@ -14,6 +20,7 @@ import {
 export interface ImportPreviewModalProps {
   isOpen: boolean;
   sheets: SheetTable[];
+  skippedSheets?: (string | SkippedSheetInfo)[];
   fileName?: string;
   onConfirm: (config: {
     sheetConfigs: Record<
@@ -62,7 +69,11 @@ export const buildInitialSheetStates = (sheets: SheetTable[]): LocalSheetState[]
         .map((r) => r?.[colIdx])
         .filter((val) => val !== undefined && val !== null && String(val).trim() !== '');
 
-      return detectColumnMappingWithConfidence(headerStr, colIdx, sampleVals);
+      return detectColumnMappingWithConfidence(
+        headerStr,
+        colIdx,
+        sampleVals as (string | number | null | undefined)[]
+      );
     });
 
     const headerMappings: SheetHeaderMapping[] = columnMappings.map((m) => ({
@@ -97,6 +108,69 @@ export const buildInitialSheetStates = (sheets: SheetTable[]): LocalSheetState[]
       columnMappings,
     };
   });
+};
+
+/**
+ * Returns the indices (in sheetStates) of sheets — other than sourceIdx — whose
+ * header set matches the source sheet's headers (order-insensitive, case-insensitive).
+ */
+export const findMatchingSheets = (sourceIdx: number, sheetStates: LocalSheetState[]): number[] => {
+  const source = sheetStates[sourceIdx];
+  if (!source) return [];
+
+  const normalizeHeaders = (state: LocalSheetState): string =>
+    state.columnMappings
+      .map((m) => m.normalized.toLowerCase().trim())
+      .sort()
+      .join('|');
+
+  const sourceKey = normalizeHeaders(source);
+
+  return sheetStates.reduce<number[]>((acc, sheet, idx) => {
+    if (idx !== sourceIdx && normalizeHeaders(sheet) === sourceKey) {
+      acc.push(idx);
+    }
+    return acc;
+  }, []);
+};
+
+/**
+ * Clones sheetStates and applies the source sheet's mappedField values onto each
+ * target sheet index, matching columns by their normalized header name. Also
+ * carries over confidence/matchType so the UI reflects the applied state.
+ */
+export const applyMappingsToSheets = (
+  sourceIdx: number,
+  targetIndices: number[],
+  sheetStates: LocalSheetState[]
+): LocalSheetState[] => {
+  const source = sheetStates[sourceIdx];
+  if (!source) return sheetStates;
+
+  // Build a lookup: normalizedHeader -> mapping info from source
+  const sourceLookup = new Map(
+    source.columnMappings.map((m) => [m.normalized.toLowerCase().trim(), m])
+  );
+
+  const next = [...sheetStates];
+
+  for (const tIdx of targetIndices) {
+    const target = { ...next[tIdx] };
+    target.columnMappings = target.columnMappings.map((col) => {
+      const srcCol = sourceLookup.get(col.normalized.toLowerCase().trim());
+      if (!srcCol) return col;
+      return {
+        ...col,
+        mappedField: srcCol.mappedField,
+        confidence: srcCol.confidence,
+        isLowConfidence: srcCol.isLowConfidence,
+        matchType: srcCol.matchType,
+      };
+    });
+    next[tIdx] = target;
+  }
+
+  return next;
 };
 
 export interface ManageMemoryModalProps {
@@ -267,17 +341,30 @@ export const ManageMemoryModal: React.FC<ManageMemoryModalProps> = ({
   );
 };
 
+const normalizeSkippedSheet = (item: string | SkippedSheetInfo): SkippedSheetInfo => {
+  if (typeof item === 'string') {
+    return {
+      sheetName: item,
+      reason: 'Empty sheet or non-data content',
+    };
+  }
+  return item;
+};
+
 export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
   isOpen,
   sheets,
+  skippedSheets,
   fileName,
   onConfirm,
   onCancel,
 }) => {
   const [sheetStates, setSheetStates] = useState<LocalSheetState[]>([]);
+  const [skippedList, setSkippedList] = useState<SkippedSheetInfo[]>([]);
   const [activeSheetIndex, setActiveSheetIndex] = useState(0);
   const [showManageMemory, setShowManageMemory] = useState(false);
   const [learnedCount, setLearnedCount] = useState<number>(() => getLearnedMappingsCount());
+  const [applyAllNotice, setApplyAllNotice] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen && sheets && sheets.length > 0) {
@@ -289,6 +376,26 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
       setActiveSheetIndex(0);
     }
   }, [isOpen, sheets]);
+
+  useEffect(() => {
+    if (isOpen && skippedSheets && skippedSheets.length > 0) {
+      setSkippedList(skippedSheets.map(normalizeSkippedSheet));
+    } else {
+      setSkippedList([]);
+    }
+  }, [isOpen, skippedSheets]);
+
+  const handleIncludeSkippedSheet = (item: SkippedSheetInfo) => {
+    if (!item.table) return;
+
+    const [newSheetState] = buildInitialSheetStates([item.table]);
+    if (!newSheetState) return;
+
+    const newIndex = sheetStates.length;
+    setSheetStates((prev) => [...prev, newSheetState]);
+    setSkippedList((prev) => prev.filter((s) => s.sheetName !== item.sheetName));
+    setActiveSheetIndex(newIndex);
+  };
 
   const currentSheet = sheetStates[activeSheetIndex];
 
@@ -410,6 +517,21 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
     });
   };
 
+  const handleApplyMappingsToMatching = () => {
+    const targets = findMatchingSheets(activeSheetIndex, sheetStates);
+    if (targets.length === 0) return;
+    setSheetStates((prev) => applyMappingsToSheets(activeSheetIndex, targets, prev));
+    setApplyAllNotice(
+      `Mappings applied to ${targets.length} matching sheet${targets.length > 1 ? 's' : ''}.`
+    );
+    setTimeout(() => setApplyAllNotice(null), 4000);
+  };
+
+  const matchingSheetIndices = useMemo(
+    () => findMatchingSheets(activeSheetIndex, sheetStates),
+    [activeSheetIndex, sheetStates]
+  );
+
   const allConfirmed = useMemo(() => {
     if (!sheetStates.length) return false;
     return sheetStates.every((sheet) => sheet.isConfirmed && sheet.selectedGranularity !== 'unknown');
@@ -419,11 +541,32 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
     return sheetStates.filter((sheet) => sheet.isConfirmed && sheet.selectedGranularity !== 'unknown').length;
   }, [sheetStates]);
 
-  if (!isOpen || !sheetStates.length || !currentSheet) {
+  const workbookGroups = useMemo(() => {
+    const groups: {
+      workbookName: string;
+      sheets: { sheet: LocalSheetState; globalIndex: number }[];
+    }[] = [];
+    const map = new Map<string, { workbookName: string; sheets: { sheet: LocalSheetState; globalIndex: number }[] }>();
+
+    sheetStates.forEach((sheet, globalIndex) => {
+      const wbName = sheet.workbookName || 'Workbook';
+      let group = map.get(wbName);
+      if (!group) {
+        group = { workbookName: wbName, sheets: [] };
+        map.set(wbName, group);
+        groups.push(group);
+      }
+      group.sheets.push({ sheet, globalIndex });
+    });
+
+    return groups;
+  }, [sheetStates]);
+
+  if (!isOpen || (!sheetStates.length && !skippedList.length)) {
     return null;
   }
 
-  const unmappedCount = currentSheet.columnMappings.filter((c) => !c.mappedField).length;
+  const unmappedCount = currentSheet ? currentSheet.columnMappings.filter((c) => !c.mappedField).length : 0;
 
   const handleCommit = () => {
     if (!allConfirmed) return;
@@ -436,15 +579,22 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
       }
     > = {};
 
-    for (const sheet of sheetStates) {
+    for (let idx = 0; idx < sheetStates.length; idx += 1) {
+      const sheet = sheetStates[idx];
       const mappings: Record<string, string | null> = {};
       for (const col of sheet.columnMappings) {
         mappings[col.header] = col.mappedField;
       }
-      sheetConfigs[sheet.sheetName] = {
+      const config = {
         granularity: sheet.selectedGranularity,
         columnMappings: mappings,
       };
+
+      if (sheet.workbookName) {
+        sheetConfigs[`${sheet.workbookName}::${sheet.sheetName}`] = config;
+      }
+      sheetConfigs[sheet.sheetName] = config;
+      sheetConfigs[idx] = config;
     }
 
     onConfirm({ sheetConfigs });
@@ -465,7 +615,12 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
               </h2>
               <p className="text-xs text-slate-500 m-0 mt-0.5">
                 {fileName ? `${fileName} • ` : ''}
-                {sheetStates.length} sheet{sheetStates.length > 1 ? 's' : ''} detected. Confirm granularity and verify column mappings before importing.
+                {sheetStates.length} sheet{sheetStates.length !== 1 ? 's' : ''} detected
+                {workbookGroups.length > 1 ? ` across ${workbookGroups.length} workbooks` : ''}
+                {skippedList.length > 0 ? ` (${skippedList.length} skipped)` : ''}.
+                {sheetStates.length > 0
+                  ? ' Confirm granularity and verify column mappings before importing.'
+                  : ' Review skipped sheets below to include.'}
               </p>
             </div>
             <button
@@ -477,45 +632,152 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
             </button>
           </div>
 
-          {/* Sheet Tabs if multi-sheet */}
+          {/* Sheet Tabs grouped by workbook if multi-sheet */}
           {sheetStates.length > 1 && (
-            <div className="flex items-center gap-2 px-6 pt-3 border-b border-slate-200 bg-slate-100/50 overflow-x-auto">
-              {sheetStates.map((sheet, idx) => {
-                const isActive = idx === activeSheetIndex;
-                const isReady = sheet.isConfirmed && sheet.selectedGranularity !== 'unknown';
+            <div className="flex items-center gap-3 px-6 pt-3 border-b border-slate-200 bg-slate-100/50 overflow-x-auto">
+              {workbookGroups.length > 1
+                ? workbookGroups.map((group) => (
+                    <div
+                      key={group.workbookName}
+                      className="flex items-center gap-1.5 p-1 bg-slate-200/50 rounded-lg shrink-0 border border-slate-200/60"
+                    >
+                      <div
+                        className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-slate-700 bg-white/90 rounded-md border border-slate-300/60 shadow-2xs whitespace-nowrap"
+                        title={group.workbookName}
+                      >
+                        <span>📁</span>
+                        <span className="truncate max-w-[140px]">{group.workbookName}</span>
+                        <span className="text-[10px] text-slate-400 font-normal">
+                          ({group.sheets.length})
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {group.sheets.map(({ sheet, globalIndex }) => {
+                          const isActive = globalIndex === activeSheetIndex;
+                          const isReady =
+                            sheet.isConfirmed && sheet.selectedGranularity !== 'unknown';
 
-                return (
-                  <button
-                    key={sheet.sheetName}
-                    onClick={() => setActiveSheetIndex(idx)}
-                    className={`flex items-center gap-2 px-4 py-2 border-b-2 font-medium text-xs rounded-t-lg transition-colors cursor-pointer ${
-                      isActive
-                        ? 'border-blue-600 text-blue-700 bg-white shadow-sm'
-                        : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
-                    }`}
-                  >
-                    <span>{isReady ? '✅' : '⚠️'}</span>
-                    <span className="font-semibold">{sheet.sheetName}</span>
-                    <span className="text-[10px] text-slate-400 font-mono">({sheet.rowCount.toLocaleString()} rows)</span>
-                  </button>
-                );
-              })}
+                          return (
+                            <button
+                              key={`${sheet.workbookName}::${sheet.sheetName}::${globalIndex}`}
+                              onClick={() => setActiveSheetIndex(globalIndex)}
+                              className={`flex items-center gap-1.5 px-3 py-1.5 border-b-2 font-medium text-xs rounded-t-md transition-colors cursor-pointer whitespace-nowrap ${
+                                isActive
+                                  ? 'border-blue-600 text-blue-700 bg-white shadow-xs font-semibold'
+                                  : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                              }`}
+                              title={`${sheet.workbookName} › ${sheet.sheetName}`}
+                            >
+                              <span>{isReady ? '✅' : '⚠️'}</span>
+                              <span className="font-semibold">{sheet.sheetName}</span>
+                              <span className="text-[10px] text-slate-400 font-mono">
+                                ({sheet.rowCount.toLocaleString()} rows)
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))
+                : sheetStates.map((sheet, idx) => {
+                    const isActive = idx === activeSheetIndex;
+                    const isReady =
+                      sheet.isConfirmed && sheet.selectedGranularity !== 'unknown';
+
+                    return (
+                      <button
+                        key={`${sheet.workbookName}::${sheet.sheetName}::${idx}`}
+                        onClick={() => setActiveSheetIndex(idx)}
+                        className={`flex items-center gap-2 px-4 py-2 border-b-2 font-medium text-xs rounded-t-lg transition-colors cursor-pointer ${
+                          isActive
+                            ? 'border-blue-600 text-blue-700 bg-white shadow-sm'
+                            : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                        }`}
+                      >
+                        <span>{isReady ? '✅' : '⚠️'}</span>
+                        <span className="font-semibold">{sheet.sheetName}</span>
+                        <span className="text-[10px] text-slate-400 font-mono">
+                          ({sheet.rowCount.toLocaleString()} rows)
+                        </span>
+                      </button>
+                    );
+                  })}
             </div>
           )}
 
           {/* Modal Scrollable Body */}
           <div className="flex-1 overflow-y-auto p-6 space-y-6">
-            {/* Section 1: Granularity Verification */}
-            <div className="bg-slate-50/80 rounded-xl border border-slate-200 p-5 space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900 m-0 flex items-center gap-2">
-                    <span>📊</span> 1. Sheet Data Granularity: <span className="text-blue-700">{currentSheet.sheetName}</span>
-                  </h3>
-                  <p className="text-xs text-slate-500 m-0 mt-0.5">
-                    {currentSheet.granularityReason || 'Determines whether rows are daily summaries or call/ticket-level transactions.'}
-                  </p>
+            {/* Skipped Sheets Banner */}
+            {skippedList.length > 0 && (
+              <div className="bg-amber-50/90 border border-amber-200 rounded-xl p-4 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">⚠️</span>
+                    <span className="text-xs font-bold text-amber-900">
+                      {skippedList.length} sheet{skippedList.length > 1 ? 's were' : ' was'} skipped during auto-detection
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-amber-700">
+                    Review reasons below or click &ldquo;+ Include Sheet&rdquo; to import
+                  </span>
                 </div>
+                <div className="flex flex-col gap-2 pt-1">
+                  {skippedList.map((item, idx) => (
+                    <div
+                      key={`${item.sheetName}-${idx}`}
+                      className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 rounded-lg bg-white border border-amber-200 text-xs shadow-xs"
+                    >
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-slate-800">{item.sheetName}</span>
+                        {item.workbookName && (
+                          <span className="text-[10px] text-slate-500 font-mono">[{item.workbookName}]</span>
+                        )}
+                        <span className="text-slate-400">•</span>
+                        <span className="text-[11px] text-amber-800 italic">{item.reason}</span>
+                      </div>
+                      {item.table ? (
+                        <button
+                          type="button"
+                          onClick={() => handleIncludeSkippedSheet(item)}
+                          className="px-2.5 py-1 text-[11px] font-semibold text-blue-700 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 rounded-md border border-blue-200 transition-colors cursor-pointer self-start sm:self-auto shrink-0"
+                          title={`Include "${item.sheetName}" in import`}
+                        >
+                          + Include Sheet
+                        </button>
+                      ) : (
+                        <span className="text-[10px] text-slate-400 italic shrink-0">No data rows</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {!currentSheet ? (
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-8 text-center space-y-3">
+                <div className="text-3xl">📋</div>
+                <h3 className="text-sm font-bold text-slate-800">No Sheets Currently Selected</h3>
+                <p className="text-xs text-slate-500 max-w-md mx-auto">
+                  No sheets were automatically recognized as operational data. If your workbook contains valid data, click <span className="font-semibold text-blue-600">+ Include Sheet</span> in the notice above to import and configure that sheet.
+                </p>
+              </div>
+            ) : (
+              <>
+                {/* Section 1: Granularity Verification */}
+                <div className="bg-slate-50/80 rounded-xl border border-slate-200 p-5 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-900 m-0 flex items-center gap-2">
+                        <span>📊</span> 1. Sheet Data Granularity:{' '}
+                        {currentSheet.workbookName && (
+                          <span className="text-slate-500 font-normal">{currentSheet.workbookName} › </span>
+                        )}
+                        <span className="text-blue-700">{currentSheet.sheetName}</span>
+                      </h3>
+                      <p className="text-xs text-slate-500 m-0 mt-0.5">
+                        {currentSheet.granularityReason || 'Determines whether rows are daily summaries or call/ticket-level transactions.'}
+                      </p>
+                    </div>
 
                 {/* Status Badge */}
                 <div>
@@ -566,13 +828,17 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                   <h3 className="text-sm font-bold text-slate-900 m-0 flex items-center gap-2">
-                    <span>🗺️</span> 2. Column Mapping &amp; Confidence Table
+                    <span>🗺️</span> 2. Column Mapping &amp; Confidence Table:{' '}
+                    {currentSheet.workbookName && (
+                      <span className="text-slate-500 font-normal">{currentSheet.workbookName} › </span>
+                    )}
+                    <span className="text-blue-700">{currentSheet.sheetName}</span>
                   </h3>
                   <p className="text-xs text-slate-500 m-0 mt-0.5">
                     Headers matched using multi-signal scoring (header, data patterns, and learned memory). Verify or adjust mappings before importing.
                   </p>
                 </div>
-                <div className="flex items-center gap-2 self-start sm:self-auto">
+                <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
                   <span className="text-xs text-slate-500 font-mono">
                     {currentSheet.columnMappings.filter((c) => c.mappedField).length} of {currentSheet.columnMappings.length} mapped
                   </span>
@@ -586,10 +852,49 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
                       <span>🚫</span> Ignore All Unmapped ({unmappedCount})
                     </button>
                   )}
+                  {sheetStates.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={handleApplyMappingsToMatching}
+                      disabled={matchingSheetIndices.length === 0}
+                      className={`px-2.5 py-1 text-xs font-medium rounded-lg border transition-colors flex items-center gap-1 shadow-xs ${
+                        matchingSheetIndices.length > 0
+                          ? 'text-blue-700 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 border-blue-300 cursor-pointer'
+                          : 'text-slate-400 bg-slate-50 border-slate-200 cursor-not-allowed'
+                      }`}
+                      title={
+                        matchingSheetIndices.length > 0
+                          ? `Copy this sheet's column mappings to ${matchingSheetIndices.length} other sheet${matchingSheetIndices.length > 1 ? 's' : ''} with the same headers`
+                          : 'No other loaded sheets share the same headers as this sheet'
+                      }
+                    >
+                      <span>⚡</span>
+                      {matchingSheetIndices.length > 0
+                        ? `Apply to ${matchingSheetIndices.length} matching sheet${matchingSheetIndices.length > 1 ? 's' : ''}`
+                        : 'No matching sheets'}
+                    </button>
+                  )}
                 </div>
               </div>
 
+              {/* Apply-all success notice */}
+              {applyAllNotice && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-50 border border-blue-200 text-xs text-blue-800 font-medium animate-fade-in">
+                  <span>✅</span>
+                  <span>{applyAllNotice}</span>
+                  <button
+                    type="button"
+                    onClick={() => setApplyAllNotice(null)}
+                    className="ml-auto text-blue-500 hover:text-blue-700 bg-transparent border-none cursor-pointer text-sm leading-none"
+                    aria-label="Dismiss"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+
               {/* Column Mapping Table */}
+
               <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead className="bg-slate-100/80 text-slate-700 font-bold border-b border-slate-200">
@@ -621,7 +926,7 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
                               <span className="font-semibold text-slate-800">
                                 {col.header || <span className="italic text-slate-400">Empty Header</span>}
                               </span>
-                              {col.fingerprint && col.fingerprint !== 'unknown' && (
+                              {col.fingerprint && col.fingerprint !== 'empty' && (
                                 <span
                                   className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-100 text-slate-600 border border-slate-200"
                                   title={`Detected value pattern: ${col.fingerprint}`}
@@ -714,12 +1019,18 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
                 </table>
               </div>
             </div>
-          </div>
+          </>
+        )}
+      </div>
 
           {/* Modal Footer */}
           <div className="flex flex-col sm:flex-row justify-between items-center px-6 py-4 border-t border-slate-200 bg-slate-50/80 gap-3">
             <div className="flex flex-col sm:flex-row sm:items-center gap-3 text-xs">
-              {allConfirmed ? (
+              {sheetStates.length === 0 ? (
+                <span className="text-amber-800 font-semibold flex items-center gap-1.5">
+                  <span>ℹ️</span> No sheets included yet. Click &ldquo;+ Include Sheet&rdquo; on any skipped sheet above to import it.
+                </span>
+              ) : allConfirmed ? (
                 <span className="text-emerald-700 font-bold flex items-center gap-1.5">
                   <span>✅</span> All {sheetStates.length} sheet{sheetStates.length > 1 ? 's' : ''} confirmed and ready to import.
                 </span>
@@ -754,19 +1065,27 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
               </button>
               <button
                 onClick={handleCommit}
-                disabled={!allConfirmed}
+                disabled={!allConfirmed || sheetStates.length === 0}
                 className={`px-5 py-2 text-xs font-bold rounded-lg transition-all flex items-center gap-2 cursor-pointer ${
-                  allConfirmed
+                  allConfirmed && sheetStates.length > 0
                     ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg'
                     : 'bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed'
                 }`}
-                title={!allConfirmed ? 'Please confirm granularity for all sheets first' : 'Commit imported data to dashboard'}
+                title={
+                  sheetStates.length === 0
+                    ? 'Please include at least one sheet to import'
+                    : !allConfirmed
+                      ? 'Please confirm granularity for all sheets first'
+                      : 'Commit imported data to dashboard'
+                }
               >
                 <span>🚀</span>
                 <span>
-                  {allConfirmed
-                    ? `Import Data (${sheetStates.length} Sheet${sheetStates.length > 1 ? 's' : ''})`
-                    : `Confirm Granularity (${confirmedCount}/${sheetStates.length})`}
+                  {sheetStates.length === 0
+                    ? 'No Sheets Included'
+                    : allConfirmed
+                      ? `Import Data (${sheetStates.length} Sheet${sheetStates.length > 1 ? 's' : ''})`
+                      : `Confirm Granularity (${confirmedCount}/${sheetStates.length})`}
                 </span>
               </button>
             </div>
