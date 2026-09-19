@@ -95,7 +95,8 @@ const parseWorkbookFile = async (file: File, options: ImportOptions = {}): Promi
   const fileSize = options.fileSize ?? (typeof file?.size === 'number' ? file.size : undefined);
   const isLargeFile = typeof fileSize === 'number' && fileSize >= threshold;
 
-  if (isLargeFile) {
+  // Route through the worker when explicitly forced (batch mode) or when the file is large.
+  if (options.forceWorker || isLargeFile) {
     const workerResult = await convertWorkbookToSheetsViaWorker(file, options, (progress) => {
       notifyProgress(options, progress);
     });
@@ -148,77 +149,158 @@ const parseWorkbookFile = async (file: File, options: ImportOptions = {}): Promi
   return { rows: mergedRows, sourceSummary, warnings };
 };
 
+/** Maximum number of files parsed concurrently during a multi-file batch. */
+const BATCH_CONCURRENCY = 4;
+
+/**
+ * Runs `fn` for each item in `items`, keeping at most `concurrency` promises
+ * in-flight at the same time. Results are returned in the original order.
+ */
+const runConcurrently = async <T, R>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T, index: number) => Promise<R>
+): Promise<R[]> => {
+  const results: R[] = new Array(items.length);
+  let nextIndex = 0;
+
+  const worker = async () => {
+    while (nextIndex < items.length) {
+      const i = nextIndex;
+      nextIndex += 1;
+      results[i] = await fn(items[i], i);
+    }
+  };
+
+  const pool = Array.from({ length: Math.min(concurrency, items.length) }, () => worker());
+  await Promise.all(pool);
+  return results;
+};
+
 export const runImportService = async (files: File[], options: ImportOptions = {}): Promise<ImportResult> => {
+  throwIfAborted(options.signal);
+
+  const threshold = options.largeFileSizeThreshold ?? DEFAULT_LARGE_FILE_SIZE_THRESHOLD;
+  const isMultiFile = files.length > 1;
+
+  // Per-file progress tracking for unified status messages during concurrent loads.
+  const filePercents: number[] = new Array(files.length).fill(0);
+
+  const emitBatchProgress = (fileIndex: number, filePercent: number, fileName: string) => {
+    filePercents[fileIndex] = filePercent;
+    const completedFiles = filePercents.filter((p) => p >= 100).length;
+    const overallPercent = Math.round(filePercents.reduce((sum, p) => sum + p, 0) / files.length);
+    notifyProgress(options, {
+      phase: 'parsing',
+      fileName,
+      currentFile: completedFiles + 1,
+      totalFiles: files.length,
+      percent: Math.min(overallPercent, 99),
+      message: `File ${completedFiles + 1} of ${files.length} — ${fileName} — ${filePercent}%`,
+    });
+  };
+
+  type FileResult = {
+    rows: NormalizedRow[];
+    sourceSummary: ImportSourceSummary[];
+    warnings: ImportWarning[];
+    errors: ImportWarning[];
+    fileIndex: number;
+  };
+
+  notifyProgress(options, {
+    phase: 'preparing',
+    totalFiles: files.length,
+    percent: 0,
+    message: `Preparing ${files.length} file${files.length > 1 ? 's' : ''}...`,
+  });
+
+  const fileResults = await runConcurrently<File, FileResult>(
+    files,
+    BATCH_CONCURRENCY,
+    async (file, fileIndex) => {
+      const result: FileResult = {
+        rows: [],
+        sourceSummary: [],
+        warnings: [],
+        errors: [],
+        fileIndex,
+      };
+
+      if (!isSupportedImportType(file.name)) {
+        result.errors.push({ fileName: file.name, message: 'Unsupported file type.' });
+        return result;
+      }
+
+      // Build per-file options: forward abort signal, wire per-file progress into
+      // the batch aggregator, and force worker path for workbooks in multi-file batches.
+      const fileOptions: ImportOptions = {
+        ...options,
+        forceWorker: isMultiFile ? true : options.forceWorker,
+        onProgress: (progress) => {
+          if (isMultiFile) {
+            emitBatchProgress(fileIndex, progress.percent ?? 0, file.name);
+          } else {
+            notifyProgress(options, progress);
+          }
+        },
+      };
+
+      try {
+        const fileType = detectFileType(file.name);
+
+        if (fileType === 'csv' || fileType === 'tsv' || fileType === 'txt') {
+          const parsed = await parseTextFile(file, fileOptions);
+          const validated = validateNormalizedRows(parsed.rows, file.name);
+          result.rows = validated.rows;
+          result.sourceSummary = parsed.sourceSummary;
+          result.warnings = validated.warnings;
+        } else if (fileType === 'xlsx' || fileType === 'xls' || fileType === 'xlsm') {
+          const fileSize = options.fileSize ?? (typeof file?.size === 'number' ? file.size : undefined);
+          const isLargeFile = typeof fileSize === 'number' && fileSize >= threshold;
+
+          const parsed = await parseWorkbookFile(file, fileOptions);
+          if (isLargeFile || fileOptions.forceWorker) {
+            // Worker already mapped, validated, and merged the rows.
+            result.rows = parsed.rows;
+            result.warnings = parsed.warnings;
+            result.sourceSummary = parsed.sourceSummary;
+          } else {
+            const validated = validateNormalizedRows(parsed.rows, file.name);
+            result.rows = validated.rows;
+            result.warnings = [...parsed.warnings, ...validated.warnings];
+            result.sourceSummary = parsed.sourceSummary;
+          }
+        }
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          throw error;
+        }
+        result.errors.push({
+          fileName: file.name,
+          message: error instanceof Error ? error.message : 'Import failed unexpectedly.',
+        });
+      }
+
+      if (isMultiFile) {
+        emitBatchProgress(fileIndex, 100, file.name);
+      }
+
+      return result;
+    }
+  );
+
+  // Merge results in original file order.
   const warnings: ImportWarning[] = [];
   const errors: ImportWarning[] = [];
   const aggregatedRows: NormalizedRow[] = [];
   const sourceSummary: ImportSourceSummary[] = [];
 
-  throwIfAborted(options.signal);
-
-  const threshold = options.largeFileSizeThreshold ?? DEFAULT_LARGE_FILE_SIZE_THRESHOLD;
-
-  for (let fileIndex = 0; fileIndex < files.length; fileIndex += 1) {
-    const file = files[fileIndex];
-
-    throwIfAborted(options.signal);
-
-    if (!isSupportedImportType(file.name)) {
-      errors.push({ fileName: file.name, message: 'Unsupported file type.' });
-      continue;
-    }
-
-    notifyProgress(options, {
-      phase: 'preparing',
-      fileName: file.name,
-      currentFile: fileIndex + 1,
-      totalFiles: files.length,
-      percent: files.length ? Math.round(((fileIndex + 1) / files.length) * 100) : 100,
-      message: `Preparing ${file.name} (${fileIndex + 1}/${files.length})`,
-    });
-
-    try {
-      const fileType = detectFileType(file.name);
-      let parsedRows: NormalizedRow[] = [];
-      let parsedSourceSummary: ImportSourceSummary[] = [];
-      let parsedWarnings: ImportWarning[] = [];
-
-      if (fileType === 'csv' || fileType === 'tsv' || fileType === 'txt') {
-        const parsed = await parseTextFile(file, options);
-        parsedRows = parsed.rows;
-        parsedSourceSummary = parsed.sourceSummary;
-        const validated = validateNormalizedRows(parsedRows, file.name);
-        warnings.push(...parsedWarnings, ...validated.warnings);
-        aggregatedRows.push(...validated.rows);
-        sourceSummary.push(...parsedSourceSummary);
-      } else if (fileType === 'xlsx' || fileType === 'xls' || fileType === 'xlsm') {
-        const fileSize = options.fileSize ?? (typeof file?.size === 'number' ? file.size : undefined);
-        const isLargeFile = typeof fileSize === 'number' && fileSize >= threshold;
-
-        const parsed = await parseWorkbookFile(file, options);
-        if (isLargeFile) {
-          // Large workbook was already mapped, validated, and merged inside the worker
-          warnings.push(...parsed.warnings);
-          aggregatedRows.push(...parsed.rows);
-          sourceSummary.push(...parsed.sourceSummary);
-        } else {
-          // Small file sync fallback path
-          const validated = validateNormalizedRows(parsed.rows, file.name);
-          warnings.push(...parsed.warnings, ...validated.warnings);
-          aggregatedRows.push(...validated.rows);
-          sourceSummary.push(...parsed.sourceSummary);
-        }
-      }
-    } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw error;
-      }
-
-      errors.push({
-        fileName: file.name,
-        message: error instanceof Error ? error.message : 'Import failed unexpectedly.',
-      });
-    }
+  for (const result of fileResults) {
+    warnings.push(...result.warnings);
+    errors.push(...result.errors);
+    aggregatedRows.push(...result.rows);
+    sourceSummary.push(...result.sourceSummary);
   }
 
   const isSingleLargeFile = files.length === 1 && (typeof files[0]?.size === 'number' && files[0].size >= threshold);

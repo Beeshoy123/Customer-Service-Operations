@@ -25,6 +25,8 @@ export type ImportOptions = {
   maxRowsPerSheet?: number;
   fileSize?: number;
   fileName?: string;
+  /** When true, workbook files are always parsed via the Web Worker regardless of file size. */
+  forceWorker?: boolean;
 };
 
 export type ImportWarning = {

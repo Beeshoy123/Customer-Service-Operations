@@ -19,8 +19,8 @@ import {
   normalizeDate,
 } from './helpers';
 import {
-  runImportService,
   convertWorkbookToSheets,
+  convertWorkbookToSheetsViaWorker,
   selectSheets,
   parseCsvFileText,
   aggregateTransactions,
@@ -115,40 +115,124 @@ export const useDashboardData = (onDataReset = null) => {
     }
   }, [activeTimeframe, selectedWeek, selectedDate, selectedDow, agents, supervisors, oamName, historicalData, hasUploadedData]);
 
-  const handleFileUpload = async (event) => {
-    const files = Array.from(event.target.files || []);
-    if (!files.length) return;
+  const MULTI_FILE_CONCURRENCY = 4;
 
-    if (files.length === 1) {
-      await processFile(files[0]);
-      if (event.target) event.target.value = '';
-      return;
-    }
+  const handleMultipleFiles = useCallback(
+    async (files) => {
+      // Cancel any in-flight single-file load before starting a batch.
+      importAbortControllerRef.current?.abort();
+      const controller = new AbortController();
+      importAbortControllerRef.current = controller;
 
-    setUploadStatus({ type: 'info', message: `Preparing ${files.length} files for import preview...` });
+      const totalFiles = files.length;
+      // Track per-file progress percent (0–100) for live aggregation.
+      const filePercents = new Array(totalFiles).fill(0);
 
-    try {
-      const combinedSheets = [];
-      for (const file of files) {
-        const fileType = detectFileType(file.name);
-        if (fileType === 'xlsx' || fileType === 'xls' || fileType === 'xlsm') {
-          const { sheets } = await convertWorkbookToSheets(file);
-          const filteredSheets = selectSheets(sheets);
-          combinedSheets.push(...filteredSheets);
-        } else if (fileType === 'csv' || fileType === 'tsv' || fileType === 'txt') {
-          const textTable = await parseCsvFileText(file);
-          combinedSheets.push({
-            workbookName: file.name,
-            sheetName: file.name.replace(/\.[^/.]+$/, '') || 'CSV',
-            index: combinedSheets.length,
-            headerRow: textTable.headers,
-            rows: textTable.rows,
-            rowCount: textTable.rows.length,
-          });
+      const cancelBatch = () => {
+        controller.abort();
+        setUploadStatus({
+          type: 'info',
+          message: 'Batch import cancelled.',
+          progress: 100,
+          cancelAction: null,
+        });
+        setTimeout(() => setUploadStatus(null), 2000);
+      };
+
+      const emitBatchProgress = (fileIndex, filePercent, fileName) => {
+        filePercents[fileIndex] = filePercent;
+        const completedFiles = filePercents.filter((p) => p >= 100).length;
+        const overallPercent = Math.round(
+          filePercents.reduce((sum, p) => sum + p, 0) / totalFiles
+        );
+        setUploadStatus({
+          type: 'info',
+          message: `File ${completedFiles + 1} of ${totalFiles} — ${fileName} — ${filePercent}%`,
+          progress: Math.min(overallPercent, 99),
+          cancelAction: cancelBatch,
+        });
+      };
+
+      setUploadStatus({
+        type: 'info',
+        message: `Preparing ${totalFiles} files for import preview...`,
+        progress: 0,
+        cancelAction: cancelBatch,
+      });
+
+      // Concurrency pool: process up to MULTI_FILE_CONCURRENCY files in parallel.
+      const results = new Array(totalFiles).fill(null);
+      let nextIndex = 0;
+
+      const runWorker = async () => {
+        while (nextIndex < totalFiles) {
+          if (controller.signal.aborted) break;
+          const i = nextIndex;
+          nextIndex += 1;
+          const file = files[i];
+          const fileType = detectFileType(file.name);
+          try {
+            if (fileType === 'xlsx' || fileType === 'xls' || fileType === 'xlsm') {
+              const { sheets } = await convertWorkbookToSheetsViaWorker(file, {
+                signal: controller.signal,
+                onProgress: (progress) => {
+                  emitBatchProgress(i, progress.percent ?? 0, file.name);
+                },
+              });
+              emitBatchProgress(i, 100, file.name);
+              results[i] = selectSheets(sheets);
+            } else if (fileType === 'csv' || fileType === 'tsv' || fileType === 'txt') {
+              emitBatchProgress(i, 50, file.name);
+              const textTable = await parseCsvFileText(file);
+              emitBatchProgress(i, 100, file.name);
+              results[i] = [
+                {
+                  workbookName: file.name,
+                  sheetName: file.name.replace(/\.[^/.]+$/, '') || 'CSV',
+                  index: i,
+                  headerRow: textTable.headers,
+                  rows: textTable.rows,
+                  rowCount: textTable.rows.length,
+                },
+              ];
+            }
+          } catch (error) {
+            if (error instanceof Error && error.name === 'AbortError') {
+              throw error;
+            }
+            console.error(`Failed to parse file "${file.name}":`, error);
+            results[i] = [];
+          }
+        }
+      };
+
+      try {
+        const pool = Array.from(
+          { length: Math.min(MULTI_FILE_CONCURRENCY, totalFiles) },
+          () => runWorker()
+        );
+        await Promise.all(pool);
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          return;
+        }
+        console.error('Failed to parse batch files:', error);
+        setUploadStatus({
+          type: 'error',
+          message: 'The batch files could not be processed. Please check the file set.',
+        });
+        setTimeout(() => setUploadStatus(null), 5000);
+        return;
+      } finally {
+        if (importAbortControllerRef.current?.signal === controller.signal) {
+          importAbortControllerRef.current = null;
         }
       }
 
-      if (event.target) event.target.value = '';
+      if (controller.signal.aborted) return;
+
+      const combinedSheets = results.flat().filter(Boolean);
+
       setUploadStatus(null);
 
       if (combinedSheets.length === 0) {
@@ -158,18 +242,13 @@ export const useDashboardData = (onDataReset = null) => {
       }
 
       openImportPreview({
-        fileName: `${files.length} files batch`,
+        fileName: `${totalFiles} files batch`,
         sheets: combinedSheets,
       });
-    } catch (error) {
-      setUploadStatus({
-        type: 'error',
-        message: 'The batch files could not be processed. Please check the file set.',
-      });
-      if (event.target) event.target.value = '';
-      setTimeout(() => setUploadStatus(null), 5000);
-    }
-  };
+    },
+    [openImportPreview, setUploadStatus]
+  );
+
 
   const applyBatchImport = useCallback(async (sourceSelection = null, explicitSummary = null) => {
     const summary = explicitSummary || batchImportSummary;
@@ -436,130 +515,158 @@ export const useDashboardData = (onDataReset = null) => {
     [importPreview, closeImportPreview, setUploadStatus, setBatchImportSummary, applyBatchImport]
   );
 
-  const handleWorkbookImport = useCallback(async (file) => {
-    if (!file) return;
-    console.log('[DEBUG 1e - handleWorkbookImport] Initiating runImportService for:', { name: file.name, size: file.size });
+  const processFile = useCallback(
+    async (file) => {
+      if (!file) return;
 
-    const controller = new AbortController();
-    importAbortControllerRef.current?.abort();
-    importAbortControllerRef.current = controller;
+      const fileType = detectFileType(file.name);
+      console.log('[DEBUG 1b - processFile] File detected:', { name: file.name, size: file.size, detectedType: fileType });
 
-    const cancelImport = () => {
-      controller.abort();
-      setUploadStatus({
-        type: 'info',
-        message: 'Import cancelled.',
-        progress: 100,
-        cancelAction: null,
-      });
-      setTimeout(() => setUploadStatus(null), 2000);
-    };
+      if (fileType === 'xlsx' || fileType === 'xls' || fileType === 'xlsm') {
+        console.log('[DEBUG 1c - processFile] Routing Excel to import preview');
+        const controller = new AbortController();
+        importAbortControllerRef.current?.abort();
+        importAbortControllerRef.current = controller;
 
-    setUploadStatus({
-      type: 'info',
-      message: `Processing workbook ${file.name}...`,
-      progress: 0,
-      cancelAction: cancelImport,
-    });
-
-    try {
-      const result = await runImportService([file], {
-        signal: controller.signal,
-        onProgress: (progress) => {
+        const cancelLoading = () => {
+          controller.abort();
           setUploadStatus({
             type: 'info',
-            message: progress.message || `Processing workbook ${file.name}...`,
-            progress: typeof progress.percent === 'number' ? progress.percent : 0,
-            cancelAction: cancelImport,
+            message: 'Workbook loading cancelled.',
+            progress: 100,
+            cancelAction: null,
           });
-        },
-      });
-      const totalRows = result.rows?.length ?? 0;
-      setBatchImportSummary(result);
+          setTimeout(() => setUploadStatus(null), 2000);
+        };
 
-      if (totalRows > 0) {
-        setBatchImportSummary(result);
-        await applyBatchImport(null, result);
-        return;
-      }
-
-      setUploadStatus({ type: 'error', message: 'No usable rows were found in the workbook.' });
-      setTimeout(() => setUploadStatus(null), 5000);
-    } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
         setUploadStatus({
           type: 'info',
-          message: 'Import cancelled.',
-          progress: 100,
-          cancelAction: null,
+          message: `Preparing ${file.name} for import preview...`,
+          progress: 0,
+          cancelAction: cancelLoading,
         });
-        setTimeout(() => setUploadStatus(null), 2000);
+
+        try {
+          const { sheets } = await convertWorkbookToSheets(file, {
+            signal: controller.signal,
+            onProgress: (progress) => {
+              setUploadStatus({
+                type: 'info',
+                message: progress.message || `Loading ${file.name}...`,
+                progress: typeof progress.percent === 'number' ? progress.percent : 0,
+                cancelAction: cancelLoading,
+              });
+            },
+          });
+          const filteredSheets = selectSheets(sheets);
+
+          setUploadStatus(null);
+
+          if (!filteredSheets || filteredSheets.length === 0) {
+            setUploadStatus({ type: 'error', message: 'No usable data sheets detected in the workbook.' });
+            setTimeout(() => setUploadStatus(null), 5000);
+            return;
+          }
+
+          openImportPreview({
+            fileName: file.name,
+            sheets: filteredSheets,
+          });
+        } catch (error) {
+          if (error instanceof Error && error.name === 'AbortError') {
+            return;
+          }
+          console.error('Failed to parse workbook for preview:', error);
+          setUploadStatus({
+            type: 'error',
+            message: 'The workbook could not be processed. Please check the file format.',
+          });
+          setTimeout(() => setUploadStatus(null), 5000);
+        } finally {
+          if (importAbortControllerRef.current?.signal === controller.signal) {
+            importAbortControllerRef.current = null;
+          }
+        }
         return;
       }
 
-      setUploadStatus({ type: 'error', message: 'The workbook could not be processed. Please check the file format.' });
+      if (fileType === 'csv' || fileType === 'tsv' || fileType === 'txt') {
+        console.log('[DEBUG 1d - processFile] Routing to parseCsvFileText (CSV preview route)');
+        setUploadStatus({ type: 'info', message: `Preparing ${file.name} for import preview...` });
+        try {
+          const textTable = await parseCsvFileText(file);
+          const singleSheet = [
+            {
+              workbookName: file.name,
+              sheetName: file.name.replace(/\.[^/.]+$/, '') || 'CSV',
+              index: 0,
+              headerRow: textTable.headers,
+              rows: textTable.rows,
+              rowCount: textTable.rows.length,
+            },
+          ];
+
+          setUploadStatus(null);
+          openImportPreview({
+            fileName: file.name,
+            sheets: singleSheet,
+          });
+        } catch (error) {
+          console.error('Failed to parse CSV for preview:', error);
+          setUploadStatus({
+            type: 'error',
+            message: 'The file could not be processed. Please check the file format.',
+          });
+          setTimeout(() => setUploadStatus(null), 5000);
+        }
+        return;
+      }
+
+      setUploadStatus({
+        type: 'error',
+        message: `Unsupported file format: ${file.name}. Please upload CSV, TSV, TXT, or Excel files.`,
+      });
       setTimeout(() => setUploadStatus(null), 5000);
-    } finally {
-      if (importAbortControllerRef.current?.signal === controller.signal) {
-        importAbortControllerRef.current = null;
+    },
+    [openImportPreview, setUploadStatus]
+  );
+
+  const handleFileUpload = useCallback(
+    async (event) => {
+      const files = Array.from(event.target.files || []);
+      if (!files.length) return;
+
+      if (files.length === 1) {
+        await processFile(files[0]);
+        if (event.target) event.target.value = '';
+        return;
       }
-    }
-  }, [applyBatchImport, setBatchImportSummary, setUploadStatus]);
 
-  const handleFileDrop = (file) => {
-    console.log('[DEBUG 1a - handleFileDrop] File dropped:', { name: file?.name, size: file?.size, type: file?.type });
-    processFile(file);
-  };
+      await handleMultipleFiles(files);
+      if (event.target) event.target.value = '';
+    },
+    [processFile, handleMultipleFiles]
+  );
 
-  const processFile = async (file) => {
-    if (!file) return;
+  const handleFileDrop = useCallback(
+    (fileOrFiles) => {
+      console.log('[DEBUG 1a - handleFileDrop] File(s) dropped:', fileOrFiles);
+      if (!fileOrFiles) return;
 
-    const fileType = detectFileType(file.name);
-    console.log('[DEBUG 1b - processFile] File detected:', { name: file.name, size: file.size, detectedType: fileType });
-
-    if (fileType === 'xlsx' || fileType === 'xls' || fileType === 'xlsm') {
-      console.log('[DEBUG 1c - processFile] Routing to handleWorkbookImport');
-      handleWorkbookImport(file);
-      return;
-    }
-
-    if (fileType === 'csv' || fileType === 'tsv' || fileType === 'txt') {
-      console.log('[DEBUG 1d - processFile] Routing to parseCsvFileText (CSV preview route)');
-      setUploadStatus({ type: 'info', message: `Preparing ${file.name} for import preview...` });
-      try {
-        const textTable = await parseCsvFileText(file);
-        const singleSheet = [
-          {
-            workbookName: file.name,
-            sheetName: file.name.replace(/\.[^/.]+$/, '') || 'CSV',
-            index: 0,
-            headerRow: textTable.headers,
-            rows: textTable.rows,
-            rowCount: textTable.rows.length,
-          },
-        ];
-
-        setUploadStatus(null);
-        openImportPreview({
-          fileName: file.name,
-          sheets: singleSheet,
-        });
-      } catch (error) {
-        setUploadStatus({
-          type: 'error',
-          message: 'The file could not be processed. Please check the file format.',
-        });
-        setTimeout(() => setUploadStatus(null), 5000);
+      if (Array.isArray(fileOrFiles) || (typeof FileList !== 'undefined' && fileOrFiles instanceof FileList)) {
+        const files = Array.from(fileOrFiles);
+        if (files.length === 1) {
+          processFile(files[0]);
+        } else if (files.length > 1) {
+          handleMultipleFiles(files);
+        }
+        return;
       }
-      return;
-    }
 
-    setUploadStatus({
-      type: 'error',
-      message: `Unsupported file format: ${file.name}. Please upload CSV, TSV, TXT, or Excel files.`,
-    });
-    setTimeout(() => setUploadStatus(null), 5000);
-  };
+      processFile(fileOrFiles);
+    },
+    [processFile, handleMultipleFiles]
+  );
 
   const agentDataCache = useMemo(() => {
     const cache = {};

@@ -559,8 +559,12 @@ const DropZone = () => {
   const onDrop = (e) => {
     e.preventDefault();
     setIsDragOver(false);
-    const file = e.dataTransfer.files && e.dataTransfer.files[0];
-    if (file) dashData.handleFileDrop(file);
+    const files = e.dataTransfer.files ? Array.from(e.dataTransfer.files) : [];
+    if (files.length === 1) {
+      dashData.handleFileDrop(files[0]);
+    } else if (files.length > 1) {
+      dashData.handleFileDrop(files);
+    }
   };
 
   return (
