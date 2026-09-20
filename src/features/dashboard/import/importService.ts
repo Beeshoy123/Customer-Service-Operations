@@ -3,7 +3,13 @@ import { detectFileType, isSupportedImportType } from './fileTypeDetector';
 import { convertWorkbookToSheets, convertWorkbookToSheetsViaWorker, DEFAULT_LARGE_FILE_SIZE_THRESHOLD } from './workbookLoader';
 import { selectSheets } from './sheetSelector';
 import { mapTableToNormalizedRows, normalizeCellValue, normalizeHeaderToField } from './schemaNormalizer';
-import { detectColumnMappingWithConfidence } from './importPolicy';
+import {
+  detectColumnMappingWithConfidence,
+  getCustomerExperienceSurveyPreference,
+  getFieldComponentGroup,
+  getResolveWindowField,
+  isUnrecognizedPlausibleFingerprint,
+} from './importPolicy';
 import { mergeNormalizedRows, detectDuplicateFiles } from './mergeData';
 import { aggregateTransactions } from './aggregateTransactions';
 import { detectGranularity } from './granularityDetector';
@@ -135,6 +141,10 @@ const parseWorkbookFile = async (file: File, options: ImportOptions = {}): Promi
             confidence: mapping.confidence,
             score: mapping.score,
             candidates: mapping.candidates,
+            componentGroup: getFieldComponentGroup(mapping.mappedField)?.concept,
+            componentRole: getFieldComponentGroup(mapping.mappedField)?.role,
+            resolveWindow: getResolveWindowField(mapping.mappedField)?.windowLabel,
+            unrecognizedPlausible: !mapping.mappedField && isUnrecognizedPlausibleFingerprint(mapping.fingerprint || 'empty'),
           };
         })
       ),
@@ -194,6 +204,10 @@ const parseWorkbookFile = async (file: File, options: ImportOptions = {}): Promi
         confidence: mapping.confidence,
         score: mapping.score,
         candidates: mapping.candidates,
+        componentGroup: getFieldComponentGroup(mapping.mappedField)?.concept,
+        componentRole: getFieldComponentGroup(mapping.mappedField)?.role,
+        resolveWindow: getResolveWindowField(mapping.mappedField)?.windowLabel,
+        unrecognizedPlausible: !mapping.mappedField && isUnrecognizedPlausibleFingerprint(mapping.fingerprint || 'empty'),
       };
     })
   );
@@ -405,7 +419,7 @@ export const runImportService = async (files: File[], options: ImportOptions = {
   const diagnosticsByMapping = new Map<string, MappingDiagnostic[]>();
   for (const diagnostic of mappingDiagnostics) {
     if (!diagnostic.mappedField) continue;
-    const key = `${diagnostic.fileName}::${diagnostic.sheetName}::${diagnostic.mappedField}`;
+    const key = `${diagnostic.fileName}::${diagnostic.sheetName}::${diagnostic.componentGroup || diagnostic.mappedField}`;
     const group = diagnosticsByMapping.get(key);
     if (group) group.push(diagnostic);
     else diagnosticsByMapping.set(key, [diagnostic]);
@@ -413,9 +427,34 @@ export const runImportService = async (files: File[], options: ImportOptions = {
 
   for (const group of diagnosticsByMapping.values()) {
     if (group.length < 2) continue;
+    if (group[0].componentGroup) continue;
     const headers = group.map((diagnostic) => diagnostic.header);
     for (const diagnostic of group) {
       diagnostic.collisionWith = headers.filter((header) => header !== diagnostic.header);
+    }
+  }
+
+  const customerExperienceGroups = new Map<string, MappingDiagnostic[]>();
+  for (const diagnostic of mappingDiagnostics) {
+    if (!['vxs', 'vxs_Pass', 'vxs_Cnt'].includes(diagnostic.mappedField || '')) continue;
+    const key = `${diagnostic.fileName}::${diagnostic.sheetName}`;
+    const group = customerExperienceGroups.get(key);
+    if (group) group.push(diagnostic);
+    else customerExperienceGroups.set(key, [diagnostic]);
+  }
+
+  for (const group of customerExperienceGroups.values()) {
+    const uniqueHeaders = [...new Set(group.map((item) => item.header))];
+    if (uniqueHeaders.length < 2) continue;
+    const agentCandidates = group.filter(
+      (item) => getCustomerExperienceSurveyPreference(item.header) === 'agent'
+    );
+    if (agentCandidates.length === 1) continue;
+
+    for (const diagnostic of group) {
+      diagnostic.choiceGroup = 'customer-experience-agent-survey';
+      diagnostic.choiceOptions = uniqueHeaders;
+      diagnostic.choiceQuestion = 'Which of these is the survey about the agent specifically?';
     }
   }
 

@@ -8,6 +8,14 @@ import type {
 } from './types';
 import { detectGranularity, evaluateGranularityConfidence } from './granularityDetector';
 import { CANONICAL_FIELD_OPTIONS, detectColumnMappingWithConfidence } from './importPolicy';
+import { analyzeColumnValues } from './columnFingerprinter';
+import type {
+  AccountProfile,
+  CustomerExperienceConfig,
+  DataLocation,
+  TargetStyle,
+} from '../../accountSetup/account-profile-schema';
+import { DEFAULT_ACCOUNT_PROFILE } from '../config';
 import {
   rememberMapping,
   forgetMapping,
@@ -19,6 +27,7 @@ import {
 
 export interface ImportPreviewModalProps {
   isOpen: boolean;
+  accountName: string;
   sheets: SheetTable[];
   skippedSheets?: (string | SkippedSheetInfo)[];
   fileName?: string;
@@ -30,6 +39,7 @@ export interface ImportPreviewModalProps {
         columnMappings: Record<string, string | null>;
       }
     >;
+    accountProfile?: AccountProfile;
   }) => void;
   onCancel: () => void;
 }
@@ -55,6 +65,211 @@ const FIELD_LABEL_MAP: Record<string, string> = Object.fromEntries(
 
 export const getCanonicalFieldLabel = (field: string): string => {
   return FIELD_LABEL_MAP[field] || field;
+};
+
+const isReadyRateFingerprint = (fingerprint: string): boolean =>
+  fingerprint === 'percent-decimal' || fingerprint === 'percent-whole';
+
+const extractSampleValues = (
+  table: SheetTable,
+  colIndex: number
+): (string | number | null | undefined)[] =>
+  (table.rows ?? [])
+    .slice(0, 50)
+    .map((row) => row?.[colIndex])
+    .filter((val): val is string | number | null | undefined =>
+      val !== undefined && val !== null && String(val).trim() !== ''
+    );
+
+const buildDefaultCustomerExperienceConfig = (
+  header: string,
+  sampleValues: (string | number | null | undefined)[] = []
+): CustomerExperienceConfig => {
+  const { fingerprint } = analyzeColumnValues(sampleValues);
+  const readyRate = isReadyRateFingerprint(fingerprint);
+
+  return {
+    label: 'Customer Experience',
+    data: {
+      shape: readyRate ? 'ready-rate' : 'raw-counts',
+      matchedColumns: [header],
+    } as DataLocation,
+    ...(readyRate
+      ? {}
+      : {
+          classification: {
+            calcStyle: 'csat-percentage',
+            scale: { min: 1, max: 5 },
+            promoterRange: { min: 4, max: 5 },
+            detractorRange: { min: 1, max: 1 },
+          },
+        }),
+    target: 0,
+  };
+};
+
+type AdditionalMetricKey =
+  | 'resolve2hr'
+  | 'resolve3d'
+  | 'phoneAdds'
+  | 'dataLines'
+  | 'fiber'
+  | 'vhi'
+  | 'hotspot'
+  | 'handoffs'
+  | 'dpc'
+  | 'vtt'
+  | 'credit';
+
+const getAdditionalMetricKey = (field: string | null): AdditionalMetricKey | null => {
+  if (!field) return null;
+  if (field === 'netOcc' || field === 'creditFreq') return 'credit';
+  if (field === 'viewTogether' || field === 'vttSent' || field === 'vttTransacted') return 'vtt';
+  const supported: AdditionalMetricKey[] = [
+    'resolve2hr', 'resolve3d', 'phoneAdds', 'dataLines', 'fiber', 'vhi', 'hotspot',
+    'handoffs', 'dpc', 'vtt', 'credit',
+  ];
+  return supported.includes(field as AdditionalMetricKey) ? field as AdditionalMetricKey : null;
+};
+
+interface AdditionalMetricDraft {
+  metric: AdditionalMetricKey;
+  header: string;
+  data: DataLocation;
+  target: number;
+  windowLabel?: string;
+  targetStyle?: TargetStyle;
+  calcStyle?: 'per-call-average' | 'total-amount' | 'frequency';
+  lowerIsBetter?: boolean;
+  requiredMessages?: string[];
+}
+
+const inferWindowLabel = (header: string, field: AdditionalMetricKey): string | undefined => {
+  const normalized = header.toLowerCase();
+  if (field === 'resolve2hr' && /2\s*[- ]?h(?:ou)?r?/.test(normalized)) return '2 hour';
+  if (field === 'resolve3d' && /3\s*[- ]?d(?:ay)?/.test(normalized)) return '3 day';
+  return undefined;
+};
+
+const inferRequiredMessages = (header: string): string[] => {
+  const normalized = header.toLowerCase();
+  const messages: string[] = [];
+  if (normalized.includes('view together') || normalized.includes('vtt')) messages.push('view-together');
+  if (normalized.includes('terms') || normalized.includes('condition')) messages.push('terms-and-conditions');
+  if (normalized.includes('broadband') || normalized.includes('facts')) messages.push('broadband-facts');
+  return messages;
+};
+
+const buildAdditionalMetricDraft = (
+  metric: AdditionalMetricKey,
+  header: string,
+  sampleValues: (string | number | null | undefined)[]
+): AdditionalMetricDraft => {
+  const fingerprint = analyzeColumnValues(sampleValues).fingerprint;
+  const readyRate = isReadyRateFingerprint(fingerprint);
+  const inferredWindow = inferWindowLabel(header, metric);
+  const inferredMessages = inferRequiredMessages(header);
+  const inferredCalcStyle = metric === 'credit'
+    ? header.toLowerCase().includes('freq')
+      ? 'frequency'
+      : header.toLowerCase().includes('occ') || header.toLowerCase().includes('credit')
+        ? 'per-call-average'
+        : undefined
+    : undefined;
+
+  return {
+    metric,
+    header,
+    data: {
+      shape: readyRate ? 'ready-rate' : 'raw-counts',
+      matchedColumns: [header],
+    },
+    target: 0,
+    ...(inferredWindow ? { windowLabel: inferredWindow } : {}),
+    ...(metric === 'resolve2hr' || metric === 'resolve3d'
+      ? { windowLabel: inferredWindow }
+      : {}),
+    ...(metric === 'phoneAdds' || metric === 'dataLines' || metric === 'fiber' || metric === 'vhi' || metric === 'hotspot'
+      ? { targetStyle: { kind: 'flat', value: 0 } as TargetStyle }
+      : {}),
+    ...(inferredCalcStyle ? { calcStyle: inferredCalcStyle } : {}),
+    ...(metric === 'dpc' || metric === 'credit' ? { lowerIsBetter: true } : {}),
+    ...(metric === 'vtt' ? { requiredMessages: inferredMessages } : {}),
+  };
+};
+
+const buildAccountProfile = (
+  accountName: string,
+  customerExperience: CustomerExperienceConfig | null,
+  drafts: AdditionalMetricDraft[]
+): AccountProfile => {
+  const profile = JSON.parse(JSON.stringify(DEFAULT_ACCOUNT_PROFILE)) as AccountProfile;
+  profile.accountName = accountName.trim() || DEFAULT_ACCOUNT_PROFILE.accountName;
+  profile.createdAt = new Date().toISOString();
+
+  if (customerExperience) profile.customerExperience = customerExperience;
+
+  const first = (metric: AdditionalMetricKey): AdditionalMetricDraft | undefined =>
+    drafts.find((draft) => draft.metric === metric);
+  const resolve2hr = first('resolve2hr');
+  const resolve3d = first('resolve3d');
+  const handoffs = first('handoffs');
+  const dpc = first('dpc');
+  const vtt = first('vtt');
+  const credit = first('credit');
+
+  if (resolve2hr) {
+    profile.resolveRate.shortTerm = {
+      tracked: true,
+      windowLabel: resolve2hr.windowLabel || '2 hour',
+      data: resolve2hr.data,
+      target: resolve2hr.target,
+    };
+  }
+  if (resolve3d) {
+    profile.resolveRate.longTerm = {
+      tracked: true,
+      windowLabel: resolve3d.windowLabel || '3 day',
+      data: resolve3d.data,
+      target: resolve3d.target,
+    };
+  }
+  if (handoffs) {
+    profile.handoffs = { label: 'Hand-offs', data: handoffs.data, target: handoffs.target };
+  }
+  profile.dpc = dpc
+    ? { tracked: true, data: dpc.data, target: dpc.target }
+    : { tracked: false };
+  profile.vtt = vtt
+    ? { tracked: true, requiredMessages: (vtt.requiredMessages || []) as never, data: vtt.data, target: vtt.target }
+    : { tracked: false, requiredMessages: [] };
+  if (credit) {
+    profile.credit = {
+      calcStyle: credit.calcStyle || 'frequency',
+      label: credit.calcStyle === 'per-call-average' ? 'Net OCC' : 'Credit',
+      data: credit.data,
+      target: credit.target,
+      lowerIsBetter: credit.lowerIsBetter ?? true,
+    };
+  }
+
+  profile.sales.mobile.smartphones = { tracked: false, label: 'Phone Lines', targetStyle: { kind: 'flat', value: 0 } };
+  profile.sales.mobile.dataLines = { tracked: false, label: 'Data Lines', targetStyle: { kind: 'flat', value: 0 } };
+  profile.sales.internet.fiber = { tracked: false, label: 'Fiber', targetStyle: { kind: 'flat', value: 0 } };
+  profile.sales.internet.fixedWireless = { tracked: false, label: 'VHI', targetStyle: { kind: 'flat', value: 0 } };
+  profile.sales.internet.hotspot = { tracked: false, label: 'Hotspot', targetStyle: { kind: 'flat', value: 0 } };
+
+  for (const draft of drafts) {
+    const targetStyle = draft.targetStyle || { kind: 'flat', value: draft.target };
+    const line = { tracked: true, label: draft.header, matchedColumn: draft.header, targetStyle };
+    if (draft.metric === 'phoneAdds') profile.sales.mobile.smartphones = line;
+    if (draft.metric === 'dataLines') profile.sales.mobile.dataLines = line;
+    if (draft.metric === 'fiber') profile.sales.internet.fiber = line;
+    if (draft.metric === 'vhi') profile.sales.internet.fixedWireless = line;
+    if (draft.metric === 'hotspot') profile.sales.internet.hotspot = line;
+  }
+
+  return profile;
 };
 
 export const buildInitialSheetStates = (sheets: SheetTable[]): LocalSheetState[] => {
@@ -364,6 +579,7 @@ const normalizeSkippedSheet = (item: string | SkippedSheetInfo): SkippedSheetInf
 
 export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
   isOpen,
+  accountName,
   sheets,
   skippedSheets,
   fileName,
@@ -376,6 +592,12 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
   const [showManageMemory, setShowManageMemory] = useState(false);
   const [learnedCount, setLearnedCount] = useState<number>(() => getLearnedMappingsCount());
   const [applyAllNotice, setApplyAllNotice] = useState<string | null>(null);
+  const [customerExperienceConfigByHeader, setCustomerExperienceConfigByHeader] = useState<
+    Record<string, CustomerExperienceConfig | null>
+  >({});
+  const [additionalMetricDrafts, setAdditionalMetricDrafts] = useState<Record<string, AdditionalMetricDraft>>({});
+
+  const currentSheet = sheetStates[activeSheetIndex];
 
   useEffect(() => {
     if (isOpen && sheets && sheets.length > 0) {
@@ -396,6 +618,47 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
     }
   }, [isOpen, skippedSheets]);
 
+  useEffect(() => {
+    if (!isOpen || !currentSheet) return;
+
+    setCustomerExperienceConfigByHeader((prev) => {
+      const next = { ...prev };
+      for (const col of currentSheet.columnMappings) {
+        if (col.mappedField !== 'vxs') continue;
+        const header = String(col.header ?? '').trim();
+        if (!header) continue;
+        if (!next[header]) {
+          const sampleValues = extractSampleValues(currentSheet.table, col.index);
+          next[header] = buildDefaultCustomerExperienceConfig(header, sampleValues);
+        }
+      }
+      return next;
+    });
+  }, [currentSheet, isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || !currentSheet) return;
+
+    setAdditionalMetricDrafts((prev) => {
+      const next = { ...prev };
+      for (const col of currentSheet.columnMappings) {
+        const metric = getAdditionalMetricKey(col.mappedField);
+        if (!metric) continue;
+        const header = String(col.header ?? '').trim();
+        if (!header) continue;
+        const key = `${metric}:${header}`;
+        if (!next[key]) {
+          next[key] = buildAdditionalMetricDraft(
+            metric,
+            header,
+            extractSampleValues(currentSheet.table, col.index)
+          );
+        }
+      }
+      return next;
+    });
+  }, [currentSheet, isOpen]);
+
   const handleIncludeSkippedSheet = (item: SkippedSheetInfo) => {
     if (!item.table) return;
 
@@ -407,8 +670,6 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
     setSkippedList((prev) => prev.filter((s) => s.sheetName !== item.sheetName));
     setActiveSheetIndex(newIndex);
   };
-
-  const currentSheet = sheetStates[activeSheetIndex];
 
   const handleGranularityChange = (sheetIdx: number, newGranularity: string) => {
     setSheetStates((prev) => {
@@ -444,6 +705,28 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
         col.confidence = 'remembered';
         col.isLowConfidence = false;
         col.matchType = 'remembered';
+
+        if (newField === 'vxs') {
+          const header = String(col.header ?? '').trim();
+          const sampleValues = extractSampleValues(target.table, col.index);
+          setCustomerExperienceConfigByHeader((prev) => ({
+            ...prev,
+            [header]: prev[header] ?? buildDefaultCustomerExperienceConfig(header, sampleValues),
+          }));
+        } else if (newField) {
+          const metric = getAdditionalMetricKey(newField);
+          if (metric) {
+            const header = String(col.header ?? '').trim();
+            setAdditionalMetricDrafts((prev) => ({
+              ...prev,
+              [`${metric}:${header}`]: prev[`${metric}:${header}`] ?? buildAdditionalMetricDraft(
+                metric,
+                header,
+                extractSampleValues(target.table, col.index)
+              ),
+            }));
+          }
+        }
       }
 
       updatedMappings[colIndex] = col;
@@ -578,6 +861,40 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
   }
 
   const unmappedCount = currentSheet ? currentSheet.columnMappings.filter((c) => !c.mappedField).length : 0;
+  const vxsColumns = currentSheet ? currentSheet.columnMappings.filter((c) => c.mappedField === 'vxs') : [];
+  const additionalColumns = currentSheet
+    ? currentSheet.columnMappings.filter((col) => getAdditionalMetricKey(col.mappedField))
+    : [];
+
+  const handleCustomerExperienceFieldChange = (
+    header: string,
+    patch: Partial<CustomerExperienceConfig>
+  ) => {
+    setCustomerExperienceConfigByHeader((prev) => {
+      const current = prev[header] ?? buildDefaultCustomerExperienceConfig(header, []);
+      return {
+        ...prev,
+        [header]: {
+          ...current,
+          ...patch,
+          data: {
+            ...current.data,
+            matchedColumns: [header],
+          },
+        },
+      };
+    });
+  };
+
+  const handleAdditionalMetricChange = (
+    key: string,
+    patch: Partial<AdditionalMetricDraft>
+  ) => {
+    setAdditionalMetricDrafts((prev) => ({
+      ...prev,
+      [key]: { ...prev[key], ...patch },
+    }));
+  };
 
   const handleCommit = () => {
     if (!allConfirmed) return;
@@ -608,7 +925,13 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
       sheetConfigs[idx] = config;
     }
 
-    onConfirm({ sheetConfigs });
+    const profile = buildAccountProfile(
+      accountName,
+      Object.values(customerExperienceConfigByHeader).find(Boolean) ?? null,
+      Object.values(additionalMetricDrafts)
+    );
+
+    onConfirm({ sheetConfigs, accountProfile: profile });
   };
 
   return (
@@ -622,7 +945,7 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
           <div className="ipm-header">
             <div>
               <h2 className="ipm-header-title">
-                <span>📥</span> Import Preview &amp; Verification
+                <span>📥</span> Import Setup
               </h2>
               <p className="ipm-header-subtitle">
                 {fileName ? `${fileName} • ` : ''}
@@ -630,7 +953,7 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
                 {workbookGroups.length > 1 ? ` across ${workbookGroups.length} workbooks` : ''}
                 {skippedList.length > 0 ? ` (${skippedList.length} skipped)` : ''}.
                 {sheetStates.length > 0
-                  ? ' Confirm granularity and verify column mappings before importing.'
+                  ? ' Set up your account and verify the data before importing.'
                   : ' Review skipped sheets below to include.'}
               </p>
             </div>
@@ -1020,7 +1343,440 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
                       </tbody>
                     </table>
                   </div>
+
                 </div>
+
+                  {vxsColumns.length > 0 && (
+                    <div className="ipm-section">
+                      <div className="ipm-section-header">
+                        <div>
+                          <h3 className="ipm-section-title">
+                            <span>📈</span> 3. Customer Experience Setup
+                          </h3>
+                          <p className="ipm-section-desc">
+                            Review the matched VXS / CSAT / NPS column and confirm whether the raw scores already look like a ready-made percentage or need score-scale configuration.
+                          </p>
+                        </div>
+                      </div>
+
+                      {vxsColumns.map((col) => {
+                        const header = String(col.header ?? '').trim();
+                        const sampleValues = extractSampleValues(currentSheet.table, col.index);
+                        const fingerprint = analyzeColumnValues(sampleValues).fingerprint;
+                        const readyRate = isReadyRateFingerprint(fingerprint);
+                        const draft = customerExperienceConfigByHeader[header] ?? buildDefaultCustomerExperienceConfig(header, sampleValues);
+
+                        return (
+                          <div key={`${header}-metric1`} className="ipm-config-card">
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                              <div>
+                                <div style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '4px' }}>Matched column</div>
+                                <strong style={{ fontSize: '1rem', color: '#0f172a' }}>{header}</strong>
+                              </div>
+                              <span className="ipm-pattern-badge" title={`Detected value pattern: ${fingerprint}`}>
+                                {readyRate ? 'Ready-made percentage' : `Raw score pattern: ${fingerprint}`}
+                              </span>
+                            </div>
+
+                            {readyRate ? (
+                              <div style={{ display: 'grid', gap: '12px' }}>
+                                <div style={{ fontSize: '0.85rem', color: '#475569' }}>
+                                  This column already looks like a precomputed percentage, so only the target needs confirmation.
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                  <label style={{ fontWeight: 600, minWidth: '90px' }}>Target</label>
+                                  <input
+                                    type="number"
+                                    value={draft.target ?? 0}
+                                    onChange={(e) =>
+                                      handleCustomerExperienceFieldChange(header, {
+                                        target: Number(e.target.value || 0),
+                                      })
+                                    }
+                                    style={{ width: '120px', padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: '8px' }}
+                                  />
+                                  <span style={{ color: '#64748b', fontSize: '0.8rem' }}>%</span>
+                                </div>
+                              </div>
+                            ) : (
+                              <div style={{ display: 'grid', gap: '16px' }}>
+                                <div>
+                                  <div style={{ fontWeight: 700, marginBottom: '8px' }}>1) Calc style</div>
+                                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                    {(['csat-percentage', 'nps'] as const).map((style) => (
+                                      <button
+                                        key={style}
+                                        type="button"
+                                        onClick={() =>
+                                          handleCustomerExperienceFieldChange(header, {
+                                            classification: {
+                                              ...(draft.classification ?? {
+                                                scale: { min: 1, max: 5 },
+                                                promoterRange: { min: 4, max: 5 },
+                                                detractorRange: { min: 1, max: 1 },
+                                              }),
+                                              calcStyle: style,
+                                            },
+                                          })
+                                        }
+                                        style={{
+                                          padding: '8px 14px',
+                                          borderRadius: '8px',
+                                          border: draft.classification?.calcStyle === style ? '1px solid #2563eb' : '1px solid #cbd5e1',
+                                          background: draft.classification?.calcStyle === style ? '#dbeafe' : '#ffffff',
+                                          color: '#0f172a',
+                                          cursor: 'pointer',
+                                          fontWeight: 600,
+                                        }}
+                                      >
+                                        {style === 'csat-percentage' ? 'CSAT %' : 'NPS'}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+
+                                <div>
+                                  <div style={{ fontWeight: 700, marginBottom: '8px' }}>2) Rating scale and promoter/detractor bands</div>
+                                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px' }}>
+                                    <label style={{ display: 'grid', gap: '6px', fontSize: '0.8rem', color: '#475569' }}>
+                                      Scale min
+                                      <input
+                                        type="number"
+                                        value={draft.classification?.scale?.min ?? 1}
+                                        onChange={(e) =>
+                                          handleCustomerExperienceFieldChange(header, {
+                                            classification: {
+                                              ...(draft.classification ?? {
+                                                calcStyle: 'csat-percentage',
+                                                scale: { min: 1, max: 5 },
+                                                promoterRange: { min: 4, max: 5 },
+                                                detractorRange: { min: 1, max: 1 },
+                                              }),
+                                              scale: {
+                                                ...(draft.classification?.scale ?? { min: 1, max: 5 }),
+                                                min: Number(e.target.value || 0),
+                                              },
+                                            },
+                                          })
+                                        }
+                                        style={{ padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: '8px' }}
+                                      />
+                                    </label>
+                                    <label style={{ display: 'grid', gap: '6px', fontSize: '0.8rem', color: '#475569' }}>
+                                      Scale max
+                                      <input
+                                        type="number"
+                                        value={draft.classification?.scale?.max ?? 5}
+                                        onChange={(e) =>
+                                          handleCustomerExperienceFieldChange(header, {
+                                            classification: {
+                                              ...(draft.classification ?? {
+                                                calcStyle: 'csat-percentage',
+                                                scale: { min: 1, max: 5 },
+                                                promoterRange: { min: 4, max: 5 },
+                                                detractorRange: { min: 1, max: 1 },
+                                              }),
+                                              scale: {
+                                                ...(draft.classification?.scale ?? { min: 1, max: 5 }),
+                                                max: Number(e.target.value || 0),
+                                              },
+                                            },
+                                          })
+                                        }
+                                        style={{ padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: '8px' }}
+                                      />
+                                    </label>
+                                    <label style={{ display: 'grid', gap: '6px', fontSize: '0.8rem', color: '#475569' }}>
+                                      Promoter min
+                                      <input
+                                        type="number"
+                                        value={draft.classification?.promoterRange?.min ?? 4}
+                                        onChange={(e) =>
+                                          handleCustomerExperienceFieldChange(header, {
+                                            classification: {
+                                              ...(draft.classification ?? {
+                                                calcStyle: 'csat-percentage',
+                                                scale: { min: 1, max: 5 },
+                                                promoterRange: { min: 4, max: 5 },
+                                                detractorRange: { min: 1, max: 1 },
+                                              }),
+                                              promoterRange: {
+                                                ...(draft.classification?.promoterRange ?? { min: 4, max: 5 }),
+                                                min: Number(e.target.value || 0),
+                                              },
+                                            },
+                                          })
+                                        }
+                                        style={{ padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: '8px' }}
+                                      />
+                                    </label>
+                                    <label style={{ display: 'grid', gap: '6px', fontSize: '0.8rem', color: '#475569' }}>
+                                      Promoter max
+                                      <input
+                                        type="number"
+                                        value={draft.classification?.promoterRange?.max ?? 5}
+                                        onChange={(e) =>
+                                          handleCustomerExperienceFieldChange(header, {
+                                            classification: {
+                                              ...(draft.classification ?? {
+                                                calcStyle: 'csat-percentage',
+                                                scale: { min: 1, max: 5 },
+                                                promoterRange: { min: 4, max: 5 },
+                                                detractorRange: { min: 1, max: 1 },
+                                              }),
+                                              promoterRange: {
+                                                ...(draft.classification?.promoterRange ?? { min: 4, max: 5 }),
+                                                max: Number(e.target.value || 0),
+                                              },
+                                            },
+                                          })
+                                        }
+                                        style={{ padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: '8px' }}
+                                      />
+                                    </label>
+                                    <label style={{ display: 'grid', gap: '6px', fontSize: '0.8rem', color: '#475569' }}>
+                                      Detractor min
+                                      <input
+                                        type="number"
+                                        value={draft.classification?.detractorRange?.min ?? 1}
+                                        onChange={(e) =>
+                                          handleCustomerExperienceFieldChange(header, {
+                                            classification: {
+                                              ...(draft.classification ?? {
+                                                calcStyle: 'csat-percentage',
+                                                scale: { min: 1, max: 5 },
+                                                promoterRange: { min: 4, max: 5 },
+                                                detractorRange: { min: 1, max: 1 },
+                                              }),
+                                              detractorRange: {
+                                                ...(draft.classification?.detractorRange ?? { min: 1, max: 1 }),
+                                                min: Number(e.target.value || 0),
+                                              },
+                                            },
+                                          })
+                                        }
+                                        style={{ padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: '8px' }}
+                                      />
+                                    </label>
+                                    <label style={{ display: 'grid', gap: '6px', fontSize: '0.8rem', color: '#475569' }}>
+                                      Detractor max
+                                      <input
+                                        type="number"
+                                        value={draft.classification?.detractorRange?.max ?? 1}
+                                        onChange={(e) =>
+                                          handleCustomerExperienceFieldChange(header, {
+                                            classification: {
+                                              ...(draft.classification ?? {
+                                                calcStyle: 'csat-percentage',
+                                                scale: { min: 1, max: 5 },
+                                                promoterRange: { min: 4, max: 5 },
+                                                detractorRange: { min: 1, max: 1 },
+                                              }),
+                                              detractorRange: {
+                                                ...(draft.classification?.detractorRange ?? { min: 1, max: 1 }),
+                                                max: Number(e.target.value || 0),
+                                              },
+                                            },
+                                          })
+                                        }
+                                        style={{ padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: '8px' }}
+                                      />
+                                    </label>
+                                  </div>
+                                </div>
+
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                  <label style={{ fontWeight: 600, minWidth: '90px' }}>Target</label>
+                                  <input
+                                    type="number"
+                                    value={draft.target ?? 0}
+                                    onChange={(e) =>
+                                      handleCustomerExperienceFieldChange(header, {
+                                        target: Number(e.target.value || 0),
+                                      })
+                                    }
+                                    style={{ width: '120px', padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: '8px' }}
+                                  />
+                                  <span style={{ color: '#64748b', fontSize: '0.8rem' }}>%</span>
+                                </div>
+                              </div>
+                            )}
+
+                            <div style={{ marginTop: '12px', padding: '8px 10px', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', color: '#334155', fontSize: '0.78rem' }}>
+                              <strong>Review:</strong>{' '}
+                              {draft.data.shape === 'ready-rate'
+                                ? `Ready-rate column with target ${draft.target}%`
+                                : `Raw-score config: ${draft.classification?.calcStyle === 'nps' ? 'NPS' : 'CSAT %'} • scale ${draft.classification?.scale?.min}-${draft.classification?.scale?.max} • promoter ${draft.classification?.promoterRange?.min}-${draft.classification?.promoterRange?.max} • detractor ${draft.classification?.detractorRange?.min}-${draft.classification?.detractorRange?.max} • target ${draft.target}%`}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {additionalColumns.length > 0 && (
+                    <div className="ipm-section">
+                      <div className="ipm-section-header">
+                        <div>
+                          <h3 className="ipm-section-title"><span>⚙️</span> 4. Additional Account Metric Configuration</h3>
+                          <p className="ipm-section-desc">
+                            Only matched metrics appear here. Values already answered by the column pattern or header are prefilled; confirm the remaining business rules and target.
+                          </p>
+                        </div>
+                      </div>
+
+                      {additionalColumns.map((col) => {
+                        const metric = getAdditionalMetricKey(col.mappedField);
+                        if (!metric) return null;
+                        const header = String(col.header ?? '').trim();
+                        const key = `${metric}:${header}`;
+                        const sampleValues = extractSampleValues(currentSheet.table, col.index);
+                        const draft = additionalMetricDrafts[key] ?? buildAdditionalMetricDraft(metric, header, sampleValues);
+                        const readyRate = draft.data.shape === 'ready-rate';
+                        const label = metric === 'resolve2hr'
+                          ? 'Resolve Rate (short-term)'
+                          : metric === 'resolve3d'
+                            ? 'Resolve Rate (long-term)'
+                            : metric === 'phoneAdds'
+                              ? 'Sales — Smartphones'
+                              : metric === 'dataLines'
+                                ? 'Sales — Data Lines'
+                                : metric === 'fiber'
+                                  ? 'Sales — Fiber'
+                                  : metric === 'vhi'
+                                    ? 'Sales — Fixed Wireless'
+                                    : metric === 'hotspot'
+                                      ? 'Sales — Hotspot'
+                                      : metric === 'handoffs'
+                                        ? 'Hand-offs / Transfer Rate'
+                                        : metric === 'dpc'
+                                          ? 'DPC'
+                                          : metric === 'vtt'
+                                            ? 'VTT / Required Disclosure'
+                                            : 'Credit';
+
+                        return (
+                          <div key={key} className="ipm-config-card">
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                              <div>
+                                <div style={{ fontSize: '0.8rem', color: '#64748b' }}>{label}</div>
+                                <strong style={{ color: '#0f172a' }}>{header}</strong>
+                              </div>
+                              <span className="ipm-pattern-badge">{readyRate ? 'Ready-made rate' : `Detected: ${analyzeColumnValues(sampleValues).fingerprint}`}</span>
+                            </div>
+
+                            {(metric === 'resolve2hr' || metric === 'resolve3d') && !draft.windowLabel && (
+                              <label style={{ display: 'grid', gap: '6px', marginBottom: '12px', fontSize: '0.8rem', color: '#475569' }}>
+                                What window does this column represent?
+                                <select
+                                  value={draft.windowLabel ?? ''}
+                                  onChange={(e) => handleAdditionalMetricChange(key, { windowLabel: e.target.value })}
+                                  className="ipm-select"
+                                >
+                                  <option value="">Select a window</option>
+                                  <option value="1 hour">1 hour</option>
+                                  <option value="2 hour">2 hour</option>
+                                  <option value="3 day">3 day</option>
+                                  <option value="7 day">7 day</option>
+                                </select>
+                              </label>
+                            )}
+
+                            {metric === 'credit' && !draft.calcStyle && (
+                              <div style={{ marginBottom: '12px' }}>
+                                <div style={{ fontWeight: 700, marginBottom: '8px' }}>How should Credit be calculated?</div>
+                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                  {(['per-call-average', 'total-amount', 'frequency'] as const).map((style) => (
+                                    <button
+                                      key={style}
+                                      type="button"
+                                      onClick={() => handleAdditionalMetricChange(key, { calcStyle: style })}
+                                      className="ipm-btn ipm-btn-secondary"
+                                    >
+                                      {style === 'per-call-average' ? 'Per-call average' : style === 'total-amount' ? 'Total amount' : 'Frequency'}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {(metric === 'phoneAdds' || metric === 'dataLines' || metric === 'fiber' || metric === 'vhi' || metric === 'hotspot') && (
+                              <div style={{ marginBottom: '12px' }}>
+                                <div style={{ fontWeight: 700, marginBottom: '8px' }}>How should this sales target be expressed?</div>
+                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                  {(['flat', 'dynamic-per-agent'] as const).map((kind) => (
+                                    <button
+                                      key={kind}
+                                      type="button"
+                                      onClick={() => handleAdditionalMetricChange(key, {
+                                        targetStyle: kind === 'flat' ? { kind, value: draft.target } : { kind, multiplier: draft.target },
+                                      })}
+                                      className="ipm-btn ipm-btn-secondary"
+                                    >
+                                      {kind === 'flat' ? 'Flat target' : 'Per-agent target'}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {metric === 'vtt' && (!draft.requiredMessages || draft.requiredMessages.length === 0) && (
+                              <div style={{ marginBottom: '12px' }}>
+                                <div style={{ fontWeight: 700, marginBottom: '8px' }}>Which required message does this column measure?</div>
+                                {(['view-together', 'terms-and-conditions', 'broadband-facts'] as const).map((message) => {
+                                  const checked = draft.requiredMessages?.includes(message) ?? false;
+                                  return (
+                                    <label key={message} style={{ display: 'block', marginBottom: '6px', color: '#475569' }}>
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={(e) => {
+                                          const messages = new Set(draft.requiredMessages ?? []);
+                                          if (e.target.checked) messages.add(message);
+                                          else messages.delete(message);
+                                          handleAdditionalMetricChange(key, { requiredMessages: [...messages] });
+                                        }}
+                                      />{' '}
+                                      {message === 'view-together' ? 'View Together' : message === 'terms-and-conditions' ? 'Terms and Conditions' : 'Broadband Facts'}
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            )}
+
+                            {metric === 'credit' && draft.calcStyle && (
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', color: '#475569' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={draft.lowerIsBetter ?? true}
+                                  onChange={(e) => handleAdditionalMetricChange(key, { lowerIsBetter: e.target.checked })}
+                                />
+                                Lower values are better
+                              </label>
+                            )}
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                              <label style={{ fontWeight: 700, minWidth: '90px' }}>Target</label>
+                              <input
+                                type="number"
+                                value={draft.target}
+                                onChange={(e) => handleAdditionalMetricChange(key, {
+                                  target: Number(e.target.value || 0),
+                                  targetStyle: draft.targetStyle?.kind === 'dynamic-per-agent'
+                                    ? { kind: 'dynamic-per-agent', multiplier: Number(e.target.value || 0) }
+                                    : draft.targetStyle
+                                      ? { kind: 'flat', value: Number(e.target.value || 0) }
+                                      : undefined,
+                                })}
+                                style={{ width: '120px', padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: '8px' }}
+                              />
+                              <span style={{ color: '#64748b', fontSize: '0.8rem' }}>{metric === 'phoneAdds' || metric === 'dataLines' || metric === 'fiber' || metric === 'vhi' || metric === 'hotspot' ? 'units' : '%'}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
               </>
             )}
           </div>

@@ -1,4 +1,4 @@
-import { FIELD_ALIASES, normalizeImportedValue, findCanonicalField, findPairedCountField } from './importPolicy';
+import { FIELD_ALIASES, FIELD_COMPONENT_GROUPS, normalizeImportedValue, findCanonicalField, findPairedCountField } from './importPolicy';
 import type { NormalizedRow, SheetTable } from './types';
 
 const normalizeHeader = (value: string): string =>
@@ -24,12 +24,17 @@ export const normalizeHeaderToField = (
   header: string,
   sampleValues: (string | number | null | undefined)[] = []
 ): string | null => {
+  const normalized = normalizeHeader(header);
+  const directComponent = Object.entries(FIELD_ALIASES).find(([field, policy]) =>
+    FIELD_COMPONENT_GROUPS[field] && policy.aliases.some((alias) => normalizeHeader(alias) === normalized)
+  )?.[0];
+  if (directComponent) return directComponent;
+
   const paired = findPairedCountField(header);
   if (paired) {
     return paired.taggedField;
   }
 
-  const normalized = normalizeHeader(header);
   const directMatch = ALIAS_LOOKUP_MAP.get(normalized);
   if (directMatch) {
     return directMatch;

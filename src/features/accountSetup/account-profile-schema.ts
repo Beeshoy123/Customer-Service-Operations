@@ -69,6 +69,8 @@ export interface CustomerExperienceConfig {
                                // full mapping is still worth capturing up front
   };
   target: number;
+  /** The selected survey column whose score is about the agent specifically. */
+  agentSpecificColumn?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -196,6 +198,15 @@ export interface NcwConfig {
   target?: number;
 }
 
+export interface CustomMetricConfig {
+  key: string;
+  label: string;
+  matchedColumn: string;
+  calcStyle: 'per-call-average' | 'total-amount' | 'frequency';
+  target: number;
+  higherIsBetter: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // The full account profile
 // ---------------------------------------------------------------------------
@@ -215,6 +226,8 @@ export interface AccountProfile {
   vtt: VttConfig;
   credit: CreditConfig;
   ncw: NcwConfig;
+  customMetrics?: CustomMetricConfig[];
+  ignoredCustomMetricColumns?: string[];
   /** Optional account-specific calculation branches; existing defaults remain unchanged. */
   calculationStyles?: {
     rateMergeStyle?: 'arithmetic-average' | 'weighted-by-counts';

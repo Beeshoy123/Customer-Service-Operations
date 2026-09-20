@@ -9,9 +9,55 @@ import { recallMapping } from './mappingMemory';
 
 export type ImportFieldKind = 'text' | 'number' | 'percent' | 'date';
 
+export const isUnrecognizedPlausibleFingerprint = (fingerprint: ColumnFingerprint): boolean =>
+  fingerprint === 'count-integer' ||
+  fingerprint === 'percent-decimal' ||
+  fingerprint === 'percent-whole' ||
+  fingerprint === 'duration-seconds';
+
 export type ImportFieldPolicy = {
   aliases: string[];
   kind?: ImportFieldKind;
+};
+
+export type ComponentGroup = {
+  concept: 'credit' | 'vtt';
+  role: string;
+};
+
+export const FIELD_COMPONENT_GROUPS: Record<string, ComponentGroup> = {
+  creditAmount: { concept: 'credit', role: 'amount' },
+  creditTransactions: { concept: 'credit', role: 'transaction-count' },
+  vttEligible: { concept: 'vtt', role: 'eligible-count' },
+  vttIndicated: { concept: 'vtt', role: 'indicated-count' },
+  vttAttach: { concept: 'vtt', role: 'attachment-count' },
+};
+
+export const RESOLVE_WINDOW_FIELDS: Record<string, { label: string; windowLabel: string }> = {
+  resolveSameDay: { label: 'Same-day resolve/repeat', windowLabel: 'same-day' },
+  resolve2hr: { label: '2-hour resolve/repeat', windowLabel: '2 hour' },
+  resolve3d: { label: '3-day resolve/repeat', windowLabel: '3 day' },
+  resolve5d: { label: '5-day resolve/repeat', windowLabel: '5 day' },
+  resolve7d: { label: '7-day resolve/repeat', windowLabel: '7 day' },
+};
+
+export const getFieldComponentGroup = (field: string | null): ComponentGroup | null =>
+  field ? FIELD_COMPONENT_GROUPS[field] ?? null : null;
+
+export const getResolveWindowField = (field: string | null) =>
+  field ? RESOLVE_WINDOW_FIELDS[field] ?? null : null;
+
+export type CustomerExperienceSurveyPreference = 'agent' | 'account' | 'unknown';
+
+export const getCustomerExperienceSurveyPreference = (
+  header: string
+): CustomerExperienceSurveyPreference => {
+  const normalized = normalizeHeader(header);
+  const agentSpecific = /(?:^|\s)(?:agent|rep|csr|associate|advisor|representative)(?:$|\s)/i.test(normalized);
+  const accountLevel = /(?:^|\s)(?:account|overall|service|company|brand|enterprise)(?:$|\s)/i.test(normalized);
+  if (agentSpecific && !accountLevel) return 'agent';
+  if (accountLevel && !agentSpecific) return 'account';
+  return 'unknown';
 };
 
 export const FIELD_ALIASES: Record<string, ImportFieldPolicy> = {
@@ -48,15 +94,27 @@ export const FIELD_ALIASES: Record<string, ImportFieldPolicy> = {
     kind: 'number',
   },
   vxs: {
-    aliases: ['vxs', 'customer satisfaction', 'csat', 'satisfaction', 'overall satisfaction', 'vxs %', 'vxs overall', 'vxs overall %', 'overall c sat'],
+    aliases: ['vxs', 'customer satisfaction', 'csat', 'satisfaction', 'overall satisfaction', 'vxs %', 'vxs overall', 'vxs overall %', 'overall c sat', 'customer nps score', 'nps score', 'voc', 'nps', 'ors', 'survey score', 'survey result'],
     kind: 'percent',
   },
   resolve2hr: {
-    aliases: ['resolve within 2hr', 'resolve 2hr', '2hr resolution', '2 hour resolve', '2hr', '2-hour resolve', '2 hour resolve %', 'resolve within 2 hour', 'within 2hr'],
+    aliases: ['resolve within 2hr', 'resolve 2hr', '2hr resolution', '2 hour resolve', '2hr', '2-hour resolve', '2 hour resolve %', 'resolve within 2 hour', 'within 2hr', 'resolution rate', 'repeat rate', 'repeat callback rate', 'callback rate', 'rr', 'repeat callback', 'repeat callback %'],
+    kind: 'percent',
+  },
+  resolveSameDay: {
+    aliases: ['same day resolve', 'same-day resolve', 'same day resolution', 'same day resolution rate', 'same day repeat', 'same-day repeat', 'same day repeat rate', 'same-day repeat rate', 'same day callback', 'same day contacts'],
     kind: 'percent',
   },
   resolve3d: {
-    aliases: ['resolve within 3d', 'resolve 3d', '3d resolution', '3 day resolve', '3dr', '3-day resolve', '3 day resolve %', '3d resolve', 'within 3d', '3 day resolution'],
+    aliases: ['resolve within 3d', 'resolve 3d', '3d resolution', '3 day resolve', '3dr', '3-day resolve', '3 day resolve %', '3d resolve', 'within 3d', '3 day resolution', 'resolution rate', 'repeat rate', 'repeat callback rate', 'callback rate', 'rr', 'repeat callback', 'repeat callback %'],
+    kind: 'percent',
+  },
+  resolve5d: {
+    aliases: ['resolve within 5d', 'resolve 5d', '5 day resolve', '5-day resolve', '5 day resolution', '5 day repeat', '5-day repeat', '5 day callback'],
+    kind: 'percent',
+  },
+  resolve7d: {
+    aliases: ['resolve within 7d', 'resolve 7d', '7 day resolve', '7-day resolve', '7 day resolution', '7 day repeat', '7-day repeat', '7 day callback'],
     kind: 'percent',
   },
   resolveTotalContacts: {
@@ -133,6 +191,8 @@ export const FIELD_ALIASES: Record<string, ImportFieldPolicy> = {
       'handoff pct',
       'transfer rate',
       'transfer %',
+      'hand off rate',
+      'hand-off rate',
     ],
     kind: 'percent',
   },
@@ -171,6 +231,8 @@ export const FIELD_ALIASES: Record<string, ImportFieldPolicy> = {
       'dpc %',
       'dpc time',
       'real-time agent dpc',
+      'disconnect rate',
+      'disconnect',
     ],
     kind: 'number',
   },
@@ -192,6 +254,10 @@ export const FIELD_ALIASES: Record<string, ImportFieldPolicy> = {
       'vtt rate',
       'vtt attach',
       'vtt attach %',
+      'view together',
+      'terms and conditions',
+      'broadband facts',
+      'disclosure',
     ],
     kind: 'percent',
   },
@@ -215,6 +281,18 @@ export const FIELD_ALIASES: Record<string, ImportFieldPolicy> = {
     ],
     kind: 'number',
   },
+  vttEligible: {
+    aliases: ['vt eligible count', 'vt eligible', 'vtt eligible count', 'vtt eligible', 'view together eligible', 'view together eligibility'],
+    kind: 'number',
+  },
+  vttIndicated: {
+    aliases: ['vt ind count', 'vt indicated count', 'vt indicated', 'vtt indicated count', 'view together indicated'],
+    kind: 'number',
+  },
+  vttAttach: {
+    aliases: ['vt attach num', 'vt attach number', 'vtt attach num', 'vtt attach number', 'view together attach num'],
+    kind: 'number',
+  },
   netOcc: {
     aliases: [
       'net occ',
@@ -223,6 +301,8 @@ export const FIELD_ALIASES: Record<string, ImportFieldPolicy> = {
       'netocc',
       'occupancy',
       'net occ %',
+      'credit',
+      'occ',
     ],
     kind: 'percent',
   },
@@ -236,6 +316,14 @@ export const FIELD_ALIASES: Record<string, ImportFieldPolicy> = {
     ],
     kind: 'percent',
   },
+  creditAmount: {
+    aliases: ['occ amt', 'occ amount', 'occ_amt', 'credit amount', 'credit amt', 'net occ amount'],
+    kind: 'number',
+  },
+  creditTransactions: {
+    aliases: ['occ trans cnt', 'occ transaction count', 'occ_trans_cnt', 'credit transaction count', 'credit trans cnt'],
+    kind: 'number',
+  },
   phoneAdds: {
     aliases: [
       'phone adds',
@@ -244,6 +332,49 @@ export const FIELD_ALIASES: Record<string, ImportFieldPolicy> = {
       'phoneadds',
       'gross adds phones',
       'phone add count',
+      'smartphone adds',
+      'smartphone add',
+      'mobile adds',
+      'gross add',
+      'ga',
+    ],
+    kind: 'number',
+  },
+  dataLines: {
+    aliases: [
+      'data lines',
+      'data line',
+      'tablet adds',
+      'tablets',
+      'watch adds',
+      'watches',
+      'data-lines',
+      'datalines',
+      'line adds',
+      'total data lines',
+    ],
+    kind: 'number',
+  },
+  fiber: {
+    aliases: [
+      'fiber',
+      'fiber adds',
+      'total fiber adds',
+      'fiber gross adds',
+      'fibre',
+      'fibers',
+    ],
+    kind: 'number',
+  },
+  hotspot: {
+    aliases: [
+      'hotspot',
+      'hotspot adds',
+      'total hotspot adds',
+      'hotspot gross adds',
+      'portable wifi',
+      'mifi',
+      'wifi hotspot',
     ],
     kind: 'number',
   },
@@ -256,6 +387,8 @@ export const FIELD_ALIASES: Record<string, ImportFieldPolicy> = {
       'home internet',
       'vhi adds',
       'vhi gross adds',
+      'internet air',
+      'fixed wireless',
     ],
     kind: 'number',
   },
@@ -281,7 +414,10 @@ const HEADER_TOKEN_HINTS: Record<string, string[]> = {
   aht: ['aht', 'handle', 'time'],
   vxs: ['vxs', 'csat', 'satisfaction', 'score'],
   resolve2hr: ['resolve', '2hr', 'twohour', '2hour', '2 hour'],
+  resolveSameDay: ['resolve', 'same', 'day', 'repeat', 'callback'],
   resolve3d: ['resolve', '3d', '3day', 'threeday', '3 day'],
+  resolve5d: ['resolve', '5d', '5day', 'fiveday', '5 day'],
+  resolve7d: ['resolve', '7d', '7day', 'sevenday', '7 day'],
   resolveTotalContacts: ['resolve', 'resolved', 'contacts', 'contact'],
   resolveTotalContacts2hr: ['resolve2hr', '2hrcontacts', '2hrcontact'],
   resolveTotalContacts3d: ['resolve3d', '3dcontacts', '3dcontact'],
@@ -295,9 +431,17 @@ const HEADER_TOKEN_HINTS: Record<string, string[]> = {
   vtt: ['vtt'],
   vttSent: ['vttsent'],
   vttTransacted: ['vtttransacted'],
+  vttEligible: ['vteligible', 'vtteligible', 'eligible'],
+  vttIndicated: ['vtind', 'vtindicated', 'vttindicated'],
+  vttAttach: ['vtattach', 'vttattach', 'attach'],
   netOcc: ['netocc', 'occupancy'],
   creditFreq: ['creditfreq', 'creditfrequency'],
+  creditAmount: ['occamt', 'occamount', 'creditamount'],
+  creditTransactions: ['occtranscnt', 'occtransactioncount', 'credittransaction'],
   phoneAdds: ['phoneadds', 'phones'],
+  dataLines: ['datalines', 'tablet', 'watch', 'data', 'line'],
+  fiber: ['fiber', 'fibre'],
+  hotspot: ['hotspot', 'wifi', 'mifi'],
   vhi: ['vhi', 'fwa'],
 };
 
@@ -580,7 +724,7 @@ function computeFingerprintScore(
   }
 
   if (fingerprint === 'percent-decimal' || fingerprint === 'percent-whole') {
-    if (field === 'vxs' || field === 'resolve2hr' || field === 'resolve3d' || field === 'handoffs') {
+    if (field === 'vxs' || field === 'resolveSameDay' || field === 'resolve2hr' || field === 'resolve3d' || field === 'resolve5d' || field === 'resolve7d' || field === 'handoffs') {
       return 50;
     }
     return 0;
@@ -605,6 +749,19 @@ function computeFingerprintScore(
       field === 'resolveTotalContacts' ||
       field === 'resolveTotalContacts2hr' ||
       field === 'resolveTotalContacts3d' ||
+      field === 'resolveSameDay' ||
+      field === 'resolve5d' ||
+      field === 'resolve7d' ||
+      field === 'phoneAdds' ||
+      field === 'dataLines' ||
+      field === 'fiber' ||
+      field === 'hotspot' ||
+      field === 'vhi' ||
+      field === 'creditAmount' ||
+      field === 'creditTransactions' ||
+      field === 'vttEligible' ||
+      field === 'vttIndicated' ||
+      field === 'vttAttach' ||
       field.endsWith('_Pass') ||
       field.endsWith('_Cnt')
     ) {
@@ -633,9 +790,22 @@ export const CANONICAL_FIELD_OPTIONS: { value: string; label: string }[] = [
   { value: 'calls', label: 'Call Volume' },
   { value: 'aht', label: 'Average Handle Time (AHT)' },
   { value: 'vxs', label: 'Customer Satisfaction (VXS / CSAT)' },
+  { value: 'resolveSameDay', label: 'Same-day Resolve / Repeat' },
   { value: 'resolve2hr', label: 'Resolve 2hr %' },
   { value: 'resolve3d', label: 'Resolve 3d %' },
+  { value: 'resolve5d', label: 'Resolve 5d %' },
+  { value: 'resolve7d', label: 'Resolve 7d %' },
   { value: 'resolveTotalContacts', label: 'Resolve Total Contacts' },
+  { value: 'phoneAdds', label: 'Phone Adds' },
+  { value: 'dataLines', label: 'Data Lines' },
+  { value: 'fiber', label: 'Fiber Adds' },
+  { value: 'hotspot', label: 'Hotspot Adds' },
+  { value: 'vhi', label: 'Fixed Wireless / VHI' },
+  { value: 'creditAmount', label: 'Credit / OCC Amount' },
+  { value: 'creditTransactions', label: 'Credit / OCC Transaction Count' },
+  { value: 'vttEligible', label: 'VTT Eligible Count' },
+  { value: 'vttIndicated', label: 'VTT Indicated Count' },
+  { value: 'vttAttach', label: 'VTT Attach Count' },
   { value: 'location', label: 'Location / Site' },
   { value: 'vxs_Pass', label: 'VXS Pass Count' },
   { value: 'vxs_Cnt', label: 'VXS Total Count' },
@@ -676,6 +846,34 @@ export const scoreColumnMapping = (
       fingerprint,
       candidates: [],
       score: 0,
+    };
+  }
+
+  // Component aliases such as OCC_Amt must win over generic _Cnt/_Pass suffix handling.
+  const directComponentField = Object.entries(FIELD_ALIASES).find(([field, policy]) =>
+    FIELD_COMPONENT_GROUPS[field] && policy.aliases.some((alias) => normalizeHeader(alias) === normalized)
+  )?.[0];
+  if (directComponentField && fingerprint !== 'call-id-like' && fingerprint !== 'hour-of-day') {
+    const candidate: MappingCandidate = {
+      field: directComponentField,
+      score: 95,
+      headerScore: 45,
+      fingerprintScore: fingerprint === 'count-integer' ? 50 : 40,
+      memoryScore: 0,
+      signals: ['exact_alias', 'component_group'],
+    };
+    return {
+      header,
+      normalized,
+      mappedField: directComponentField,
+      confidence: 'exact',
+      isLowConfidence: false,
+      matchType: 'exact_alias',
+      sampleValues: sampleStrings,
+      index,
+      fingerprint,
+      candidates: [candidate],
+      score: candidate.score,
     };
   }
 
@@ -833,13 +1031,18 @@ export const findCanonicalField = (
   header: string,
   sampleValues: (string | number | null | undefined)[] = []
 ): string | null => {
+  const normalized = normalizeHeader(header);
+  if (!normalized) return null;
+
+  const directComponent = Object.entries(FIELD_ALIASES).find(([field, config]) =>
+    FIELD_COMPONENT_GROUPS[field] && config.aliases.some((alias) => normalizeHeader(alias) === normalized)
+  )?.[0];
+  if (directComponent) return directComponent;
+
   const paired = findPairedCountField(header);
   if (paired) {
     return paired.taggedField;
   }
-
-  const normalized = normalizeHeader(header);
-  if (!normalized) return null;
 
   // Direct fast-path match
   for (const [field, config] of Object.entries(FIELD_ALIASES)) {

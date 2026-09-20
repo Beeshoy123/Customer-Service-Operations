@@ -8,7 +8,10 @@ import {
   METRIC_CONFIG,
   PERSONA,
   TARGETS,
+  applyAccountProfile,
+  DEFAULT_ACCOUNT_PROFILE,
 } from './config';
+import { getResolveWindowField, RESOLVE_WINDOW_FIELDS } from './import/importPolicy';
 import {
   agentMatchesSearch,
   aggregateRecords,
@@ -33,8 +36,7 @@ import {
 } from './import';
 import type { SheetTable, SheetGranularity, ImportResult, MappingDiagnostic, SkippedSheetInfo } from './import/types';
 import { detectFileType } from './import/fileTypeDetector';
-import { detectMetrics, learnAlias } from '../accountSetup/metric-detection-engine';
-import { loadAccountProfile, loadLearnedAliases as loadStoredLearnedAliases, loadRateMergeStyle, saveLearnedAliases, saveRateMergeStyle } from '../accountSetup/account-profile-storage';
+import { loadAccountProfile, saveAccountProfile, loadRateMergeStyle, saveRateMergeStyle } from '../accountSetup/account-profile-storage';
 
 // ============================================================================
 // FILE STRUCTURE:
@@ -47,6 +49,133 @@ import { loadAccountProfile, loadLearnedAliases as loadStoredLearnedAliases, loa
 
 // ─── Local Storage Persistence Helpers ──────────────────────────────────────
 const DASHBOARD_STORAGE_KEY = 'customer-service-dashboard-state-v1';
+
+const CONTEXT_ONLY_HEADER_PATTERN = /(?:^|[_\s-])(location|department|dept|skill\s*group|skillgroup|track|tracking|intent|intent\s*description|description|category|categorical|queue|team|region|site|supervisor|manager)(?:$|[_\s-])/i;
+
+const isContextOnlyMapping = (diagnostic) =>
+  !diagnostic.mappedField && CONTEXT_ONLY_HEADER_PATTERN.test(String(diagnostic.header || ''));
+
+const resolveWindowReviewItems = (diagnostics, accountProfile) => {
+  if (accountProfile?.resolveRate?.shortTerm?.data?.matchedColumns?.length &&
+      accountProfile?.resolveRate?.longTerm?.data?.matchedColumns?.length) {
+    return [];
+  }
+
+  const windows = diagnostics.filter((item) => item.resolveWindow || getResolveWindowField(item.mappedField));
+  return windows.length > 2 ? windows : [];
+};
+
+const customerExperienceReviewItems = (diagnostics, accountProfile) => {
+  if (accountProfile?.customerExperience?.agentSpecificColumn) return [];
+  return diagnostics.filter((item) => item.choiceGroup === 'customer-experience-agent-survey');
+};
+
+const customMetricReviewItems = (diagnostics, accountProfile) => {
+  const ignored = new Set(accountProfile?.ignoredCustomMetricColumns || []);
+  return diagnostics.filter((item) => item.unrecognizedPlausible && !ignored.has(String(item.header).trim().toLowerCase()));
+};
+
+const customMetricKeyForHeader = (header) =>
+  `customMetric_${String(header || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'column'}`;
+
+const saveCustomMetricDecisions = (accountName, answers) => {
+  const overrides = {};
+  const entries = Object.entries(answers || {});
+  if (!accountName || entries.length === 0) return overrides;
+
+  const profile = JSON.parse(JSON.stringify(loadAccountProfile(accountName) || DEFAULT_ACCOUNT_PROFILE));
+  profile.accountName = accountName;
+  profile.customMetrics = Array.isArray(profile.customMetrics) ? profile.customMetrics : [];
+  profile.ignoredCustomMetricColumns = Array.isArray(profile.ignoredCustomMetricColumns)
+    ? profile.ignoredCustomMetricColumns
+    : [];
+
+  for (const [header, answer] of entries) {
+    const normalizedHeader = String(header).trim().toLowerCase();
+    if (!answer || answer.decision === 'ignore') {
+      profile.ignoredCustomMetricColumns = [...new Set([...profile.ignoredCustomMetricColumns, normalizedHeader])];
+      overrides[header] = null;
+      continue;
+    }
+
+    const key = customMetricKeyForHeader(header);
+    profile.ignoredCustomMetricColumns = profile.ignoredCustomMetricColumns.filter((item) => item !== normalizedHeader);
+    profile.customMetrics = profile.customMetrics.filter((metric) => metric.matchedColumn !== header);
+    profile.customMetrics.push({
+      key,
+      label: answer.label,
+      matchedColumn: header,
+      calcStyle: answer.calcStyle,
+      target: Number(answer.target || 0),
+      higherIsBetter: Boolean(answer.higherIsBetter),
+    });
+    overrides[header] = key;
+  }
+
+  saveAccountProfile(profile);
+  applyAccountProfile(profile);
+  return overrides;
+};
+
+const saveResolveWindowChoices = (accountName, diagnostics, mappingOverrides) => {
+  if (!accountName) return;
+
+  const selected = { shortTerm: null, longTerm: null };
+  for (const diagnostic of diagnostics) {
+    const choice = Object.prototype.hasOwnProperty.call(mappingOverrides, diagnostic.header)
+      ? mappingOverrides[diagnostic.header]
+      : diagnostic.mappedField;
+    if (choice === 'resolve2hr' && !selected.shortTerm) selected.shortTerm = diagnostic;
+    if (choice === 'resolve3d' && !selected.longTerm) selected.longTerm = diagnostic;
+  }
+  if (!selected.shortTerm && !selected.longTerm) return;
+
+  const profile = JSON.parse(JSON.stringify(loadAccountProfile(accountName) || DEFAULT_ACCOUNT_PROFILE));
+  profile.accountName = accountName;
+  profile.resolveRate = {
+    ...profile.resolveRate,
+    shortTerm: selected.shortTerm
+      ? {
+          tracked: true,
+          windowLabel: selected.shortTerm.resolveWindow || RESOLVE_WINDOW_FIELDS.resolve2hr.windowLabel,
+          data: { shape: 'ready-rate', matchedColumns: [selected.shortTerm.header] },
+          target: profile.resolveRate.shortTerm.target,
+        }
+      : profile.resolveRate.shortTerm,
+    longTerm: selected.longTerm
+      ? {
+          tracked: true,
+          windowLabel: selected.longTerm.resolveWindow || RESOLVE_WINDOW_FIELDS.resolve3d.windowLabel,
+          data: { shape: 'ready-rate', matchedColumns: [selected.longTerm.header] },
+          target: profile.resolveRate.longTerm.target,
+        }
+      : profile.resolveRate.longTerm,
+  };
+  saveAccountProfile(profile);
+  applyAccountProfile(profile);
+};
+
+const saveCustomerExperienceChoice = (accountName, diagnostics, mappingOverrides) => {
+  if (!accountName) return;
+  const choice = diagnostics.find((diagnostic) =>
+    diagnostic.choiceGroup === 'customer-experience-agent-survey' &&
+    mappingOverrides[diagnostic.header] === 'vxs'
+  );
+  if (!choice) return;
+
+  const profile = JSON.parse(JSON.stringify(loadAccountProfile(accountName) || DEFAULT_ACCOUNT_PROFILE));
+  profile.accountName = accountName;
+  profile.customerExperience = {
+    ...profile.customerExperience,
+    agentSpecificColumn: choice.header,
+    data: {
+      ...profile.customerExperience.data,
+      matchedColumns: [choice.header],
+    },
+  };
+  saveAccountProfile(profile);
+  applyAccountProfile(profile);
+};
 
 const readPersistedDashboardState = () => {
   if (typeof window === 'undefined') return null;
@@ -70,6 +199,15 @@ export const useDashboard = () => useContext(DashboardContext);
 // ─── Dashboard Data Management Hook ──────────────────────────────────────
 export const useDashboardData = (onDataReset = null, accountName = '') => {
   const persistedState = useMemo(() => readPersistedDashboardState(), []);
+
+  const accountProfile = useMemo(() => {
+    const profile = accountName ? loadAccountProfile(accountName) : null;
+    return applyAccountProfile(profile);
+  }, [accountName]);
+  const hasSavedAccountProfile = useMemo(
+    () => Boolean(accountName && loadAccountProfile(accountName)),
+    [accountName]
+  );
 
   const [activeTimeframe, setActiveTimeframe] = useState(() => persistedState?.activeTimeframe || 'monthly');
   const [selectedWeek, setSelectedWeek] = useState(() => persistedState?.selectedWeek || 'Week 1');
@@ -126,32 +264,6 @@ export const useDashboardData = (onDataReset = null, accountName = '') => {
     }
     onDataReset?.();
   }, [onDataReset]);
-
-  const inspectAccountHeaders = useCallback((sheets) => {
-    const normalizedAccountName = String(accountName || '').trim();
-    if (!normalizedAccountName || !sheets?.length) return;
-
-    const profile = loadAccountProfile(normalizedAccountName);
-    if (profile) {
-      console.log('[Account setup] Existing profile loaded:', {
-        accountName: normalizedAccountName,
-        credit: profile.credit,
-      });
-      return;
-    }
-
-    const headers = Array.from(new Set(
-      sheets.flatMap((sheet) => (sheet.headerRow || []).map((header) => String(header ?? '').trim()).filter(Boolean))
-    ));
-    const detection = detectMetrics(headers, loadLearnedAliases());
-    console.log('[Account setup] Metric detection:', {
-      accountName: normalizedAccountName,
-      matched: detection.matched,
-      ambiguous: detection.ambiguous,
-      unmatched: detection.unmatched,
-      credit: detection.matched.credit || detection.ambiguous.credit || detection.unmatched.includes('credit'),
-    });
-  }, [accountName]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -330,8 +442,6 @@ export const useDashboardData = (onDataReset = null, accountName = '') => {
       const combinedSheets = results.flat().filter(Boolean);
       const combinedSkipped = skippedResults.flat().filter(Boolean);
 
-      inspectAccountHeaders(combinedSheets);
-
       if (combinedSheets.length === 0 && combinedSkipped.length === 0) {
         setUploadStatus(null);
         setUploadStatus({ type: 'error', message: 'No usable sheets detected across the selected files.' });
@@ -346,7 +456,7 @@ export const useDashboardData = (onDataReset = null, accountName = '') => {
       });
       setUploadStatus(null);
     },
-    [openImportPreview, setUploadStatus, inspectAccountHeaders]
+    [openImportPreview, setUploadStatus]
   );
 
 
@@ -498,9 +608,12 @@ export const useDashboardData = (onDataReset = null, accountName = '') => {
   }, [agents, batchImportSummary, historicalData, setActiveTimeframe, setAgents, setHasUploadedData, setHistoricalData, setSelectedDate, setSupervisors, supervisors]);
 
   const handleAutomaticImport = useCallback(
-    async (files, mappingOverrides = {}) => {
+    async (files, mappingOverrides = {}, customMetricAnswers = {}) => {
       const filesToImport = Array.from(files || []).filter(Boolean);
       if (!filesToImport.length) return;
+
+      const customMetricOverrides = saveCustomMetricDecisions(accountName, customMetricAnswers);
+      const effectiveMappingOverrides = { ...mappingOverrides, ...customMetricOverrides };
 
       importAbortControllerRef.current?.abort();
       const controller = new AbortController();
@@ -517,7 +630,7 @@ export const useDashboardData = (onDataReset = null, accountName = '') => {
         const result = await runImportService(filesToImport, {
           signal: controller.signal,
           detectDuplicateFiles: true,
-          mappingOverrides,
+          mappingOverrides: effectiveMappingOverrides,
           rateMergeStyle: loadAccountProfile(accountName)?.calculationStyles?.rateMergeStyle || rateMergeStyle,
           onProgress: (progress) => {
             setUploadStatus({
@@ -539,14 +652,44 @@ export const useDashboardData = (onDataReset = null, accountName = '') => {
         const lowConfidenceCount = diagnostics.filter((item) => item.mappedField && item.confidence === 'low').length;
         const collisionCount = diagnostics.filter((item) => item.collisionWith?.length).length;
         const reviewItems = diagnostics.filter((item) =>
-          !item.mappedField || item.confidence === 'low' || Boolean(item.collisionWith?.length)
+          (!isContextOnlyMapping(item) && !item.mappedField) ||
+          (item.mappedField && item.confidence === 'low') ||
+          Boolean(item.collisionWith?.length)
         );
-        if (reviewItems.length > 0 && Object.keys(mappingOverrides).length === 0) {
+        const windowItems = resolveWindowReviewItems(diagnostics, hasSavedAccountProfile ? accountProfile : null);
+        for (const item of windowItems) {
+          if (!reviewItems.some((candidate) => candidate.header === item.header && candidate.fileName === item.fileName && candidate.sheetName === item.sheetName)) {
+            reviewItems.push(item);
+          }
+        }
+        const customerExperienceItems = customerExperienceReviewItems(
+          diagnostics,
+          hasSavedAccountProfile ? accountProfile : null
+        );
+        for (const item of customerExperienceItems) {
+          if (!reviewItems.some((candidate) => candidate.header === item.header && candidate.fileName === item.fileName && candidate.sheetName === item.sheetName)) {
+            reviewItems.push(item);
+          }
+        }
+        const customItems = customMetricReviewItems(
+          diagnostics,
+          hasSavedAccountProfile ? accountProfile : null
+        );
+        for (const item of customItems) {
+          if (!reviewItems.some((candidate) => candidate.header === item.header && candidate.fileName === item.fileName && candidate.sheetName === item.sheetName)) {
+            reviewItems.push(item);
+          }
+        }
+        if (reviewItems.length > 0 && Object.keys(effectiveMappingOverrides).length === 0) {
           setPendingAutomaticImport(result);
           setPendingAutomaticFiles(filesToImport);
           setMappingReview(reviewItems);
           setUploadStatus(null);
           return;
+        }
+        if (Object.keys(effectiveMappingOverrides).length > 0) {
+          saveResolveWindowChoices(accountName, diagnostics, effectiveMappingOverrides);
+          saveCustomerExperienceChoice(accountName, diagnostics, effectiveMappingOverrides);
         }
         setUploadStatus({
           type: 'info',
@@ -574,7 +717,7 @@ export const useDashboardData = (onDataReset = null, accountName = '') => {
         }
       }
     },
-    [applyBatchImport, rateMergeStyle, setBatchImportSummary, setUploadStatus]
+    [accountName, accountProfile, applyBatchImport, hasSavedAccountProfile, rateMergeStyle, setBatchImportSummary, setUploadStatus]
   );
 
   const setRateMergeStyle = useCallback((style) => {
@@ -582,20 +725,12 @@ export const useDashboardData = (onDataReset = null, accountName = '') => {
     saveRateMergeStyle(accountName, style);
   }, [accountName]);
 
-  const continueAutomaticImport = useCallback(async (mappingOverrides = {}) => {
+  const continueAutomaticImport = useCallback(async (mappingOverrides = {}, customMetricAnswers = {}) => {
     if (!pendingAutomaticImport || !pendingAutomaticFiles.length) return;
-    const existingAliases = loadStoredLearnedAliases();
-    let learnedAliases = existingAliases;
-    for (const [header, field] of Object.entries(mappingOverrides)) {
-      if (field) {
-        learnedAliases = learnAlias(learnedAliases, header, field as any);
-      }
-    }
-    if (learnedAliases !== existingAliases) saveLearnedAliases(learnedAliases);
     setPendingAutomaticImport(null);
     setPendingAutomaticFiles([]);
     setMappingReview([]);
-    await handleAutomaticImport(pendingAutomaticFiles, mappingOverrides);
+    await handleAutomaticImport(pendingAutomaticFiles, mappingOverrides, customMetricAnswers);
   }, [handleAutomaticImport, pendingAutomaticFiles, pendingAutomaticImport]);
 
   const handleAutomaticFileUpload = useCallback(
@@ -617,6 +752,10 @@ export const useDashboardData = (onDataReset = null, accountName = '') => {
       setUploadStatus({ type: 'info', message: 'Applying imported sheets to dashboard...' });
 
       try {
+        if (config?.accountProfile) {
+          saveAccountProfile(config.accountProfile);
+          applyAccountProfile(config.accountProfile);
+        }
         const sheetConfigs = config?.sheetConfigs || {};
         const allNormalizedRows = [];
         const warnings = [];
@@ -735,6 +874,11 @@ export const useDashboardData = (onDataReset = null, accountName = '') => {
     async (file) => {
       if (!file) return;
 
+      if (loadAccountProfile(accountName)) {
+        await handleAutomaticImport([file]);
+        return;
+      }
+
       const fileType = detectFileType(file.name);
       console.log('[DEBUG 1b - processFile] File detected:', { name: file.name, size: file.size, detectedType: fileType });
 
@@ -784,8 +928,6 @@ export const useDashboardData = (onDataReset = null, accountName = '') => {
             })),
           ];
 
-          inspectAccountHeaders(filteredSheets);
-
           setUploadStatus(null);
 
           if ((!filteredSheets || filteredSheets.length === 0) && combinedSkipped.length === 0) {
@@ -833,8 +975,6 @@ export const useDashboardData = (onDataReset = null, accountName = '') => {
             },
           ];
 
-          inspectAccountHeaders(singleSheet);
-
           setUploadStatus(null);
           openImportPreview({
             fileName: file.name,
@@ -857,7 +997,7 @@ export const useDashboardData = (onDataReset = null, accountName = '') => {
       });
       setTimeout(() => setUploadStatus(null), 5000);
     },
-    [openImportPreview, setUploadStatus, inspectAccountHeaders]
+    [accountName, handleAutomaticImport, openImportPreview, setUploadStatus]
   );
 
   const handleFileUpload = useCallback(
@@ -987,7 +1127,7 @@ export const useDashboardData = (onDataReset = null, accountName = '') => {
   return {
     agents, supervisors, oamName, historicalData, hasUploadedData, uploadStatus, batchImportSummary,
     handleFileUpload, handleFileDrop, handleAutomaticImport, handleAutomaticFileUpload, continueAutomaticImport, mappingReview, rateMergeStyle, setRateMergeStyle, applyBatchImport, resetDashboard,
-    importPreview, openImportPreview, closeImportPreview, confirmImportPreview,
+    accountProfile, hasSavedAccountProfile, importPreview, openImportPreview, closeImportPreview, confirmImportPreview,
     activeTimeframe, setActiveTimeframe, selectedWeek, setSelectedWeek, selectedDate, setSelectedDate,
     selectedDow, setSelectedDow,
     getAgentDataForTimeframe, handleDateChange, getTopHeadlineMonth,

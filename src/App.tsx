@@ -43,6 +43,7 @@ import {
 import { useDashboardMetrics } from './features/dashboard/metrics';
 import { SettingsMenu, TimeframeMenu } from './components/menus';
 import { ImportLanding } from './features/dashboard/upload/ImportLanding';
+import { listAccountNames } from './features/accountSetup/account-profile-storage';
 
 if (typeof window !== 'undefined') {
   window.tailwind = window.tailwind || { config: {} };
@@ -1796,13 +1797,14 @@ export default function App() {
 
   const normalizedAccountName = accountName.trim();
   const hasAccountName = normalizedAccountName.length > 0;
+  const accountOptions = useMemo(() => ['Verizon Consumer', ...listAccountNames()], []);
 
   const ctxValue = useMemo(
     () => ({ dashData, metrics, aiTools, uiState, uiHandlers, accountName: normalizedAccountName, resetToLanding }),
     [dashData, metrics, aiTools, uiState, uiHandlers, normalizedAccountName, resetToLanding]
   );
 
-  if (!hasAccountName) {
+  if (false && !hasAccountName) {
     return (
       <ErrorBoundary>
         <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0b0f19', color: '#e2e8f0', padding: 24 }}>
@@ -1872,6 +1874,8 @@ export default function App() {
         <div style={{ minHeight: '100vh', background: '#0b0b0a', padding: '24px', boxSizing: 'border-box' }}>
           <ImportLanding
             accountName={normalizedAccountName}
+            accountOptions={accountOptions}
+            onAccountNameChange={setAccountName}
             uploadStatus={dashData.uploadStatus}
             onFiles={(files) => dashData.handleAutomaticImport(files)}
             mappingReview={dashData.mappingReview}

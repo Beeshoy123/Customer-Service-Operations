@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {
   FIELD_ALIASES,
   PAIRED_COUNT_FIELDS,
+  getFieldComponentGroup,
+  getResolveWindowField,
   findCanonicalField,
   findPairedCountField,
   findCanonicalFieldWithTag,
@@ -40,6 +42,38 @@ describe('importPolicy extensions', () => {
       assert.equal(normalizeHeaderToField('Resolve Total Contacts'), 'resolveTotalContacts');
       assert.equal(normalizeHeaderToField('Total Resolved'), 'resolveTotalContacts');
       assert.equal(normalizeHeaderToField('Resolved Contacts'), 'resolveTotalContacts');
+    });
+  });
+
+  describe('legacy concept keyword coverage', () => {
+    it('recognizes legacy vxs and resolve keywords through the active import policy', () => {
+      assert.equal(findCanonicalField('Customer NPS Score'), 'vxs');
+      assert.equal(findCanonicalField('Repeat Callback Rate'), 'resolve2hr');
+    });
+
+    it('recognizes the missing sales line item fields for fiber, hotspot, and data lines', () => {
+      assert.equal(findCanonicalField('Total Fiber Adds'), 'fiber');
+      assert.equal(findCanonicalField('Hotspot Gross Adds'), 'hotspot');
+      assert.equal(findCanonicalField('Watch Adds'), 'dataLines');
+    });
+
+    it('recognizes grouped Credit and VTT raw components', () => {
+      assert.equal(findCanonicalField('OCC_Amt'), 'creditAmount');
+      assert.equal(findCanonicalField('Occ_Trans_Cnt'), 'creditTransactions');
+      assert.equal(findCanonicalField('VT_Eligible_Count'), 'vttEligible');
+      assert.equal(findCanonicalField('VT_Ind_Count'), 'vttIndicated');
+      assert.equal(findCanonicalField('VT_ATTACH_NUM'), 'vttAttach');
+      assert.deepEqual(getFieldComponentGroup('creditAmount'), { concept: 'credit', role: 'amount' });
+      assert.deepEqual(getFieldComponentGroup('vttAttach'), { concept: 'vtt', role: 'attachment-count' });
+    });
+
+    it('recognizes every resolve window as an explicit candidate', () => {
+      assert.equal(findCanonicalField('Same Day Repeat Rate'), 'resolveSameDay');
+      assert.equal(findCanonicalField('Resolve 2hr'), 'resolve2hr');
+      assert.equal(findCanonicalField('3-Day Resolution'), 'resolve3d');
+      assert.equal(findCanonicalField('5 Day Repeat'), 'resolve5d');
+      assert.equal(findCanonicalField('7-Day Resolve'), 'resolve7d');
+      assert.equal(getResolveWindowField('resolve7d')?.windowLabel, '7 day');
     });
   });
 

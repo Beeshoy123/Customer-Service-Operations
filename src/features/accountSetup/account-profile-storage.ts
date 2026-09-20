@@ -1,14 +1,12 @@
 // account-profile-storage.ts
 //
-// Reads and writes the persisted account profiles (see account-profile-schema.ts)
-// and the learned-alias cache (see metric-detection-engine.ts) to localStorage, so
-// the setup wizard only ever runs once per account, not once per upload.
+// Reads and writes the persisted account profiles for each account to localStorage,
+// while keeping the calculation preferences that are still part of the existing
+// dashboard pipeline and are not being retired here.
 
 import type { AccountProfile } from './account-profile-schema';
-import type { LearnedAliasCache } from './metric-detection-engine';
 
 const PROFILE_KEY_PREFIX = 'cs-ops:account-profile:';
-const ALIAS_CACHE_KEY = 'cs-ops:learned-aliases';
 const CALCULATION_STYLE_KEY_PREFIX = 'cs-ops:calculation-style:';
 
 function safeParse<T>(raw: string | null): T | null {
@@ -41,16 +39,6 @@ export function listAccountNames(): string[] {
     }
   }
   return names;
-}
-
-/** Loads the global learned-alias cache (shared across every account). */
-export function loadLearnedAliases(): LearnedAliasCache {
-  return safeParse<LearnedAliasCache>(localStorage.getItem(ALIAS_CACHE_KEY)) ?? {};
-}
-
-/** Saves the global learned-alias cache. */
-export function saveLearnedAliases(cache: LearnedAliasCache): void {
-  localStorage.setItem(ALIAS_CACHE_KEY, JSON.stringify(cache));
 }
 
 export type AccountRateMergeStyle = 'arithmetic-average' | 'weighted-by-counts';

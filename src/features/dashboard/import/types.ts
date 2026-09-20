@@ -118,6 +118,13 @@ export type MappingDiagnostic = {
   score?: number;
   candidates?: MappingCandidate[];
   collisionWith?: string[];
+  componentGroup?: 'credit' | 'vtt';
+  componentRole?: string;
+  resolveWindow?: string;
+  choiceGroup?: string;
+  choiceOptions?: string[];
+  choiceQuestion?: string;
+  unrecognizedPlausible?: boolean;
 };
 
 export type SheetGranularity = 'aggregate' | 'transaction' | 'unknown';
