@@ -1,3 +1,48 @@
+// =============================================================================
+// ⚠️  STANDING RULE — MAPPING FIXES ALWAYS GO IN THIS FILE ONLY
+// =============================================================================
+//
+// This file (importPolicy.ts) is the SINGLE correct place for ALL column-alias
+// mapping knowledge. The rule below applies to every AI model and every developer
+// working on this codebase, forever.
+//
+// WHEN a dashboard metric (handoffs, 2HR, 3DR, CSAT, AHT, calls, or any field)
+// shows zero, null, or wrong values after an import, the FIRST AND DEFAULT
+// assumption must be that an alias is missing or wrong in FIELD_ALIASES here.
+//
+// FIX MAPPING BUGS BY:
+//   ✅ Adding missing column-name aliases to the field's `aliases` array in FIELD_ALIASES
+//   ✅ Removing ambiguous aliases shared between two fields (causes silent overwrite)
+//   ✅ Adding/correcting token hints in HEADER_TOKEN_HINTS
+//   ✅ Updating PAIRED_COUNT_FIELDS if a pass/count column pair is not detected
+//
+// DO NOT FIX MAPPING BUGS BY CHANGING:
+//   ❌ helpers.ts       — calculation and aggregation logic (correct as-is)
+//   ❌ hooks.ts         — applyBatchImport row storage (correct as-is)
+//   ❌ schemaNormalizer.ts — generic normalization pipeline (correct as-is)
+//   ❌ importService.ts — orchestration (correct as-is)
+//   ❌ mergeData.ts     — merge strategies (correct as-is)
+//   ❌ Any dashboard rendering or aggregation component
+//
+// WHY: The rest of the pipeline is generic and knows nothing about real-world
+// column-name variations. importPolicy.ts is the only file that is supposed to
+// know about source-system naming quirks. Keeping all alias knowledge here makes
+// it easy to audit, extend, and test without side effects elsewhere.
+//
+// CHECKLIST before any mapping fix:
+//   1. Get the exact column header string from the uploaded file.
+//   2. Run it through normalizeHeader() mentally (lowercase, strip non-alphanumeric
+//      to spaces, trim) and check if the result matches any alias in FIELD_ALIASES.
+//   3. If no match — add it to the correct field's `aliases` array.
+//   4. Confirm the same normalized string is NOT in another field's aliases.
+//      If it is, remove it from the wrong field first.
+//   5. If ambiguous (e.g. "Repeat Rate" could be 2HR or 3DR), add the
+//      disambiguating form and remove the ambiguous one from both fields.
+//   6. Run the existing import tests to confirm no regressions.
+//
+// See recommendations.md §"STANDING RULE" for full context.
+// =============================================================================
+
 import type {
   DetectedColumnMapping,
   MappingCandidate,
@@ -126,7 +171,45 @@ export const FIELD_ALIASES: Record<string, ImportFieldPolicy> = {
     kind: 'percent',
   },
   resolve2hr: {
-    aliases: ['resolve within 2hr', 'resolve 2hr', '2hr resolution', '2 hour resolve', '2hr', '2-hour resolve', '2 hour resolve %', 'resolve within 2 hour', 'within 2hr', 'resolution rate', 'repeat rate', 'repeat callback rate', 'callback rate', 'rr', 'repeat callback', 'repeat callback %'],
+    aliases: [
+      'resolve within 2hr',
+      'resolve 2hr',
+      '2hr resolution',
+      '2 hour resolve',
+      '2hr',
+      '2-hour resolve',
+      '2 hour resolve %',
+      'resolve within 2 hour',
+      'within 2hr',
+      '2hr repeat',
+      '2 hour repeat',
+      '2-hour repeat',
+      '2hr repeat rate',
+      '2 hour repeat rate',
+      '2-hour repeat rate',
+      '2hr rr',
+      'rr 2hr',
+      '2-hour rr',
+      '2hr callback',
+      '2-hour callback',
+      '2hr callback rate',
+      '2-hour callback rate',
+      'within 2 hours',
+      '2 hour resolution rate',
+      '2-hour resolution rate',
+      '2hr resolution rate',
+      '2hr repeat callback rate',
+      '2 hour repeat callback rate',
+      '2-hour repeat callback rate',
+      '2hr repeat callback',
+      '2 hour repeat callback',
+      '2-hour repeat callback',
+      '2hr repeat %',
+      '2 hour repeat %',
+      '2-hour repeat %',
+      '2hr rr %',
+      'rr 2hr %',
+    ],
     kind: 'percent',
   },
   resolveSameDay: {
@@ -134,7 +217,51 @@ export const FIELD_ALIASES: Record<string, ImportFieldPolicy> = {
     kind: 'percent',
   },
   resolve3d: {
-    aliases: ['resolve within 3d', 'resolve 3d', '3d resolution', '3 day resolve', '3dr', '3-day resolve', '3 day resolve %', '3d resolve', 'within 3d', '3 day resolution', 'resolution rate', 'repeat rate', 'repeat callback rate', 'callback rate', 'rr', 'repeat callback', 'repeat callback %'],
+    aliases: [
+      'resolve within 3d',
+      'resolve 3d',
+      '3d resolution',
+      '3 day resolve',
+      '3dr',
+      '3-day resolve',
+      '3 day resolve %',
+      '3d resolve',
+      'within 3d',
+      '3 day resolution',
+      '3dr repeat',
+      '3 day repeat',
+      '3-day repeat',
+      '3d repeat',
+      '3 day repeat rate',
+      '3-day repeat rate',
+      '3d repeat rate',
+      '3dr repeat rate',
+      '3d rr',
+      '3 day rr',
+      '3-day rr',
+      'rr 3d',
+      'rr 3dr',
+      '3dr callback',
+      '3 day callback',
+      '3-day callback',
+      '3dr callback rate',
+      '3 day callback rate',
+      '3-day callback rate',
+      '3 day resolution rate',
+      '3-day resolution rate',
+      '3d resolution rate',
+      'within 3 days',
+      '3dr repeat callback rate',
+      '3 day repeat callback rate',
+      '3-day repeat callback rate',
+      '3dr repeat callback',
+      '3 day repeat callback',
+      '3-day repeat callback',
+      '3dr repeat %',
+      '3 day repeat %',
+      '3-day repeat %',
+      '3d repeat %',
+    ],
     kind: 'percent',
   },
   resolve5d: {
@@ -456,9 +583,9 @@ const HEADER_TOKEN_HINTS: Record<string, string[]> = {
   calls: ['calls', 'contacts', 'contact', 'volume'],
   aht: ['aht', 'handle', 'time'],
   vxs: ['vxs', 'csat', 'satisfaction', 'score'],
-  resolve2hr: ['resolve', '2hr', 'twohour', '2hour', '2 hour'],
+  resolve2hr: ['resolve', '2hr', 'twohour', '2hour', '2 hour', '2hrrepeat', '2hourrepeat', '2hr rr', 'rr 2hr', '2hrrr', '2hrcallback'],
   resolveSameDay: ['resolve', 'same', 'day', 'repeat', 'callback'],
-  resolve3d: ['resolve', '3d', '3day', 'threeday', '3 day'],
+  resolve3d: ['resolve', '3d', '3day', 'threeday', '3 day', '3drepeat', '3dayrepeat', '3d rr', 'rr 3d', '3drr', '3dcallback'],
   resolve5d: ['resolve', '5d', '5day', 'fiveday', '5 day'],
   resolve7d: ['resolve', '7d', '7day', 'sevenday', '7 day'],
   resolveTotalContacts: ['resolve', 'resolved', 'contacts', 'contact'],
@@ -547,6 +674,9 @@ export const PAIRED_COUNT_FIELDS: Record<string, PairedCountConfig> = {
       '2hr pass',
       '2hr_pass',
       'resolve2hrcount',
+      '2hr repeat pass',
+      '2hr_repeat_pass',
+      '2 hour repeat pass',
     ],
     cntAliases: [
       'resolve_2hr_cnt',
@@ -559,6 +689,11 @@ export const PAIRED_COUNT_FIELDS: Record<string, PairedCountConfig> = {
       '2hr_cnt',
       '2hr total',
       'resolve2hrcontacts',
+      '2hr repeat cnt',
+      '2hr_repeat_cnt',
+      '2 hour repeat cnt',
+      '2hr repeat count',
+      '2 hour repeat count',
     ],
   },
   resolve3d: {
@@ -570,6 +705,10 @@ export const PAIRED_COUNT_FIELDS: Record<string, PairedCountConfig> = {
       '3d pass',
       '3d_pass',
       'resolve3daycount',
+      '3d repeat pass',
+      '3d_repeat_pass',
+      '3 day repeat pass',
+      '3dr repeat pass',
     ],
     cntAliases: [
       'resolve_3d_cnt',
@@ -582,6 +721,13 @@ export const PAIRED_COUNT_FIELDS: Record<string, PairedCountConfig> = {
       '3d_cnt',
       '3d total',
       'resolve3dcontacts',
+      '3d repeat cnt',
+      '3d_repeat_cnt',
+      '3 day repeat cnt',
+      '3dr repeat cnt',
+      '3d repeat count',
+      '3 day repeat count',
+      '3dr repeat count',
     ],
   },
 };

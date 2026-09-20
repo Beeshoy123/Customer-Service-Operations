@@ -11,6 +11,13 @@
 // └── Date & Calendar Helpers
 // ============================================================================
 
+// ⚠️  STANDING RULE — DO NOT FIX MAPPING BUGS IN THIS FILE
+// If a dashboard metric (handoffs, 2HR, 3DR, CSAT, AHT, calls…) shows 0 or
+// wrong values after import, the fix belongs in importPolicy.ts (FIELD_ALIASES),
+// NOT here. The aggregation logic in this file is correct and generic; it does
+// not know about source-system column names. See recommendations.md §"STANDING
+// RULE" and the top-of-file banner in importPolicy.ts for the full checklist.
+
 // Calculation convention: new account-specific calculation styles are additive
 // options selected by AccountProfile. Preserve existing branches for other accounts;
 // never replace or delete an existing calculation unless explicitly requested.

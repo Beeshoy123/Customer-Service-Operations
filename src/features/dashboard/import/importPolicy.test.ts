@@ -8,12 +8,12 @@ import {
   findCanonicalField,
   findPairedCountField,
   findCanonicalFieldWithTag,
+  normalizeHeader,
   normalizeImportedValue,
   scoreColumnMapping,
   detectColumnMappingWithConfidence,
   isIdentifierHeader,
   isUnrecognizedPlausibleMetricColumn,
-  isUnrecognizedPlausibleFingerprint,
 } from './importPolicy';
 import { rememberMapping, clearMemory } from './mappingMemory';
 import { normalizeHeaderToField } from './schemaNormalizer';
@@ -51,7 +51,7 @@ describe('importPolicy extensions', () => {
   describe('legacy concept keyword coverage', () => {
     it('recognizes legacy vxs and resolve keywords through the active import policy', () => {
       assert.equal(findCanonicalField('Customer NPS Score'), 'vxs');
-      assert.equal(findCanonicalField('Repeat Callback Rate'), 'resolve2hr');
+      assert.equal(findCanonicalField('2hr Repeat Rate'), 'resolve2hr');
     });
 
     it('recognizes the missing sales line item fields for fiber, hotspot, and data lines', () => {
@@ -396,25 +396,25 @@ describe('importPolicy extensions', () => {
         const dateRes = scoreColumnMapping('ReportDate', 0, ['2024-09-15', '2024-09-16']);
         assert.equal(dateRes.mappedField, 'date');
         assert.equal(dateRes.confidence, 'exact');
-        assert.ok(dateRes.score >= 85);
+        assert.ok((dateRes.score ?? 0) >= 85);
 
         // EmployeeName -> agentName
         const empRes = scoreColumnMapping('EmployeeName', 0, ['Jane Doe', 'John Smith']);
         assert.equal(empRes.mappedField, 'agentName');
         assert.equal(empRes.confidence, 'exact');
-        assert.ok(empRes.score >= 85);
+        assert.ok((empRes.score ?? 0) >= 85);
 
         // SPV -> supervisor
         const spvRes = scoreColumnMapping('SPV', 0, ['Alice Lead', 'Bob Manager']);
         assert.equal(spvRes.mappedField, 'supervisor');
         assert.equal(spvRes.confidence, 'exact');
-        assert.ok(spvRes.score >= 85);
+        assert.ok((spvRes.score ?? 0) >= 85);
 
         // Handle_Tm_Seconds -> aht
         const ahtRes = scoreColumnMapping('Handle_Tm_Seconds', 0, [320, 450, 185, 600]);
         assert.equal(ahtRes.mappedField, 'aht');
         assert.equal(ahtRes.confidence, 'exact');
-        assert.ok(ahtRes.score >= 85);
+        assert.ok((ahtRes.score ?? 0) >= 85);
       });
 
       it('Rule 2 (SILENTLY IGNORE): excludes structural columns and identifier keywords (id, key)', () => {
@@ -427,17 +427,17 @@ describe('importPolicy extensions', () => {
         // RECOVERYKEY should not be a plausible custom metric
         const recKey = scoreColumnMapping('RECOVERYKEY', 0, ['REC_98124_A', 'REC_98125_B']);
         assert.equal(recKey.mappedField, null);
-        assert.equal(isUnrecognizedPlausibleMetricColumn('RECOVERYKEY', recKey.fingerprint), false);
+        assert.equal(isUnrecognizedPlausibleMetricColumn('RECOVERYKEY', recKey.fingerprint ?? 'empty'), false);
 
         // Acss_Call_ID
         const acss = scoreColumnMapping('Acss_Call_ID', 0, ['Acss_Call_ID_001', 'Acss_Call_ID_002']);
         assert.equal(acss.mappedField, null);
-        assert.equal(isUnrecognizedPlausibleMetricColumn('Acss_Call_ID', acss.fingerprint), false);
+        assert.equal(isUnrecognizedPlausibleMetricColumn('Acss_Call_ID', acss.fingerprint ?? 'empty'), false);
 
         // HourofDay
         const hour = scoreColumnMapping('HourofDay', 0, [0, 1, 8, 14, 23]);
         assert.equal(hour.mappedField, null);
-        assert.equal(isUnrecognizedPlausibleMetricColumn('HourofDay', hour.fingerprint), false);
+        assert.equal(isUnrecognizedPlausibleMetricColumn('HourofDay', hour.fingerprint ?? 'empty'), false);
 
         // Structural categorical text columns: GeographicLocationDescription, DeptGroupDescription, ScorecardGroupDesc, IVRIntentDesc, Track, SkillGroup
         const structuralCols = [
@@ -453,7 +453,7 @@ describe('importPolicy extensions', () => {
           const mapping = scoreColumnMapping(col.header, 0, col.samples);
           assert.equal(mapping.mappedField, null, `${col.header} should be unmapped`);
           assert.equal(
-            isUnrecognizedPlausibleMetricColumn(col.header, mapping.fingerprint),
+            isUnrecognizedPlausibleMetricColumn(col.header, mapping.fingerprint ?? 'empty'),
             false,
             `${col.header} must NOT be considered a plausible custom metric (Rule 2)`
           );
@@ -466,12 +466,12 @@ describe('importPolicy extensions', () => {
         assert.equal(escMapping.mappedField, null);
         assert.equal(escMapping.fingerprint, 'count-integer');
         assert.equal(isIdentifierHeader('Escalations'), false);
-        assert.equal(isUnrecognizedPlausibleMetricColumn('Escalations', escMapping.fingerprint), true);
+        assert.equal(isUnrecognizedPlausibleMetricColumn('Escalations', escMapping.fingerprint ?? 'empty'), true);
 
         // Unmapped percent column: Discount_Percent
         const qaMapping = scoreColumnMapping('Discount_Percent', 0, ['85%', '92%', '78%']);
         assert.equal(qaMapping.mappedField, null);
-        assert.equal(isUnrecognizedPlausibleMetricColumn('Discount_Percent', qaMapping.fingerprint), true);
+        assert.equal(isUnrecognizedPlausibleMetricColumn('Discount_Percent', qaMapping.fingerprint ?? 'empty'), true);
       });
     });
 
@@ -522,6 +522,91 @@ describe('importPolicy extensions', () => {
         }
       });
     });
+
+    describe('Bug 4: 2HR resolve metrics mapping and disambiguation', () => {
+      it('ensures no shared ambiguous aliases exist between resolve2hr and resolve3d', () => {
+        const aliases2hr = new Set(FIELD_ALIASES.resolve2hr.aliases.map((a) => normalizeHeader(a)));
+        const aliases3d = new Set(FIELD_ALIASES.resolve3d.aliases.map((a) => normalizeHeader(a)));
+
+        const collisions: string[] = [];
+        for (const a of aliases2hr) {
+          if (aliases3d.has(a)) {
+            collisions.push(a);
+          }
+        }
+
+        assert.deepEqual(
+          collisions,
+          [],
+          `Found colliding aliases between resolve2hr and resolve3d: ${collisions.join(', ')}`
+        );
+      });
+
+      it('correctly maps 2HR-specific resolve and repeat rate headers to resolve2hr', () => {
+        const headers2hr = [
+          '2hr',
+          'Resolve 2hr',
+          '2-Hour Resolve',
+          '2hr Repeat',
+          '2-Hour Repeat',
+          '2hr Repeat Rate',
+          '2-Hour Repeat Rate',
+          '2HR RR',
+          'RR 2HR',
+          '2hr Callback',
+          '2hr Callback Rate',
+          'Within 2 Hours',
+          '2 Hour Resolution Rate',
+          '2hr Resolution Rate',
+          '2hr Repeat Callback Rate',
+        ];
+
+        for (const header of headers2hr) {
+          assert.equal(
+            normalizeHeaderToField(header, [85.5, 92.1, 78.0]),
+            'resolve2hr',
+            `Expected "${header}" to map to "resolve2hr"`
+          );
+          assert.equal(
+            findCanonicalField(header),
+            'resolve2hr',
+            `Expected findCanonicalField("${header}") to return "resolve2hr"`
+          );
+        }
+      });
+
+      it('correctly maps 3DR-specific resolve and repeat rate headers to resolve3d', () => {
+        const headers3d = [
+          '3dr',
+          'Resolve 3d',
+          '3-Day Resolution',
+          '3dr Repeat',
+          '3 Day Repeat Rate',
+          '3-Day Repeat Rate',
+          '3D RR',
+          'RR 3D',
+          '3dr Callback Rate',
+          '3 Day Callback Rate',
+          'Within 3 Days',
+          '3 Day Resolution Rate',
+          '3dr Repeat Callback Rate',
+        ];
+
+        for (const header of headers3d) {
+          assert.equal(
+            normalizeHeaderToField(header, [85.5, 92.1, 78.0]),
+            'resolve3d',
+            `Expected "${header}" to map to "resolve3d"`
+          );
+          assert.equal(
+            findCanonicalField(header),
+            'resolve3d',
+            `Expected findCanonicalField("${header}") to return "resolve3d"`
+          );
+        }
+      });
+    });
   });
 });
+
 

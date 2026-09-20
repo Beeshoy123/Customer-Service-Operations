@@ -1,3 +1,9 @@
+// ⚠️  STANDING RULE — DO NOT FIX MAPPING BUGS IN THIS FILE
+// If a dashboard metric shows 0, null, or wrong values after import, the fix
+// belongs in importPolicy.ts (FIELD_ALIASES), NOT here. This file is a generic
+// orchestration layer; it does not contain and must not contain column-name
+// knowledge. See recommendations.md §"STANDING RULE" and the banner in importPolicy.ts.
+
 import { parseDelimitedText } from './csvParser';
 import { detectFileType, isSupportedImportType } from './fileTypeDetector';
 import { convertWorkbookToSheets, convertWorkbookToSheetsViaWorker, DEFAULT_LARGE_FILE_SIZE_THRESHOLD } from './workbookLoader';
@@ -8,7 +14,6 @@ import {
   getCustomerExperienceSurveyPreference,
   getFieldComponentGroup,
   getResolveWindowField,
-  isUnrecognizedPlausibleFingerprint,
   isUnrecognizedPlausibleMetricColumn,
 } from './importPolicy';
 import { mergeNormalizedRows, detectDuplicateFiles } from './mergeData';

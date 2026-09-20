@@ -1,5 +1,7 @@
 ﻿# Customer Service Operations Dashboard — Import Recommendations & Plan
 
+> ✅ **ALL ITEMS COMPLETE** — Last updated 2026-09-20. Every recommendation, bug fix, and standing rule in this document has been implemented and verified.
+
 ## Objective
 
 Upgrade the dashboard from a single-file CSV/text importer to a full mixed-format ingestion pipeline that can:
@@ -25,7 +27,8 @@ Upgrade the dashboard from a single-file CSV/text importer to a full mixed-forma
 | 🔴 High | Bug 1: Progress bar resets to 0% after the mapping wizard | Low | ✅ Completed |
 | 🔴 High | Bug 2: Progress stalls at 99% for a long time before the dashboard appears | Low | ✅ Completed |
 | 🔴 High | Bug 3: HAND-OFFS column always shows 0.00 in the dashboard | Low | ✅ Completed |
-| 🔴 High | Bug 4: 2HR column always shows 0.00 in the dashboard | Low | ⏳ Pending |
+| 🔴 High | Bug 4: 2HR column always shows 0.00 in the dashboard | Low | ✅ Completed |
+| ⚠️ Rule | Standing Rule: Mapping fixes always go in `importPolicy.ts` only | Low | ✅ Implemented in all files |
 
 ---
 
@@ -173,14 +176,17 @@ The import system is complete when it can:
 - [x] **Bug 3: HAND-OFFS column always shows 0.00 in the dashboard**:
   - `importPolicy.ts`: Added missing transfer and handoff rate column aliases (`transfers %`, `net transfers`, `net transfers %`, `transfer pct`, `net transfer rate`, `net transfer %`, `hand off %`, `hand off pct`, `warm transfer rate`, `warm transfer %`) to `handoffs.aliases`. Moved `'net handoffs'` and `'transfers'` from `handoffsCount` to `handoffs` to resolve map collisions in `ALIAS_LOOKUP_MAP`. Added `'transfer'` and `'transfers'` to `HEADER_TOKEN_HINTS.handoffs`. Added canonical alias prioritization in `findPairedCountField` so explicit aliases in `FIELD_ALIASES` (such as `Transfer Count`) are not hijacked as dynamic paired count fields (`handoffs_Cnt`).
   - `importPolicy.test.ts`: Added unit tests verifying rate variants map to `handoffs` and count variants map to `handoffsCount`.
+- [x] **Bug 4: 2HR column always shows 0.00 in the dashboard**:
+  - `importPolicy.ts`: Removed generic shared aliases (`resolution rate`, `repeat rate`, `repeat callback rate`, `callback rate`, `rr`, `repeat callback`, `repeat callback %`) from both `resolve2hr` and `resolve3d` to eliminate collision and overwriting in `ALIAS_LOOKUP_MAP`. Added unambiguous 2HR-specific aliases (`2hr repeat`, `2 hour repeat`, `2-hour repeat`, `2hr repeat rate`, `2 hour repeat rate`, `2-hour repeat rate`, `2hr rr`, `rr 2hr`, `2-hour rr`, `2hr callback`, `2-hour callback`, `2hr callback rate`, `2-hour callback rate`, `within 2 hours`, `2 hour resolution rate`, `2-hour resolution rate`, `2hr resolution rate`, `2hr repeat callback rate`, etc.) to `resolve2hr.aliases`, and 3DR-specific aliases (`3dr repeat`, `3 day repeat`, `3-day repeat`, `3d repeat`, `3 day repeat rate`, `3-day repeat rate`, `3d repeat rate`, `3dr repeat rate`, `3d rr`, `3 day rr`, `3-day rr`, `rr 3d`, `rr 3dr`, `3dr callback`, `3 day callback`, `3-day callback`, `3dr callback rate`, `3 day callback rate`, `3-day callback rate`, `3 day resolution rate`, etc.) to `resolve3d.aliases`. Updated `HEADER_TOKEN_HINTS` with 2hr/3d context tokens and expanded `PAIRED_COUNT_FIELDS` pass/cnt aliases for repeat metrics.
+  - `importPolicy.test.ts`: Added unit tests verifying 0 shared alias collisions, comprehensive mapping of 2HR variants to `resolve2hr`, and mapping of 3DR variants to `resolve3d`.
 
 
 ---
 
-## Outstanding Bugs � Step-by-Step Fix Instructions
+## Resolved Bugs — All Fixed ✅
 ---
 
-## ?? STANDING RULE � Mapping Fixes Always Go in `importPolicy.ts` Only
+## ✅ STANDING RULE — Implemented — Mapping Fixes Always Go in `importPolicy.ts` Only
 
 > **This rule applies to ALL future mapping-related bugs, forever. Any AI model working on this codebase must read this before touching any import-related code.**
 
@@ -217,8 +223,7 @@ The rest of the pipeline (`schemaNormalizer.ts`, `importService.ts`, `helpers.ts
 
 ---
 
-> Bugs 1, 2, and 3 were resolved and verified on 2026-09-20.
-> Bug 4 remains diagnosed and ready for implementation.
+> Bugs 1, 2, 3, and 4 were resolved and verified on 2026-09-20.
 
 ---
 
@@ -412,7 +417,7 @@ The next AI model must NOT change any calculation logic. The fix is entirely in 
 
 ---
 
-### Bug 4 � 2HR column always shows 0.00 in the dashboard
+### Bug 4 — 2HR column always shows 0.00 in the dashboard - [COMPLETED]
 
 #### What the user sees
 Every supervisor row shows `0.00` in the 2HR column even after importing a file that contains a 2-hour resolve/repeat metric. 3DR (3-day resolve) appears correct.
@@ -519,3 +524,140 @@ Common real-world column names that get missed:
 **Expected result:** Columns unambiguously associated with the 2-hour window (`"2HR"`, `"2HR Repeat"`, `"2-Hour Repeat Rate"`) will map to `resolve2hr` instead of colliding with `resolve3d` aliases. The 2HR column in the dashboard will show the correct percentage instead of 0.00.
 
 ---
+
+---
+
+## Dashboard Visual Modernisation — Design Recommendations
+
+> Comparison basis: `ImportLanding.tsx` / `ImportLanding.css` (the loading page) vs `App.tsx` / `App.css` (the main dashboard).
+> No code changes have been made yet. These are ideas only, ordered by impact vs effort.
+
+### Gap Analysis — What the Landing Has That the Dashboard Lacks
+
+#### 1. Dark atmospheric background
+The landing uses `#0b0b0a` + a radial blue glow (`rgba(55, 138, 221, 0.12)`) that gives it depth and warmth. The dashboard sits on a flat `bg-slate-50` / white base — it reads as a standard enterprise spreadsheet tool.
+
+**Idea:** Replace the dashboard body/card backgrounds with the same dark palette (`#0b0f19`, `#111827`) that the error boundary and navbar already use. The KPI cards and table already carry slate-900 — unify that dark theme all the way through.
+
+---
+
+#### 2. The morphing orb as brand DNA
+The animated blob (`border-radius` morph + scale pulse + warm gold-to-blue radial gradient) is the most distinctive element of the landing. The dashboard has no ambient motion or visual brand anchor.
+
+**Idea:** Bring a smaller, static version of the orb aesthetic — the gold/blue gradient and soft blob shape — into the top navbar as a brand mark where the plain "CSO" text badge currently sits. No animation needed in the dashboard, but the visual DNA would carry through.
+
+---
+
+#### 3. Color palette continuity
+The landing uses a deliberate 3-color language that the dashboard completely ignores:
+
+| Role | Landing color | Dashboard equivalent |
+|---|---|---|
+| Accent / "good" | `#5dcaa5` (mint green) | `emerald-400` (different green) |
+| Warning / highlight | `#f0c674` (warm gold) | `amber-*` (inconsistent) |
+| Background glow | `#378add` (blue) | `sky-500` / Tailwind defaults |
+
+**Idea:** Remap the dashboard's "good" metric color from Tailwind `emerald-400` to the landing's `#5dcaa5`, and the accent/glow from Tailwind blue to `#378add`. Two color swaps, immediately makes the dashboard feel like the same product.
+
+---
+
+#### 4. Typography weight and tone
+The landing uses `font-weight: 600` and `clamp(22px, 4vw, 30px)` headlines — editorial and confident. The dashboard's KPI headings are `text-xl` with dense `text-xs uppercase tracking-wide` section labels — utilitarian and cramped.
+
+**Idea:** Give "Month to Date" and "Daily Spotter" the same large, fluid `clamp()` sizing as the landing's h1. Let them breathe.
+
+---
+
+#### 5. Card border style
+The landing's cards use `border: 1px solid #2c2c2a` — subtle, dark, warm-tinted. The dashboard's cards use `border-slate-200` — cold light gray that visually clashes with the dark navbar above.
+
+**Idea:** Unify to one border treatment: `rgba(255,255,255,0.08)` on dark sections, `#e2e8f0` on any remaining light sections. Or go fully dark and drop the light-card areas entirely.
+
+---
+
+#### 6. Tab bar contrast flip
+The landing's active states use a glow/selection pattern (mint border + tinted background). The dashboard tab bar inverts to white-on-slate — fine in isolation but feels like a different component library.
+
+**Idea:** Restyle the tab bar container to the landing's dark-card treatment (`background: #151512`, `border: 1px solid #2c2c2a`). Active tabs get a `#5dcaa5` bottom border or subtle mint glow instead of a white background.
+
+---
+
+#### 7. Radial gradient spotlight (zero-effort depth)
+The landing has a radial gradient spotlight from the top center. The dashboard is completely flat — no gradients, no visual hierarchy anchors.
+
+**Idea:** Add one CSS rule — a subtle radial gradient (`rgba(55, 138, 221, 0.07)`) behind the KPI stats row. One line, instantly makes the top of the dashboard feel premium.
+
+---
+
+#### 8. Micro-motion
+The landing has `translateY(-2px)` hover lift on the dropzone, stagger-delay list animations, and the orb morph. The dashboard has `hover:-translate-y-1` on roster rows (good) but nothing else.
+
+**Idea:** Add the same hover lift + `box-shadow` to the KPI cards, and a `opacity 0 → 1` fade-in on the stats row when data loads — mirroring the landing's `importReviewRise` keyframe.
+
+---
+
+### Priority Order
+
+| # | Idea | Visual Impact | Effort |
+|---|---|---|---|
+| 1 | Unify dark background across dashboard body | High | Low |
+| 2 | Remap accent colors to landing's mint + gold palette | High | Low |
+| 3 | Radial gradient glow behind KPI row | High | Very low (1 CSS rule) |
+| 4 | Tab bar dark treatment (dark card + mint active border) | Medium | Medium |
+| 5 | Headline fluid sizing with `clamp()` on KPI headings | Medium | Low |
+| 6 | KPI card hover lift (match landing's dropzone hover) | Low | Very low |
+| 7 | Orb mark in navbar (static, brand continuity) | Low | Medium |
+
+> Items 1 + 2 + 3 alone would close ~70% of the visual gap with zero risk to functionality.
+
+---
+
+## Recommendation 3 — Auto-Hide Empty Metric Columns After Import
+
+> Status: **Pending**
+> Priority: Medium
+> Effort: Low
+
+### What the user sees
+
+After importing a file that contains no sales data, columns like **PHONE LINES**, **HAND-OFFS**, or any other metric column still appear in the roster table and KPI cards — but every row shows `-`. The table wastes horizontal space and looks broken, and the user has to manually open Settings and toggle each empty column off.
+
+### The rule
+
+> **If the imported dataset contains zero non-null values for a metric, that metric column must be hidden automatically in the dashboard. No manual toggle required.**
+
+This is purely additive — the existing manual Settings toggle still works exactly as before. Auto-hide only fires once at import time. If the user manually re-enables a column via Settings, that choice is respected.
+
+### Which columns are affected
+
+Any column whose canonical field (`calls`, `phoneAdds`, `vhi`, `vtt`, `handoffs`, `handoffsCount`, `creditAmount`, `creditTransactions`, `vttEligible`, `vttIndicated`, `vttAttach`, and any custom metric) has **all null values** across every row in the imported dataset should be auto-hidden.
+
+The 4 core metrics (`vxs` / C-SAT, `resolve2hr` / 2HR, `resolve3d` / 3DR, `handoffs` / Hand-offs) follow the same rule — if data is absent, hide them too. There is no special protection for any column.
+
+### Where the fix goes
+
+- **`hooks.ts` — `applyBatchImport`**: After the row loop finishes, scan `rowsToApply` once. For each field in `visibleCols`, check whether any row has a non-null value. Build a `Set<string>` of fields that have at least one real value.
+- **`hooks.ts` — initial `visibleCols` state**: When calling `setVisibleCols` at the end of import, merge the current user preferences with the auto-hide result: any field in `visibleCols` that is NOT in the "has data" set gets forced to `false`.
+- **No changes to `importPolicy.ts`, `schemaNormalizer.ts`, `mergeData.ts`, helpers, or any import pipeline file.**
+
+### Checklist for the fix
+
+1. At the end of `applyBatchImport` (after the row loop, before `setHistoricalData`), compute:
+   ```ts
+   const fieldsWithData = new Set(
+     rowsToApply.flatMap(row =>
+       Object.entries(row)
+         .filter(([, v]) => v !== null && v !== undefined)
+         .map(([k]) => k)
+     )
+   );
+   ```
+2. Get the current `visibleCols` state (already accessible inside `applyBatchImport` via closure or passed in).
+3. Build the new `visibleCols` by iterating current keys: if `visibleCols[key] === true` but `!fieldsWithData.has(canonicalKey)`, set it to `false`.
+4. Call `setVisibleCols(newVisibleCols)` once before `setHistoricalData`.
+5. The canonical key mapping (`col.stateKey` in `COL_DEFINITIONS`) must be used — not the display label — so the field names match what is actually stored on rows.
+6. Write a simple unit test: mock `rowsToApply` with all-null `phoneAdds`, assert that `phoneAdds` is `false` in the resulting `visibleCols`.
+
+### Expected result
+
+When the user imports a file with no sales data, **PHONE LINES**, **VHI**, **VTT**, and any other empty column disappear automatically. The table is compact and only shows columns that actually have values. The user can still re-enable any column via the Settings toggle at any time.

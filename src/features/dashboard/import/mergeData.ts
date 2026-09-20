@@ -1,3 +1,10 @@
+// ⚠️  STANDING RULE — DO NOT FIX MAPPING BUGS IN THIS FILE
+// If a dashboard metric shows 0, null, or wrong values after import, the fix
+// belongs in importPolicy.ts (FIELD_ALIASES), NOT here. This file handles
+// merge strategies and deduplication; it does not contain and must not contain
+// column-name or alias knowledge. See recommendations.md §"STANDING RULE" and
+// the banner in importPolicy.ts.
+
 import type { ImportWarning, MergeOptions, MergeStrategy, NormalizedRow } from './types';
 
 // Calculation convention: new account-specific merge/calculation styles are additive

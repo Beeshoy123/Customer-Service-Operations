@@ -1,4 +1,10 @@
 // @ts-nocheck
+// ⚠️  STANDING RULE — DO NOT FIX MAPPING BUGS IN THIS FILE
+// If a dashboard metric shows 0, null, or wrong values after import, the fix
+// belongs in importPolicy.ts (FIELD_ALIASES), NOT here. Row storage in
+// applyBatchImport is correct and generic. See recommendations.md §"STANDING
+// RULE" and the top-of-file banner in importPolicy.ts for the full checklist.
+
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import {
   CHART_COLORS,
