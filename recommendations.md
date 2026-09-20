@@ -1,4 +1,4 @@
-# Customer Service Operations Dashboard — Import Recommendations & Plan
+﻿# Customer Service Operations Dashboard — Import Recommendations & Plan
 
 ## Objective
 
@@ -22,6 +22,10 @@ Upgrade the dashboard from a single-file CSV/text importer to a full mixed-forma
 | 🟡 Medium | Modal shows flat sheet list with no workbook grouping | Medium | ✅ Completed |
 | 🟡 Medium | No "apply mapping to all matching sheets" shortcut | Medium | ✅ Completed |
 | 🟢 Low | Blind averaging across workbooks / duplicate upload detection | Medium | ✅ Completed |
+| 🔴 High | Bug 1: Progress bar resets to 0% after the mapping wizard | Low | ✅ Completed |
+| 🔴 High | Bug 2: Progress stalls at 99% for a long time before the dashboard appears | Low | ✅ Completed |
+| 🔴 High | Bug 3: HAND-OFFS column always shows 0.00 in the dashboard | Low | ✅ Completed |
+| 🔴 High | Bug 4: 2HR column always shows 0.00 in the dashboard | Low | ⏳ Pending |
 
 ---
 
@@ -161,3 +165,357 @@ The import system is complete when it can:
   - Replaced missing Tailwind CSS utility dependencies in `ImportPreviewModal.tsx` and `ManageMemoryModal` with dedicated `.ipm-*` classes.
   - Separated column headers and pattern fingerprint tags into clean, spaced badge elements to eliminate text concatenation (e.g. `RECOVERYKEYcount-Integer`).
   - Loaded styles through `main.tsx` so the browser bundle renders properly while Node.js test execution (`tsx --test`) remains free of CSS loader errors.
+
+- [x] **Bug 1: Progress bar resets to 0% after the mapping wizard**:
+  - `hooks.ts`: Updated `continueAutomaticImport` to capture and reuse the cached `pendingAutomaticImport` directly rather than invoking `handleAutomaticImport` and triggering a full file re-parse cycle. Applied user decisions (custom metrics, resolve windows, and customer experience choices) directly onto cached diagnostics and transitioned progress to 100% immediately while applying rows.
+- [x] **Bug 2: Progress stalls at 99% for a long time before the dashboard appears**:
+  - `hooks.ts`: Added live progress emissions inside `applyBatchImport` at every chunk yield point (`Applying rows... N / Total`) with dynamic percentage calculations. Emitted a bridging `Finalizing dashboard...` status (100%) and yielded right before setting `historicalData` so the UI paints smoothly without freezing at 99%.
+- [x] **Bug 3: HAND-OFFS column always shows 0.00 in the dashboard**:
+  - `importPolicy.ts`: Added missing transfer and handoff rate column aliases (`transfers %`, `net transfers`, `net transfers %`, `transfer pct`, `net transfer rate`, `net transfer %`, `hand off %`, `hand off pct`, `warm transfer rate`, `warm transfer %`) to `handoffs.aliases`. Moved `'net handoffs'` and `'transfers'` from `handoffsCount` to `handoffs` to resolve map collisions in `ALIAS_LOOKUP_MAP`. Added `'transfer'` and `'transfers'` to `HEADER_TOKEN_HINTS.handoffs`. Added canonical alias prioritization in `findPairedCountField` so explicit aliases in `FIELD_ALIASES` (such as `Transfer Count`) are not hijacked as dynamic paired count fields (`handoffs_Cnt`).
+  - `importPolicy.test.ts`: Added unit tests verifying rate variants map to `handoffs` and count variants map to `handoffsCount`.
+
+
+---
+
+## Outstanding Bugs � Step-by-Step Fix Instructions
+---
+
+## ?? STANDING RULE � Mapping Fixes Always Go in `importPolicy.ts` Only
+
+> **This rule applies to ALL future mapping-related bugs, forever. Any AI model working on this codebase must read this before touching any import-related code.**
+
+When a dashboard metric (handoffs, 2HR, 3DR, CSAT, AHT, or any other field) shows incorrect values � zero, null, or wrong numbers � after an import, the **first and default assumption** must be that the column alias list is incomplete or wrong.
+
+### The principle
+
+This dashboard is designed to work with files from **many different source systems** � Verizon exports, third-party workforce management tools, custom Excel trackers, etc. Every system names its columns differently. The mapping layer (`importPolicy.ts`) is the single correct place to handle that variation.
+
+**Do not fix mapping problems by:**
+- Changing calculation logic in `helpers.ts`
+- Changing how values are stored in `hooks.ts` `applyBatchImport`
+- Changing value normalization in `schemaNormalizer.ts`
+- Adding special-case logic anywhere in the dashboard rendering or aggregation pipeline
+
+**Always fix mapping problems by:**
+- Adding missing column name aliases to the relevant field's `aliases` array in `FIELD_ALIASES` inside `src/features/dashboard/import/importPolicy.ts`
+- Removing ambiguous aliases that are shared between two fields (they cause silent overwrites in the lookup map)
+- Adding or correcting token hints in `HEADER_TOKEN_HINTS` in the same file
+- Updating `PAIRED_COUNT_FIELDS` if a pass/count column pair is not being detected
+
+### Why only `importPolicy.ts`
+
+The rest of the pipeline (`schemaNormalizer.ts`, `importService.ts`, `helpers.ts`, `hooks.ts`) is generic and correct. It does not know or care about Verizon-specific column names. `importPolicy.ts` is the **only** file that is supposed to know about real-world column name variations. Keeping all alias knowledge in one file makes it easy to audit, extend, and test without side effects anywhere else.
+
+### Checklist before any mapping fix
+
+1. Identify the exact column header string as it appears in the uploaded file (case-sensitive, including spaces and symbols).
+2. Run the header through `normalizeHeader()` mentally (lowercase, strip non-alphanumeric to spaces, trim) and check if the result matches any existing alias in `FIELD_ALIASES` for the target field.
+3. If it does not match � add it to the `aliases` array of the correct field.
+4. Check that the same normalized string is NOT already listed in another field's aliases. If it is, remove it from the wrong field first.
+5. If the header is ambiguous (e.g. "Repeat Rate" could be 2HR or 3DR), add the disambiguating version ("2HR Repeat Rate", "3DR Repeat Rate") and remove the ambiguous form from both.
+6. Run the existing import tests to confirm no regressions.
+
+---
+
+> Bugs 1, 2, and 3 were resolved and verified on 2026-09-20.
+> Bug 4 remains diagnosed and ready for implementation.
+
+---
+
+### Bug 1 � Progress bar resets to 0% after the mapping wizard - [COMPLETED]
+
+#### What the user sees
+The import runs, the orb climbs from 0% to ~99%. Then the mapping wizard appears (the "?" screen asking the user to resolve ambiguous columns). The user answers and clicks **Finish and continue**. The orb immediately drops back to **0%** and runs all the way up again � so the user sees two full progress cycles for one import.
+
+#### Root cause (code trace)
+
+1. `handleAutomaticImport` in `src/features/dashboard/hooks.ts` (~line 610) calls `runImportService` which does the full file parse and emits progress 0 ? 99%.
+2. When mapping review items are found, it stores the parsed result in `pendingAutomaticImport` state and sets `uploadStatus = null` (~line 687�691). The wizard appears.
+3. `continueAutomaticImport` (~line 731) is called when the user finishes the wizard. It does this:
+   ```
+   setPendingAutomaticImport(null);
+   setPendingAutomaticFiles([]);
+   setMappingReview([]);
+   await handleAutomaticImport(pendingAutomaticFiles, mappingOverrides, customMetricAnswers);
+   ```
+   It **throws away the already-parsed result** stored in `pendingAutomaticImport` and calls `handleAutomaticImport` again � which re-runs `runImportService` from scratch on the same files, resetting the orb to 0%.
+
+#### The fix � skip the re-parse, reuse the cached result
+
+Rewrite `continueAutomaticImport` so it takes the cached `pendingAutomaticImport` result directly and skips `handleAutomaticImport` entirely.
+
+**Step-by-step for the AI model:**
+
+1. Open `src/features/dashboard/hooks.ts`.
+2. Find `continueAutomaticImport` (~line 731). It currently calls `handleAutomaticImport` with the original files.
+3. Replace the body so it:
+   - Captures the cached result before clearing: `const cachedResult = pendingAutomaticImport`
+   - Clears pending state (`setPendingAutomaticImport(null)`, `setPendingAutomaticFiles([])`, `setMappingReview([])`)
+   - Resolves mapping overrides the same way `handleAutomaticImport` already does � call `saveCustomMetricDecisions`, `saveResolveWindowChoices`, and `saveCustomerExperienceChoice` with the cached diagnostics and the user-supplied overrides (these helpers are already imported/used in the same file)
+   - Sets `uploadStatus { type: 'info', message: 'Applying imported data...', progress: 100 }` immediately (parsing is already done, so show 100% at once)
+   - Calls `await applyBatchImport(null, cachedResult)` directly � this is the same final step `handleAutomaticImport` calls at ~line 703
+   - Wraps the whole thing in try/catch exactly as `handleAutomaticImport` does, setting an error toast on failure
+4. Update the `useCallback` dependency array: add `applyBatchImport`, `accountName`, `accountProfile`, `setUploadStatus`, and the save-helper functions � **remove `handleAutomaticImport`** since it is no longer called.
+5. No changes needed to `ImportLanding.tsx` or `importService.ts` for this fix.
+
+**Expected result:** The orb will not reset. When the wizard is dismissed the orb stays at 100% while rows are being applied, then the dashboard loads.
+
+---
+
+### Bug 2 � Progress stalls at 99% for a long time before the dashboard appears - [COMPLETED]
+
+#### What the user sees
+After all files are parsed the orb reaches 99% and **freezes** � sometimes for several seconds � before the dashboard appears. Nothing on screen indicates that work is still happening.
+
+#### Root cause (code trace)
+
+**Cause A � parsing caps at 99% by design.**
+In `src/features/dashboard/import/importService.ts`, `emitBatchProgress` (~line 273) hard-caps percent:
+```
+percent: Math.min(overallPercent, 99)
+```
+The orb never shows 100% during file parsing. This is intentional but creates a "stuck" appearance.
+
+**Cause B � `applyBatchImport` processes rows with no progress updates.**
+After parsing, `handleAutomaticImport` sets `progress: 100` and calls `await applyBatchImport(null, result)` (~line 703). Inside `applyBatchImport` (~line 463) there is a large synchronous loop:
+```
+for (let index = 0; index < rowsToApply.length; index += 1) {
+  if (index > 0 && index % chunkSize === 0) {
+    await new Promise((resolve) => setTimeout(resolve, 0)); // yields every 2500 rows
+  }
+  // ... row processing ...
+}
+```
+This loop can run for several seconds on large files. During this entire time `uploadStatus` is frozen at `progress: 100` with a static message � the orb and subtitle do not update at all.
+
+#### The fix � emit live row-apply progress inside `applyBatchImport`
+
+**Step-by-step for the AI model:**
+
+1. Open `src/features/dashboard/hooks.ts`.
+2. Find `applyBatchImport` (~line 463) and locate the row-processing `for` loop (~line 512).
+3. Inside the loop, at the yield point (where `await new Promise(...)` already exists), add a `setUploadStatus` call **before** the await so the UI re-renders before the thread yields:
+   ```
+   const applyPercent = Math.round((index / rowsToApply.length) * 100);
+   setUploadStatus({
+     type: 'info',
+     message: `Applying rows� ${index.toLocaleString()} / ${rowsToApply.length.toLocaleString()}`,
+     progress: applyPercent,
+   });
+   await new Promise((resolve) => setTimeout(resolve, 0));
+   ```
+4. After the loop ends, before calling `setHistoricalData`, emit one final bridging status:
+   ```
+   setUploadStatus({ type: 'info', message: 'Finalizing dashboard�', progress: 100 });
+   await new Promise((resolve) => setTimeout(resolve, 0)); // let UI paint
+   ```
+5. Leave the existing success toast at the very end of `applyBatchImport` (~line 606) unchanged � it will replace the "Finalizing" status once `setHasUploadedData(true)` fires and the component re-renders.
+6. No changes needed to `importService.ts`, `ImportLanding.tsx`, or any other file for this fix.
+
+**Expected result:** Instead of freezing at 99%, the orb animates through a live "applying rows" counter (0% ? 100%) so the user can see real progress at every stage of the import.
+
+---
+
+
+---
+
+### Bug 3 � HAND-OFFS column always shows 0.00 in the dashboard - [COMPLETED]
+
+#### What the user sees
+The dashboard shows 0.00 for every supervisor in the HAND-OFFS column even after a successful import. C-SAT and other metrics are populated correctly. The data files do contain a transfer/handoff column.
+
+#### Root cause � full code trace
+
+**Step 1 � What the dashboard displays.**
+`handoffs` is rendered by the roster table using values from `aggregateRecords` (`src/features/dashboard/helpers.ts` ~line 110):
+```
+const handoffs = callsWithHandoffs > 0 ? (sumHandoffsCount / callsWithHandoffs) * 100 : null;
+```
+It returns `null` (shown as `-`) if `callsWithHandoffs` is 0, and it returns a percentage if there is data. The dashboard shows `0.00` � not `-` � which means `callsWithHandoffs > 0` IS true but `sumHandoffsCount` is 0. This tells us the field IS mapping and arriving on rows, but the VALUE being stored is 0.
+
+**Step 2 � What feeds `sumHandoffsCount`.**
+In `aggregateRecords` (~line 75�81):
+```
+if (d.handoffsCount != null) {
+  sumHandoffsCount += d.handoffsCount;   // branch A: raw count field
+  callsWithHandoffs += c;
+} else if (d.handoffs != null) {
+  sumHandoffsCount += (d.handoffs / 100) * c;  // branch B: rate field
+  callsWithHandoffs += c;
+}
+```
+Branch A is for `handoffsCount` (raw count like "12 transfers"), Branch B is for `handoffs` (rate like "3.5%").
+Both are correct � but Branch B divides `handoffs` by 100 assuming it is already in percent form.
+
+**Step 3 � What the import stores.**
+In `hooks.ts` `applyBatchImport` (~line 582):
+```
+handoffs: toNumberOrNull(row.handoffs),
+handoffsCount: toNumberOrNull(row.handoffsCount),
+```
+The `handoffs` field is stored as a raw number, and `normalizeCellValue` in `schemaNormalizer.ts` calls `normalizeImportedValue` which for `kind: 'percent'` fields does:
+```
+const normalizedPercent = rawPercentNumber <= 1 ? rawPercentNumber * 100 : rawPercentNumber;
+```
+So if the file contains `0.035` (decimal), it gets stored as `3.5`. If it contains `3.5` (whole-number percent), it stores `3.5` unchanged. This is correct.
+
+**Step 4 � What "transfers" maps to.**
+The FIELD_ALIASES for `handoffs` include `'transfer rate'` and `'transfer %'` � meaning a column called exactly "Transfer Rate" or "Transfer %" would map to `handoffs` (the rate field).
+
+The FIELD_ALIASES for `handoffsCount` include `'transfers'` and `'transfer count'` � meaning a column called "Transfers" maps to `handoffsCount` (the integer count field).
+
+**Step 5 � The real problem: "transfers" maps to `handoffsCount`, not `handoffs`.**
+If the actual CSV column is named something like `"Transfers"` or `"Transfer Flag"`, it maps to `handoffsCount` (the count field) � **not** to `handoffs` (the rate field). The count is correctly accumulated in `sumHandoffsCount` (~line 76). HOWEVER � the final calculation at line 110 is:
+```
+const handoffs = callsWithHandoffs > 0 ? (sumHandoffsCount / callsWithHandoffs) * 100 : null;
+```
+This divides the raw count by total calls and multiplies by 100 to produce a rate � which is mathematically correct **only if** `handoffsCount` is actually the number of transferred calls (e.g. 12 out of 300 calls = 4%).
+
+**The most likely scenario causing 0.00:**
+The column in the actual file is named something like `"Transfer Flag"` or `"Transfers"` � it maps to `handoffsCount`. BUT the values in the column are binary flags (0 or 1 per row) that get aggregated (summed) to give a count. If the data coming in is already a per-agent RATE (e.g. `0.035` or `3.5`) stored in a column named `"Transfers"` or `"Net Handoffs"`, then:
+- `handoffsCount` gets the rate value (e.g. `3.5`)
+- `sumHandoffsCount` accumulates small float values like `3.5 + 3.1 + 2.8...`
+- `(sumHandoffsCount / callsWithHandoffs) * 100` produces a tiny near-zero value
+
+This is also consistent with the dashboard showing exactly `0.00` � a very small float rounded to 2 decimal places.
+
+**Secondary scenario � "Net Handoffs" matches `handoffsCount`:**
+The alias `'net handoffs'` is listed under `handoffsCount` (line 230 in importPolicy.ts). If the file has a column called `"Net Handoffs %"` it correctly goes to `handoffs` (rate). But `"Net Handoffs"` without the `%` goes to `handoffsCount` (count). If those values are rates expressed as whole numbers (e.g. `3.5`), the count-field path accumulates them and the math produces near-zero.
+
+#### The fix needed � update mapping aliases in `importPolicy.ts`
+
+The next AI model must NOT change any calculation logic. The fix is entirely in the alias lists in `FIELD_ALIASES` in `src/features/dashboard/import/importPolicy.ts`:
+
+**Step-by-step for the AI model:**
+
+1. Open `src/features/dashboard/import/importPolicy.ts`.
+2. Find the `handoffs` entry (~line 211) with `kind: 'percent'`.
+3. Add additional aliases that real Verizon/telecom exports use for the handoff/transfer RATE column. The current aliases cover `'transfer rate'` and `'transfer %'` but miss common variants. Add:
+   - `'transfers %'`
+   - `'net transfers'`
+   - `'net transfers %'`
+   - `'transfer pct'`
+   - `'net transfer rate'`
+   - `'net transfer %'`
+   - `'hand off %'`
+   - `'hand off pct'`
+   - `'warm transfer rate'`
+   - `'warm transfer %'`
+4. Find the `handoffsCount` entry (~line 227) with `kind: 'number'`. Review whether `'net handoffs'` (without %) should stay there or be moved. If the file column is named `"Net Handoffs"` but its values are a rate (floats like `3.5`), it should map to `handoffs` instead. Consider moving `'net handoffs'` from `handoffsCount` to `handoffs` aliases.
+5. Also check the `HEADER_TOKEN_HINTS` for `handoffs` (~line 456): currently only `['handoff', 'handoffs']`. Add `'transfer'` and `'transfers'` as token hints so the fuzzy scorer treats those words as signals for the `handoffs` field:
+   ```
+   handoffs: ['handoff', 'handoffs', 'transfer', 'transfers'],
+   ```
+6. No changes to `helpers.ts`, `hooks.ts`, `schemaNormalizer.ts`, or any dashboard display component.
+
+**Expected result:** Columns named "Transfers", "Net Handoffs", or any transfer-rate variant will map to the correct `handoffs` (rate) or `handoffsCount` (count) field, and the dashboard HAND-OFFS column will show the real percentage instead of 0.00.
+
+---
+
+### Bug 4 � 2HR column always shows 0.00 in the dashboard
+
+#### What the user sees
+Every supervisor row shows `0.00` in the 2HR column even after importing a file that contains a 2-hour resolve/repeat metric. 3DR (3-day resolve) appears correct.
+
+#### Root cause � full code trace
+
+**Step 1 � What the dashboard displays.**
+`resolve2hr` is rendered using values from `aggregateRecords` (`helpers.ts` ~line 109):
+```
+const resolve2hr = totalResContacts2hr > 0 ? (1 - totalRepeats2hr / totalResContacts2hr) * 100 : null;
+```
+It only computes if `totalResContacts2hr > 0`. If showing 0.00 rather than `-`, then `totalResContacts2hr > 0` � meaning data IS arriving but the math produces 0.
+
+**Step 2 � How `totalResContacts2hr` and `totalRepeats2hr` are built** (~line 93�96):
+```
+const resContacts2hr = d.resolveTotalContacts2hr != null ? d.resolveTotalContacts2hr : resTotal;
+if (d.resolve2hr != null) {
+  totalResContacts2hr += resContacts2hr;
+  totalRepeats2hr += resContacts2hr * ((100 - d.resolve2hr) / 100);
+}
+```
+When `resolveTotalContacts2hr` is absent from the data (common � most exports don't include it), `resContacts2hr` falls back to `resTotal` (total contacts). This is the correct path.
+
+**Step 3 � The percent normalization issue.**
+`normalizeImportedValue` for `kind: 'percent'` (~importPolicy.ts line 1195�1200):
+```
+const rawPercentNumber = Number(stringValue.replace(/[%,$\s]/g, ''));
+if (!Number.isNaN(rawPercentNumber)) {
+  const normalizedPercent = rawPercentNumber <= 1 ? rawPercentNumber * 100 : rawPercentNumber;
+  return normalizedPercent;
+}
+```
+If the CSV cell is `0.035` (3.5% in decimal) ? stored as `3.5` ?
+If the CSV cell is `3.5` ? stored as `3.5` ?
+If the CSV cell is `100` ? stored as `100` ?
+
+The math in `aggregateRecords`: `resContacts2hr * ((100 - d.resolve2hr) / 100)`
+If `d.resolve2hr` is `100` ? repeats = 0 ? final rate = 100% (looks like no repeats � shows 100)
+If `d.resolve2hr` is `3.5` ? that means 3.5% resolve rate ? dashboard shows 3.5% (very low)
+
+**Step 4 � The column naming / mapping failure.**
+Look at the `resolve2hr` aliases in `FIELD_ALIASES` (~line 128�131):
+```
+'resolve within 2hr', 'resolve 2hr', '2hr resolution', '2 hour resolve',
+'2hr', '2-hour resolve', '2 hour resolve %', 'resolve within 2 hour',
+'within 2hr', 'resolution rate', 'repeat rate', 'repeat callback rate',
+'callback rate', 'rr', 'repeat callback', 'repeat callback %'
+```
+**Critical problem:** `'resolution rate'`, `'repeat rate'`, `'repeat callback rate'`, and `'callback rate'` are SHARED between `resolve2hr` (line 129) and `resolve3d` (line 137). Both fields list these generic aliases.
+
+When two fields share the same alias in `ALIAS_LOOKUP_MAP` (built in `schemaNormalizer.ts` ~line 18�25), whichever field is iterated **last** in `Object.entries(FIELD_ALIASES)` wins the alias slot in the map. Since `resolve3d` is defined after `resolve2hr` in the object, `resolve3d` overwrites these shared aliases. A column called `"Repeat Callback Rate"` or `"Resolution Rate"` will map to `resolve3d` � never to `resolve2hr`.
+
+**Step 5 � Additional missing aliases for the 2HR field.**
+The `HEADER_TOKEN_HINTS` for `resolve2hr` (~line 446) are:
+```
+resolve2hr: ['resolve', '2hr', 'twohour', '2hour', '2 hour'],
+```
+Common real-world column names that get missed:
+- `"2-Hour Repeat"` � normalized to `2 hour repeat`, tokens include `2`, `hour`, `repeat` � no match to `resolve2hr` hints since `repeat` is not in the list
+- `"2hr Repeat Rate"` � similarly missed
+- `"RR 2HR"` or `"2HR RR"` � missed entirely
+
+#### The fix needed � clean up aliases in `importPolicy.ts`
+
+**Step-by-step for the AI model:**
+
+1. Open `src/features/dashboard/import/importPolicy.ts`.
+2. Find the `resolve2hr` entry (~line 128). **Remove** the following generic aliases that are shared with `resolve3d` and cause the map collision:
+   - `'resolution rate'`
+   - `'repeat rate'`
+   - `'repeat callback rate'`
+   - `'callback rate'`
+   - `'rr'`
+   - `'repeat callback'`
+   - `'repeat callback %'`
+   These belong ONLY on `resolve3d` (as the default/longer-window repeat metric) or should not be on either without a disambiguating token.
+3. Add new **unambiguous** 2HR-specific aliases to `resolve2hr`:
+   - `'2hr repeat'`
+   - `'2 hour repeat'`
+   - `'2hr repeat rate'`
+   - `'2 hour repeat rate'`
+   - `'2hr rr'`
+   - `'rr 2hr'`
+   - `'2hr callback'`
+   - `'2hr callback rate'`
+   - `'within 2 hours'`
+   - `'2 hour resolution rate'`
+4. Similarly, find the `resolve3d` entry (~line 136) and **remove** the same shared generic aliases from it too:
+   - `'resolution rate'`
+   - `'repeat rate'`
+   - `'repeat callback rate'`
+   - `'callback rate'`
+   - `'rr'`
+   - `'repeat callback'`
+   - `'repeat callback %'`
+   Instead add proper 3DR-specific aliases like `'3dr repeat'`, `'3 day repeat rate'`, `'3d rr'`, `'rr 3d'`.
+5. Update `HEADER_TOKEN_HINTS` for `resolve2hr` (~line 446) to include `'repeat'` and `'2'` as token hints:
+   ```
+   resolve2hr: ['resolve', '2hr', 'twohour', '2hour', '2 hour', '2', 'repeat', 'rr'],
+   ```
+   Be careful: adding `'repeat'` alone could score hits on 3DR columns too. Only add it when combined with the `2hr` context � or trust the alias fixes above to do the disambiguation.
+6. No changes to `helpers.ts`, `hooks.ts`, or any dashboard display file.
+
+**Expected result:** Columns unambiguously associated with the 2-hour window (`"2HR"`, `"2HR Repeat"`, `"2-Hour Repeat Rate"`) will map to `resolve2hr` instead of colliding with `resolve3d` aliases. The 2HR column in the dashboard will show the correct percentage instead of 0.00.
+
+---

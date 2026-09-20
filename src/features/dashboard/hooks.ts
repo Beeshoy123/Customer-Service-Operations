@@ -50,7 +50,7 @@ import { loadAccountProfile, saveAccountProfile, loadRateMergeStyle, saveRateMer
 // ─── Local Storage Persistence Helpers ──────────────────────────────────────
 const DASHBOARD_STORAGE_KEY = 'customer-service-dashboard-state-v1';
 
-const CONTEXT_ONLY_HEADER_PATTERN = /(?:^|[_\s-])(location|department|dept|skill\s*group|skillgroup|track|tracking|intent|intent\s*description|description|category|categorical|queue|team|region|site|supervisor|manager)(?:$|[_\s-])/i;
+const CONTEXT_ONLY_HEADER_PATTERN = /(?:^|[_\s-])(location|department|dept|skill\s*group|skillgroup|track|tracking|intent|intent\s*description|description|category|categorical|queue|team|region|site|supervisor|manager|recovery|hour|geographic|scorecard|id|key)(?:$|[_\s-])|key$|id$/i;
 
 const isContextOnlyMapping = (diagnostic) =>
   !diagnostic.mappedField && CONTEXT_ONLY_HEADER_PATTERN.test(String(diagnostic.header || ''));
@@ -511,6 +511,12 @@ export const useDashboardData = (onDataReset = null, accountName = '') => {
     console.log('[DEBUG 8 - applyBatchImport] Starting to apply rows to state. Total rows:', rowsToApply.length);
     for (let index = 0; index < rowsToApply.length; index += 1) {
       if (index > 0 && index % chunkSize === 0) {
+        const applyPercent = Math.round((index / rowsToApply.length) * 100);
+        setUploadStatus({
+          type: 'info',
+          message: `Applying rows… ${index.toLocaleString()} / ${rowsToApply.length.toLocaleString()}`,
+          progress: applyPercent,
+        });
         await new Promise((resolve) => setTimeout(resolve, 0));
       }
 
@@ -596,6 +602,9 @@ export const useDashboardData = (onDataReset = null, accountName = '') => {
       };
     }
 
+    setUploadStatus({ type: 'info', message: 'Finalizing dashboard…', progress: 100 });
+    await new Promise((resolve) => setTimeout(resolve, 0)); // let UI paint
+
     setHistoricalData(newHistory);
     setAgents(updatedAgents);
     setSupervisors(Array.from(nextSupervisors).sort());
@@ -605,7 +614,7 @@ export const useDashboardData = (onDataReset = null, accountName = '') => {
     setActiveTimeframe('monthly');
     setUploadStatus({ type: 'success', message: `Applied ${rowsToApply.length} imported rows from the selected sheets.` });
     setTimeout(() => setUploadStatus(null), 5000);
-  }, [agents, batchImportSummary, historicalData, setActiveTimeframe, setAgents, setHasUploadedData, setHistoricalData, setSelectedDate, setSupervisors, supervisors]);
+  }, [agents, batchImportSummary, historicalData, setActiveTimeframe, setAgents, setHasUploadedData, setHistoricalData, setSelectedDate, setSupervisors, setUploadStatus, supervisors]);
 
   const handleAutomaticImport = useCallback(
     async (files, mappingOverrides = {}, customMetricAnswers = {}) => {
@@ -651,8 +660,11 @@ export const useDashboardData = (onDataReset = null, accountName = '') => {
         const unmappedCount = diagnostics.filter((item) => !item.mappedField).length;
         const lowConfidenceCount = diagnostics.filter((item) => item.mappedField && item.confidence === 'low').length;
         const collisionCount = diagnostics.filter((item) => item.collisionWith?.length).length;
+        // Rule 1: Confident canonical matches auto-apply silently (no question).
+        // Rule 2: Structural/non-metric fingerprints and identifier keywords are silently ignored (no question).
+        // Rule 3: Only unmapped columns with metric fingerprints (count-integer, percent-decimal, percent-whole, duration-seconds)
+        //         are reviewed via customMetricReviewItems below.
         const reviewItems = diagnostics.filter((item) =>
-          (!isContextOnlyMapping(item) && !item.mappedField) ||
           (item.mappedField && item.confidence === 'low') ||
           Boolean(item.collisionWith?.length)
         );
@@ -725,13 +737,55 @@ export const useDashboardData = (onDataReset = null, accountName = '') => {
     saveRateMergeStyle(accountName, style);
   }, [accountName]);
 
-  const continueAutomaticImport = useCallback(async (mappingOverrides = {}, customMetricAnswers = {}) => {
-    if (!pendingAutomaticImport || !pendingAutomaticFiles.length) return;
-    setPendingAutomaticImport(null);
-    setPendingAutomaticFiles([]);
-    setMappingReview([]);
-    await handleAutomaticImport(pendingAutomaticFiles, mappingOverrides, customMetricAnswers);
-  }, [handleAutomaticImport, pendingAutomaticFiles, pendingAutomaticImport]);
+  const continueAutomaticImport = useCallback(
+    async (mappingOverrides = {}, customMetricAnswers = {}) => {
+      const cachedResult = pendingAutomaticImport;
+      if (!cachedResult) return;
+
+      setPendingAutomaticImport(null);
+      setPendingAutomaticFiles([]);
+      setMappingReview([]);
+
+      try {
+        const customMetricOverrides = saveCustomMetricDecisions(accountName, customMetricAnswers);
+        const effectiveMappingOverrides = { ...mappingOverrides, ...customMetricOverrides };
+        const diagnostics = cachedResult.mappingDiagnostics || [];
+
+        if (Object.keys(effectiveMappingOverrides).length > 0) {
+          saveResolveWindowChoices(accountName, diagnostics, effectiveMappingOverrides);
+          saveCustomerExperienceChoice(accountName, diagnostics, effectiveMappingOverrides);
+        }
+
+        setUploadStatus({
+          type: 'info',
+          message: 'Applying imported data...',
+          progress: 100,
+        });
+
+        await applyBatchImport(null, cachedResult);
+      } catch (error) {
+        console.error('Failed to apply cached import:', error);
+        setUploadStatus({
+          type: 'error',
+          message: error instanceof Error ? error.message : 'The files could not be imported.',
+        });
+        setTimeout(() => setUploadStatus(null), 6000);
+      }
+    },
+    [
+      accountName,
+      accountProfile,
+      applyBatchImport,
+      pendingAutomaticImport,
+      saveCustomerExperienceChoice,
+      saveCustomMetricDecisions,
+      saveResolveWindowChoices,
+      setMappingReview,
+      setPendingAutomaticFiles,
+      setPendingAutomaticImport,
+      setUploadStatus,
+    ]
+  );
 
   const handleAutomaticFileUpload = useCallback(
     (event) => {

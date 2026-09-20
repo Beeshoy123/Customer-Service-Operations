@@ -105,8 +105,8 @@ export function isCallIdPattern(trimmed: string): boolean {
   const hasSeparatorsAndDigits = /^[a-zA-Z0-9_-]{8,}$/.test(trimmed) &&
     (/[a-zA-Z_-]/.test(trimmed) && /\d/.test(trimmed));
 
-  // Common telephony prefix patterns (IVR_, CALL_, REC_, CONV_, TICKET_, CASE_)
-  const hasKnownPrefix = /^(?:ivr|call|rec|acss|conv|ticket|case|sess)[_-]/i.test(trimmed);
+  // Common telephony prefix patterns (IVR_, CALL_, REC_, CONV_, TICKET_, CASE_, KEY_)
+  const hasKnownPrefix = /^(?:ivr|call|rec|acss|conv|ticket|case|sess|key)[_-]/i.test(trimmed);
 
   // Telephony 10+ digit numeric IDs (e.g. 202409150019284)
   const isLongNumericId = /^\d{10,20}$/.test(trimmed);

@@ -11,6 +11,9 @@ import {
   normalizeImportedValue,
   scoreColumnMapping,
   detectColumnMappingWithConfidence,
+  isIdentifierHeader,
+  isUnrecognizedPlausibleMetricColumn,
+  isUnrecognizedPlausibleFingerprint,
 } from './importPolicy';
 import { rememberMapping, clearMemory } from './mappingMemory';
 import { normalizeHeaderToField } from './schemaNormalizer';
@@ -385,6 +388,139 @@ describe('importPolicy extensions', () => {
       assert.equal(res.mappedField, 'agentName');
       assert.equal(res.confidence, 'exact');
       assert.ok(res.candidates && res.candidates.length > 0);
+    });
+
+    describe('Three-outcome column mapping rules', () => {
+      it('Rule 1 (AUTO-APPLY): confidently matches canonical fields without question', () => {
+        // ReportDate -> date
+        const dateRes = scoreColumnMapping('ReportDate', 0, ['2024-09-15', '2024-09-16']);
+        assert.equal(dateRes.mappedField, 'date');
+        assert.equal(dateRes.confidence, 'exact');
+        assert.ok(dateRes.score >= 85);
+
+        // EmployeeName -> agentName
+        const empRes = scoreColumnMapping('EmployeeName', 0, ['Jane Doe', 'John Smith']);
+        assert.equal(empRes.mappedField, 'agentName');
+        assert.equal(empRes.confidence, 'exact');
+        assert.ok(empRes.score >= 85);
+
+        // SPV -> supervisor
+        const spvRes = scoreColumnMapping('SPV', 0, ['Alice Lead', 'Bob Manager']);
+        assert.equal(spvRes.mappedField, 'supervisor');
+        assert.equal(spvRes.confidence, 'exact');
+        assert.ok(spvRes.score >= 85);
+
+        // Handle_Tm_Seconds -> aht
+        const ahtRes = scoreColumnMapping('Handle_Tm_Seconds', 0, [320, 450, 185, 600]);
+        assert.equal(ahtRes.mappedField, 'aht');
+        assert.equal(ahtRes.confidence, 'exact');
+        assert.ok(ahtRes.score >= 85);
+      });
+
+      it('Rule 2 (SILENTLY IGNORE): excludes structural columns and identifier keywords (id, key)', () => {
+        // RECOVERYKEY: excluded by "key" identifier keyword and fingerprint
+        assert.equal(isIdentifierHeader('RECOVERYKEY'), true);
+        assert.equal(isIdentifierHeader('recovery_key'), true);
+        assert.equal(isIdentifierHeader('Acss_Call_ID'), true);
+        assert.equal(isIdentifierHeader('Rep_ID'), true);
+
+        // RECOVERYKEY should not be a plausible custom metric
+        const recKey = scoreColumnMapping('RECOVERYKEY', 0, ['REC_98124_A', 'REC_98125_B']);
+        assert.equal(recKey.mappedField, null);
+        assert.equal(isUnrecognizedPlausibleMetricColumn('RECOVERYKEY', recKey.fingerprint), false);
+
+        // Acss_Call_ID
+        const acss = scoreColumnMapping('Acss_Call_ID', 0, ['Acss_Call_ID_001', 'Acss_Call_ID_002']);
+        assert.equal(acss.mappedField, null);
+        assert.equal(isUnrecognizedPlausibleMetricColumn('Acss_Call_ID', acss.fingerprint), false);
+
+        // HourofDay
+        const hour = scoreColumnMapping('HourofDay', 0, [0, 1, 8, 14, 23]);
+        assert.equal(hour.mappedField, null);
+        assert.equal(isUnrecognizedPlausibleMetricColumn('HourofDay', hour.fingerprint), false);
+
+        // Structural categorical text columns: GeographicLocationDescription, DeptGroupDescription, ScorecardGroupDesc, IVRIntentDesc, Track, SkillGroup
+        const structuralCols = [
+          { header: 'GeographicLocationDescription', samples: ['New York Call Center', 'Tampa Operations'] },
+          { header: 'DeptGroupDescription', samples: ['Customer Care', 'Technical Support'] },
+          { header: 'ScorecardGroupDesc', samples: ['Inbound Support', 'Retention Care'] },
+          { header: 'IVRIntentDesc', samples: ['Make Payment', 'Check Balance'] },
+          { header: 'Track', samples: ['Tier 1', 'Tier 2'] },
+          { header: 'SkillGroup', samples: ['Voice English', 'Chat Spanish'] },
+        ];
+
+        for (const col of structuralCols) {
+          const mapping = scoreColumnMapping(col.header, 0, col.samples);
+          assert.equal(mapping.mappedField, null, `${col.header} should be unmapped`);
+          assert.equal(
+            isUnrecognizedPlausibleMetricColumn(col.header, mapping.fingerprint),
+            false,
+            `${col.header} must NOT be considered a plausible custom metric (Rule 2)`
+          );
+        }
+      });
+
+      it('Rule 3 (ASK CUSTOM METRIC): unmapped numeric/duration metric columns qualify', () => {
+        // Unmapped count column: Escalations
+        const escMapping = scoreColumnMapping('Escalations', 0, [0, 15, 100, 150, 200]);
+        assert.equal(escMapping.mappedField, null);
+        assert.equal(escMapping.fingerprint, 'count-integer');
+        assert.equal(isIdentifierHeader('Escalations'), false);
+        assert.equal(isUnrecognizedPlausibleMetricColumn('Escalations', escMapping.fingerprint), true);
+
+        // Unmapped percent column: Discount_Percent
+        const qaMapping = scoreColumnMapping('Discount_Percent', 0, ['85%', '92%', '78%']);
+        assert.equal(qaMapping.mappedField, null);
+        assert.equal(isUnrecognizedPlausibleMetricColumn('Discount_Percent', qaMapping.fingerprint), true);
+      });
+    });
+
+    describe('handoffs rate vs count mapping (Bug 3 fix)', () => {
+      it('correctly maps handoff and transfer rate variants to handoffs (percent)', () => {
+        const rateHeaders = [
+          'Transfers',
+          'Transfers %',
+          'Net Handoffs',
+          'Net Handoffs %',
+          'Net Transfers',
+          'Net Transfers %',
+          'Transfer Rate',
+          'Transfer %',
+          'Transfer Pct',
+          'Hand Off %',
+          'Hand Off Pct',
+          'Warm Transfer Rate',
+          'Warm Transfer %',
+        ];
+
+        for (const header of rateHeaders) {
+          assert.equal(
+            normalizeHeaderToField(header, [0.035, 0.041, 0.028]),
+            'handoffs',
+            `Expected "${header}" to map to "handoffs"`
+          );
+        }
+      });
+
+      it('correctly maps transfer and handoff count variants to handoffsCount (number)', () => {
+        const countHeaders = [
+          'Transfer Count',
+          'Transfers Count',
+          'Transfer Flag',
+          'Handoff Count',
+          'Handoffs Count',
+          'Total Handoffs',
+          'Total Transfers',
+        ];
+
+        for (const header of countHeaders) {
+          assert.equal(
+            normalizeHeaderToField(header, [5, 12, 0]),
+            'handoffsCount',
+            `Expected "${header}" to map to "handoffsCount"`
+          );
+        }
+      });
     });
   });
 });

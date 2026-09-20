@@ -15,6 +15,19 @@ export const isUnrecognizedPlausibleFingerprint = (fingerprint: ColumnFingerprin
   fingerprint === 'percent-whole' ||
   fingerprint === 'duration-seconds';
 
+export const isIdentifierHeader = (header: string): boolean => {
+  const trimmed = String(header ?? '').trim();
+  return /(?:^|[_\s-])(id|key)(?:$|[_\s-])|key$|id$/i.test(trimmed);
+};
+
+export const isUnrecognizedPlausibleMetricColumn = (
+  header: string,
+  fingerprint: ColumnFingerprint
+): boolean => {
+  if (isIdentifierHeader(header)) return false;
+  return isUnrecognizedPlausibleFingerprint(fingerprint);
+};
+
 export type ImportFieldPolicy = {
   aliases: string[];
   kind?: ImportFieldKind;
@@ -74,7 +87,7 @@ export const FIELD_ALIASES: Record<string, ImportFieldPolicy> = {
     kind: 'text',
   },
   date: {
-    aliases: ['date', 'work date', 'report date', 'reporting date', 'service date', 'calendar date', 'day', 'transaction date', 'start date', 'startdate', 'survey date'],
+    aliases: ['date', 'work date', 'report date', 'reportdate', 'reporting date', 'service date', 'calendar date', 'day', 'transaction date', 'start date', 'startdate', 'survey date'],
     kind: 'date',
   },
   location: {
@@ -90,7 +103,22 @@ export const FIELD_ALIASES: Record<string, ImportFieldPolicy> = {
     kind: 'number',
   },
   aht: {
-    aliases: ['aht', 'avg handle time', 'average handle time', 'handle time', 'aht seconds', 'aht sec', 'avg handle', 'average handle'],
+    aliases: [
+      'aht',
+      'avg handle time',
+      'average handle time',
+      'handle time',
+      'aht seconds',
+      'aht sec',
+      'avg handle',
+      'average handle',
+      'handle tm seconds',
+      'handle tm sec',
+      'handle seconds',
+      'handle time seconds',
+      'handletmseconds',
+      'handle_tm_seconds',
+    ],
     kind: 'number',
   },
   vxs: {
@@ -183,29 +211,42 @@ export const FIELD_ALIASES: Record<string, ImportFieldPolicy> = {
   handoffs: {
     aliases: [
       'handoffs',
+      'net handoffs',
       'net handoffs %',
       'hand offs %',
       'handoffs %',
       'handoff rate',
       'net handoffs pct',
       'handoff pct',
+      'transfer',
+      'transfers',
       'transfer rate',
       'transfer %',
+      'transfers %',
+      'net transfers',
+      'net transfers %',
+      'transfer pct',
+      'net transfer rate',
+      'net transfer %',
+      'hand off %',
+      'hand off pct',
       'hand off rate',
       'hand-off rate',
+      'warm transfer rate',
+      'warm transfer %',
     ],
     kind: 'percent',
   },
   handoffsCount: {
     aliases: [
       'handoffs count',
-      'net handoffs',
       'transfer flag',
       'transferflag',
       'handoff count',
       'total handoffs',
       'transfer count',
-      'transfers',
+      'transfers count',
+      'total transfers',
     ],
     kind: 'number',
   },
@@ -394,8 +435,10 @@ export const FIELD_ALIASES: Record<string, ImportFieldPolicy> = {
   },
 };
 
-const normalizeHeader = (value: string): string =>
+export const normalizeHeader = (value: string): string =>
   `${value ?? ''}`
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
@@ -423,7 +466,7 @@ const HEADER_TOKEN_HINTS: Record<string, string[]> = {
   resolveTotalContacts3d: ['resolve3d', '3dcontacts', '3dcontact'],
   surveys: ['survey', 'surveys'],
   promoters: ['promoter', 'promoters'],
-  handoffs: ['handoff', 'handoffs'],
+  handoffs: ['handoff', 'handoffs', 'transfer', 'transfers'],
   handoffsCount: ['transferflag', 'handoffcount'],
   hold: ['hold'],
   dpc: ['dpc'],
@@ -587,6 +630,13 @@ export const findPairedCountField = (header: string): PairedCountFieldTag | null
     }
   }
 
+  // If the header itself directly matches an explicit alias in FIELD_ALIASES, prioritize the canonical field
+  for (const [, config] of Object.entries(FIELD_ALIASES)) {
+    if (config.aliases.some((alias) => normalizeHeader(alias) === normalized || compactHeader(alias) === compact)) {
+      return null;
+    }
+  }
+
   // 2. Check suffix patterns (_pass or _cnt)
   const trimmed = header.trim();
   const passMatch = PASS_SUFFIX_PATTERN.exec(trimmed);
@@ -597,7 +647,7 @@ export const findPairedCountField = (header: string): PairedCountFieldTag | null
     const baseCanonical =
       Object.keys(PAIRED_COUNT_FIELDS).find((k) => k.toLowerCase() === base.toLowerCase()) ||
       findCanonicalBaseField(base);
-    const canonicalField = baseCanonical || normalizeHeader(base).replace(/\s+/g, '_') || 'metric';
+    const canonicalField = baseCanonical || compactHeader(base) || 'metric';
     return {
       canonicalField,
       side: 'pass',
@@ -610,7 +660,7 @@ export const findPairedCountField = (header: string): PairedCountFieldTag | null
     const baseCanonical =
       Object.keys(PAIRED_COUNT_FIELDS).find((k) => k.toLowerCase() === base.toLowerCase()) ||
       findCanonicalBaseField(base);
-    const canonicalField = baseCanonical || normalizeHeader(base).replace(/\s+/g, '_') || 'metric';
+    const canonicalField = baseCanonical || compactHeader(base) || 'metric';
     return {
       canonicalField,
       side: 'cnt',

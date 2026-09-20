@@ -9,6 +9,7 @@ import {
   getFieldComponentGroup,
   getResolveWindowField,
   isUnrecognizedPlausibleFingerprint,
+  isUnrecognizedPlausibleMetricColumn,
 } from './importPolicy';
 import { mergeNormalizedRows, detectDuplicateFiles } from './mergeData';
 import { aggregateTransactions } from './aggregateTransactions';
@@ -132,7 +133,8 @@ const parseWorkbookFile = async (file: File, options: ImportOptions = {}): Promi
       warnings: workerResult.warnings || [],
       mappingDiagnostics: (workerResult.sheets || []).flatMap((sheet) =>
         (sheet.headerRow || []).map((header, index) => {
-          const mapping = detectColumnMappingWithConfidence(String(header ?? ''), index, []);
+          const sampleValues = (sheet.rows || []).slice(0, 50).map((row) => row?.[index] as string | number | null | undefined);
+          const mapping = detectColumnMappingWithConfidence(String(header ?? ''), index, sampleValues);
           return {
             fileName: file.name,
             sheetName: sheet.sheetName,
@@ -144,7 +146,8 @@ const parseWorkbookFile = async (file: File, options: ImportOptions = {}): Promi
             componentGroup: getFieldComponentGroup(mapping.mappedField)?.concept,
             componentRole: getFieldComponentGroup(mapping.mappedField)?.role,
             resolveWindow: getResolveWindowField(mapping.mappedField)?.windowLabel,
-            unrecognizedPlausible: !mapping.mappedField && isUnrecognizedPlausibleFingerprint(mapping.fingerprint || 'empty'),
+            unrecognizedPlausible: !mapping.mappedField && isUnrecognizedPlausibleMetricColumn(mapping.header, mapping.fingerprint || 'empty'),
+            fingerprint: mapping.fingerprint,
           };
         })
       ),
@@ -207,7 +210,8 @@ const parseWorkbookFile = async (file: File, options: ImportOptions = {}): Promi
         componentGroup: getFieldComponentGroup(mapping.mappedField)?.concept,
         componentRole: getFieldComponentGroup(mapping.mappedField)?.role,
         resolveWindow: getResolveWindowField(mapping.mappedField)?.windowLabel,
-        unrecognizedPlausible: !mapping.mappedField && isUnrecognizedPlausibleFingerprint(mapping.fingerprint || 'empty'),
+        unrecognizedPlausible: !mapping.mappedField && isUnrecognizedPlausibleMetricColumn(mapping.header, mapping.fingerprint || 'empty'),
+        fingerprint: mapping.fingerprint,
       };
     })
   );
@@ -338,7 +342,7 @@ export const runImportService = async (files: File[], options: ImportOptions = {
         if (fileType === 'csv' || fileType === 'tsv' || fileType === 'txt') {
           const parsed = await parseTextFile(file, fileOptions);
           for (let index = 0; index < parsed.headers.length; index += 1) {
-            const sampleValues = (parsed.sampleRows[index] || []) as (string | number | null | undefined)[];
+            const sampleValues = (parsed.sampleRows || []).map((row) => row?.[index] as string | number | null | undefined);
             const mapping = detectColumnMappingWithConfidence(parsed.headers[index], index, sampleValues);
             result.mappingDiagnostics.push({
               fileName: file.name,
@@ -348,6 +352,11 @@ export const runImportService = async (files: File[], options: ImportOptions = {
               confidence: mapping.confidence,
               score: mapping.score,
               candidates: mapping.candidates,
+              componentGroup: getFieldComponentGroup(mapping.mappedField)?.concept,
+              componentRole: getFieldComponentGroup(mapping.mappedField)?.role,
+              resolveWindow: getResolveWindowField(mapping.mappedField)?.windowLabel,
+              unrecognizedPlausible: !mapping.mappedField && isUnrecognizedPlausibleMetricColumn(mapping.header, mapping.fingerprint || 'empty'),
+              fingerprint: mapping.fingerprint,
             });
           }
           const validated = validateNormalizedRows(parsed.rows, file.name);

@@ -125,6 +125,7 @@ export type MappingDiagnostic = {
   choiceOptions?: string[];
   choiceQuestion?: string;
   unrecognizedPlausible?: boolean;
+  fingerprint?: ColumnFingerprint;
 };
 
 export type SheetGranularity = 'aggregate' | 'transaction' | 'unknown';

@@ -3,6 +3,8 @@ import type { NormalizedRow, SheetTable } from './types';
 
 const normalizeHeader = (value: string): string =>
   `${value ?? ''}`
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
@@ -16,7 +18,9 @@ const CANONICAL_FIELDS: Record<string, string[]> = Object.fromEntries(
 const ALIAS_LOOKUP_MAP = new Map<string, string>();
 for (const [field, aliases] of Object.entries(CANONICAL_FIELDS)) {
   for (const alias of aliases) {
-    ALIAS_LOOKUP_MAP.set(normalizeHeader(alias), field);
+    const norm = normalizeHeader(alias);
+    ALIAS_LOOKUP_MAP.set(norm, field);
+    ALIAS_LOOKUP_MAP.set(norm.replace(/\s+/g, ''), field);
   }
 }
 
