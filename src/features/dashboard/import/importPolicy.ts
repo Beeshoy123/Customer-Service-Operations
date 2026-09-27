@@ -49,8 +49,8 @@ import type {
   ColumnMappingConfidence,
   ColumnMatchType,
 } from './types';
-import { analyzeColumnValues, type ColumnFingerprint } from './columnFingerprinter';
-import { recallMapping } from './mappingMemory';
+import { analyzeColumnValues, type ColumnFingerprint } from './columnFingerprinter.ts';
+import { recallMapping } from './mappingMemory.ts';
 
 export type ImportFieldKind = 'text' | 'number' | 'percent' | 'date';
 

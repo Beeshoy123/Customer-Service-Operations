@@ -1,6 +1,6 @@
 import type { ImportFieldKind } from './importPolicy';
-import { FIELD_ALIASES, findCanonicalField, findPairedCountField } from './importPolicy';
-import { normalizeHeaderToField } from './schemaNormalizer';
+import { FIELD_ALIASES, findCanonicalField, findPairedCountField } from './importPolicy.ts';
+import { normalizeHeaderToField } from './schemaNormalizer.ts';
 import type { NormalizedRow } from './types';
 
 // Calculation convention: add new account-specific aggregation styles as separate
@@ -95,15 +95,34 @@ export const findPassCountPairs = (allKeys: Iterable<string>): PassCntPair[] => 
   return pairs;
 };
 
+// Memoized per field name: getFieldKind is a pure function of the static
+// FIELD_ALIASES config, but for derived/unknown fields (e.g. custommetric3_Cnt)
+// the resolution falls through to the full scoreColumnMapping engine (~ms per
+// call). aggregateTransactions calls this once per group per field, so without
+// the cache a 600-row transaction sheet with a few unrecognized columns paid
+// ~8ms x ~150 groups per unknown field = multi-second freezes (the "Sheet6"
+// 617-row / 4145ms regression). Computing once per unique field name is
+// identical in result and turns that into a one-time ~tens-of-ms cost.
+const fieldKindCache = new Map<string, ImportFieldKind | null>();
+
 const getFieldKind = (field: string): ImportFieldKind | null => {
+  const cached = fieldKindCache.get(field);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  let result: ImportFieldKind | null = null;
   if (FIELD_ALIASES[field]?.kind) {
-    return FIELD_ALIASES[field].kind;
+    result = FIELD_ALIASES[field].kind;
+  } else {
+    const canonical = normalizeHeaderToField(field) || findCanonicalField(field);
+    if (canonical && FIELD_ALIASES[canonical]?.kind) {
+      result = FIELD_ALIASES[canonical].kind;
+    }
   }
-  const canonical = normalizeHeaderToField(field) || findCanonicalField(field);
-  if (canonical && FIELD_ALIASES[canonical]?.kind) {
-    return FIELD_ALIASES[canonical].kind;
-  }
-  return null;
+
+  fieldKindCache.set(field, result);
+  return result;
 };
 
 const getMostFrequentNonEmpty = (rows: NormalizedRow[], field: string): string | null => {

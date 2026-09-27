@@ -501,7 +501,7 @@ describe('workbookLoader', () => {
   });
 
   it(
-    'convertWorkbookToSheetsViaWorker: real worker thread parses 100,000-row workbook without blocking event loop',
+    'convertWorkbookToSheetsViaWorker: real worker thread runs full pipeline (parse, map, validate, merge) without blocking the event loop',
     { timeout: 60000 },
     async () => {
       class RealWorkerBridge {
@@ -543,6 +543,14 @@ describe('workbookLoader', () => {
           });
           this.thread.on('error', (err) => {
             console.error('RealWorkerBridge thread error:', err);
+            // Terminate the thread on error so a failing worker can never keep the
+            // test process alive (the production path in workbookLoader.ts already
+            // terminates via cleanup(); this mirrors it in the test bridge).
+            try {
+              this.thread.terminate();
+            } catch {
+              // ignore — thread may already be dead
+            }
             this.onerror?.({ message: err.message, error: err } as unknown as ErrorEvent);
           });
         }
@@ -581,12 +589,23 @@ describe('workbookLoader', () => {
         }, 10);
 
         const progressUpdates: ImportProgress[] = [];
-        const result = await convertWorkbookToSheetsViaWorker(file, {
-          largeFileSizeThreshold: 1024 * 1024,
-          onProgress: (p) => progressUpdates.push(p),
-        });
-
-        clearInterval(interval);
+        let ticksAtFirstValidating: number | null = null;
+        let result;
+        try {
+          result = await convertWorkbookToSheetsViaWorker(file, {
+            largeFileSizeThreshold: 1024 * 1024,
+            onProgress: (p) => {
+              progressUpdates.push(p);
+              if (p.phase === 'validating' && ticksAtFirstValidating === null) {
+                ticksAtFirstValidating = ticks;
+              }
+            },
+          });
+        } finally {
+          // ALWAYS clear the ticker — if the import rejects, a leaked 10ms interval
+          // keeps the Node event loop alive forever and the whole test run hangs.
+          clearInterval(interval);
+        }
 
         // Prove the main thread stayed responsive: ticks must have advanced repeatedly
         assert.ok(ticks >= 10, 'Expected at least 10 event loop ticks during 100k parse, got ' + ticks);
@@ -601,6 +620,62 @@ describe('workbookLoader', () => {
         assert.equal(result.rows[99999].agentName, 'Agent_100000');
         assert.ok(progressUpdates.length > 0, 'Expected progress updates from real worker');
         assert.ok(progressUpdates.some((p) => p.phase === 'validating'), 'Expected validating phase progress update');
+
+        // Responsiveness must hold THROUGHOUT the pipeline, not only while
+        // XLSX.read() ran. The worker emits 'parsing' progress while mapping
+        // rows and 'validating' progress while validating/merging — all inside
+        // the worker. The main-thread ticker must have kept advancing after
+        // validation began (>= 5 ticks = 50ms of liveness during that window).
+        assert.ok(
+          ticksAtFirstValidating !== null && ticks - ticksAtFirstValidating >= 5,
+          `Event loop should keep ticking during worker validate/merge (ticks=${ticks}, atValidating=${ticksAtFirstValidating})`
+        );
+
+        // ── Phase 2: transaction-granularity workbook — granularity detection +
+        // aggregateTransactions must also run INSIDE the worker (4 transactions
+        // per agent-date collapse to 1 merged row before crossing the boundary).
+        const txnData: unknown[][] = [['Agent Name', 'Date', 'Calls']];
+        for (let i = 1; i <= 3000; i += 1) {
+          for (let t = 0; t < 4; t += 1) {
+            txnData.push([`Agent_${i}`, '2026-01-15', 1]);
+          }
+        }
+        const txnWs = XLSX.utils.aoa_to_sheet(txnData);
+        const txnWb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(txnWb, txnWs, 'TxnSheet');
+        const txnBuffer = XLSX.write(txnWb, { type: 'array', bookType: 'xlsx' });
+        const txnFile = new File([txnBuffer], 'txn_12k.xlsx', {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        });
+
+        let ticks2 = 0;
+        const interval2 = setInterval(() => {
+          ticks2 += 1;
+        }, 10);
+        let ticks2AtFirstParsing: number | null = null;
+        let txnResult;
+        try {
+          txnResult = await convertWorkbookToSheetsViaWorker(txnFile, {
+            onProgress: (p) => {
+              if (p.phase === 'parsing' && ticks2AtFirstParsing === null) {
+                ticks2AtFirstParsing = ticks2;
+              }
+            },
+          });
+        } finally {
+          clearInterval(interval2);
+        }
+
+        assert.ok(ticks2 >= 10, `Event loop stayed responsive during transaction pipeline, ticks=${ticks2}`);
+        assert.ok(
+          ticks2AtFirstParsing !== null && ticks2 - ticks2AtFirstParsing >= 5,
+          'Event loop kept ticking while the worker mapped transaction rows (mapping must not run on the main thread)'
+        );
+        assert.equal(txnResult.sheets.length, 1);
+        assert.equal(txnResult.sheets[0].rowCount, 12000);
+        assert.ok(txnResult.rows, 'Expected merged rows from transaction pipeline');
+        assert.equal(txnResult.rows.length, 3000, '4 transactions per agent-date collapsed to 1 row inside the worker');
+        assert.equal(txnResult.rows[0].calls, 4, 'calls aggregated across the 4 transactions');
       } finally {
         (globalThis as any).Worker = origWorker;
       }

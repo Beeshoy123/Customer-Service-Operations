@@ -1,5 +1,5 @@
 import type { SheetTable, SkippedSheetInfo } from './types';
-import { analyzeColumnValues, type ColumnFingerprint } from './columnFingerprinter';
+import { analyzeColumnValues, type ColumnFingerprint } from './columnFingerprinter.ts';
 
 export type { SkippedSheetInfo };
 

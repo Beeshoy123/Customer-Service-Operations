@@ -1,10 +1,13 @@
-import { parseWorkbookBuffer } from './workbookLoader';
-import { selectSheets } from './sheetSelector';
-import { mapTableToNormalizedRowsAsync } from './schemaNormalizer';
-import { validateNormalizedRows } from './validation';
-import { mergeNormalizedRows } from './mergeData';
-import { aggregateTransactions } from './aggregateTransactions';
-import { detectGranularity } from './granularityDetector';
+// Explicit .ts extension required: Node's native ESM loader (used by real
+// worker_threads in tests) does not resolve extensionless relative imports.
+// Vite handles explicit .ts extensions fine.
+import { parseWorkbookBuffer } from './workbookLoader.ts';
+import { selectSheets } from './sheetSelector.ts';
+import { mapTableToNormalizedRowsAsync } from './schemaNormalizer.ts';
+import { validateNormalizedRows } from './validation.ts';
+import { mergeNormalizedRows } from './mergeData.ts';
+import { aggregateTransactions } from './aggregateTransactions.ts';
+import { detectGranularity } from './granularityDetector.ts';
 import type {
   ImportOptions,
   ImportProgress,

@@ -532,6 +532,8 @@ export const convertWorkbookToSheetsViaWorker = async (
       if (isCancelled || isSettled) {
         return;
       }
+      // cleanup() MUST run before rejecting: it calls worker.terminate(), so a
+      // worker that dies on an uncaught error can never be left orphaned.
       isSettled = true;
       cleanup();
       reject(new Error(event.message || 'Worker error occurred during workbook parsing.'));
@@ -556,7 +558,17 @@ export const convertWorkbookToSheetsViaWorker = async (
     };
 
     console.log('[DEBUG 3h - convertWorkbookToSheetsViaWorker] Calling worker.postMessage with transferable arrayBuffer...');
-    worker.postMessage(parseMessage, [arrayBuffer]);
-    console.log('[DEBUG 3i - convertWorkbookToSheetsViaWorker] worker.postMessage returned. Main thread is free.');
+    try {
+      worker.postMessage(parseMessage, [arrayBuffer]);
+      console.log('[DEBUG 3i - convertWorkbookToSheetsViaWorker] worker.postMessage returned. Main thread is free.');
+    } catch (err) {
+      // If the initial post throws (e.g. transfer of a detached buffer), the worker
+      // would otherwise be orphaned: no onmessage/onerror can ever fire, the promise
+      // never settles, and the worker keeps running. Always terminate + reject.
+      console.error('[DEBUG 3h-CATCH] worker.postMessage threw; terminating worker and rejecting:', err);
+      isSettled = true;
+      cleanup();
+      reject(err instanceof Error ? err : new Error(String(err)));
+    }
   });
 };

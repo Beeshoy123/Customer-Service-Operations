@@ -5,7 +5,7 @@
 // does not contain and must not contain any source-system column-name knowledge.
 // See recommendations.md §"STANDING RULE" and the banner in importPolicy.ts.
 
-import { FIELD_ALIASES, FIELD_COMPONENT_GROUPS, normalizeImportedValue, findCanonicalField, findPairedCountField } from './importPolicy';
+import { FIELD_ALIASES, FIELD_COMPONENT_GROUPS, normalizeImportedValue, findCanonicalField, findPairedCountField } from './importPolicy.ts';
 import type { NormalizedRow, SheetTable } from './types';
 
 const normalizeHeader = (value: string): string =>
