@@ -473,6 +473,50 @@ describe('workbookLoader', () => {
     }
   });
 
+  it('convertWorkbookToSheetsViaWorker: terminates worker and rejects when worker.onerror fires', async () => {
+    let capturedWorker: any = null;
+
+    class MockUncaughtErrorWorker {
+      onmessage: ((event: MessageEvent<WorkerOutMessage>) => void) | null = null;
+      onerror: ((event: any) => void) | null = null;
+      terminated = false;
+
+      constructor() {
+        capturedWorker = this;
+      }
+
+      postMessage(msg: WorkerInMessage) {
+        if (msg.type === 'parse') {
+          setTimeout(() => {
+            this.onerror?.({
+              message: 'Uncaught worker script failure',
+            } as unknown as ErrorEvent);
+          }, 10);
+        }
+      }
+
+      terminate() {
+        this.terminated = true;
+      }
+    }
+
+    const origWorker = (globalThis as any).Worker;
+    (globalThis as any).Worker = MockUncaughtErrorWorker;
+
+    try {
+      const file = new File([new ArrayBuffer(100)], 'test.xlsx');
+      await assert.rejects(
+        convertWorkbookToSheetsViaWorker(file),
+        (err: any) => {
+          return err.message.includes('Uncaught worker script failure');
+        }
+      );
+      assert.equal(capturedWorker.terminated, true);
+    } finally {
+      (globalThis as any).Worker = origWorker;
+    }
+  });
+
   it('convertWorkbookToSheetsViaWorker: falls back to convertWorkbookToSheets when Worker is undefined', async () => {
     const origWorker = (globalThis as any).Worker;
     (globalThis as any).Worker = undefined;
@@ -543,7 +587,13 @@ describe('workbookLoader', () => {
           });
           this.thread.on('error', (err) => {
             console.error('RealWorkerBridge thread error:', err);
+            this.terminate();
             this.onerror?.({ message: err.message, error: err } as unknown as ErrorEvent);
+          });
+          this.thread.on('exit', (code) => {
+            if (code !== 0) {
+              this.terminate();
+            }
           });
         }
 

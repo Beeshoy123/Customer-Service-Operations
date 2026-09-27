@@ -450,7 +450,11 @@ export const convertWorkbookToSheetsViaWorker = async (
         options.signal.removeEventListener('abort', onAbort);
       }
       if (worker) {
-        worker.terminate();
+        try {
+          worker.terminate();
+        } catch {
+          // ignore
+        }
         worker = null;
       }
     };
@@ -529,11 +533,11 @@ export const convertWorkbookToSheetsViaWorker = async (
 
     worker.onerror = (event: ErrorEvent) => {
       console.error('[DEBUG 3g - Main thread worker.onerror fired]:', event.message, event);
+      cleanup();
       if (isCancelled || isSettled) {
         return;
       }
       isSettled = true;
-      cleanup();
       reject(new Error(event.message || 'Worker error occurred during workbook parsing.'));
     };
 

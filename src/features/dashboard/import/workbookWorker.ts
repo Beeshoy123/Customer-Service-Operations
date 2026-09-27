@@ -1,4 +1,4 @@
-import { parseWorkbookBuffer } from './workbookLoader';
+import { parseWorkbookBuffer } from './workbookLoader.ts';
 import { selectSheets } from './sheetSelector';
 import { mapTableToNormalizedRowsAsync } from './schemaNormalizer';
 import { validateNormalizedRows } from './validation';
