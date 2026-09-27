@@ -25,6 +25,7 @@ import {
   getWeekNumber,
   dowFromDateStr,
 } from './features/dashboard/helpers';
+import { computeAutoHiddenVisibleCols } from './features/dashboard/emptyColumns';
 import {
   GeminiLoader,
   FormattedText,
@@ -1660,7 +1661,22 @@ export default function App() {
   const aiResetRef = useRef(null);
   const [accountName, setAccountName] = useState("");
   const [accountNameInput, setAccountNameInput] = useState("");
-  const dashData = useDashboardData(() => { if (aiResetRef.current) aiResetRef.current(); }, accountName);
+  // Visible metric columns live here (owned by App), while rows are applied in
+  // useDashboardData — declared before the hook so the import scan callback can
+  // auto-hide columns that received no data (Recommendation 3).
+  const [visibleCols, setVisibleCols] = useState({
+    vxs: true, resolve2hr: true, phoneAdds: true, handoffs: true, resolve3d: false, aht: false,
+    hold: false, dpc: false, vtt: false, netOcc: false, creditFreq: false, vhi: false, ncw: false, trajectory: true 
+  });
+  const dashData = useDashboardData(() => { if (aiResetRef.current) aiResetRef.current(); }, accountName,
+    // Recommendation 3 — auto-hide empty metric columns after import:
+    // hide any VISIBLE metric column whose backing fields are all absent from
+    // the imported rows. Runs once per import; later manual Settings toggles
+    // always win, and non-metric toggles like `trajectory` are never touched.
+    useCallback((fieldsWithData) => {
+      setVisibleCols(prev => computeAutoHiddenVisibleCols(prev, fieldsWithData));
+    }, [])
+  );
   const resetToLanding = useCallback(() => {
     dashData.resetDashboard();
     setAccountName('');
@@ -1694,10 +1710,6 @@ export default function App() {
   const setOutlierMode = (v) => dispatchUi({ outlierMode: v });
   const setOutlierLevel = (v) => dispatchUi({ outlierLevel: v });
   const setApprenticeViewMode = (v) => dispatchUi({ apprenticeViewMode: v });
-  const [visibleCols, setVisibleCols] = useState({
-    vxs: true, resolve2hr: true, phoneAdds: true, handoffs: true, resolve3d: false, aht: false,
-    hold: false, dpc: false, vtt: false, netOcc: false, creditFreq: false, vhi: false, ncw: false, trajectory: true 
-  });
 
 
   useEffect(() => {

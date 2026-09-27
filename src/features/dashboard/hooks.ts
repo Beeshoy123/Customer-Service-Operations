@@ -43,6 +43,7 @@ import {
 import type { SheetTable, SheetGranularity, ImportResult, MappingDiagnostic, SkippedSheetInfo } from './import/types';
 import { detectFileType } from './import/fileTypeDetector';
 import { loadAccountProfile, saveAccountProfile, loadRateMergeStyle, saveRateMergeStyle } from '../accountSetup/account-profile-storage';
+import { collectFieldsWithData } from './emptyColumns';
 
 // ============================================================================
 // FILE STRUCTURE:
@@ -203,7 +204,7 @@ export const DashboardContext = createContext(null);
 export const useDashboard = () => useContext(DashboardContext);
 
 // ─── Dashboard Data Management Hook ──────────────────────────────────────
-export const useDashboardData = (onDataReset = null, accountName = '') => {
+export const useDashboardData = (onDataReset = null, accountName = '', onImportColumnsScan = null) => {
   const persistedState = useMemo(() => readPersistedDashboardState(), []);
 
   const accountProfile = useMemo(() => {
@@ -233,6 +234,8 @@ export const useDashboardData = (onDataReset = null, accountName = '') => {
   const [pendingAutomaticFiles, setPendingAutomaticFiles] = useState<File[]>([]);
   const [rateMergeStyle, setRateMergeStyleState] = useState(() => loadRateMergeStyle(accountName));
   const importAbortControllerRef = useRef(null);
+  const onImportColumnsScanRef = useRef(onImportColumnsScan);
+  onImportColumnsScanRef.current = onImportColumnsScan; // keep ref in sync (same pattern as aiResetRef in App.tsx)
 
   const openImportPreview = useCallback((config) => {
     setImportPreview({
@@ -607,6 +610,12 @@ export const useDashboardData = (onDataReset = null, accountName = '') => {
         vhi: toNumberOrNull(row.vhi),
       };
     }
+
+    // Recommendation 3 — auto-hide empty metric columns: scan the applied rows
+    // once and let the visible-columns owner (App.tsx) hide any metric column
+    // that received zero real values. See recommendations.md §"Recommendation 3".
+    const fieldsWithData = collectFieldsWithData(rowsToApply);
+    onImportColumnsScanRef.current?.(fieldsWithData);
 
     setUploadStatus({ type: 'info', message: 'Finalizing dashboard…', progress: 100 });
     await new Promise((resolve) => setTimeout(resolve, 0)); // let UI paint

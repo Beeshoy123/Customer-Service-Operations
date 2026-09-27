@@ -1,6 +1,6 @@
-﻿# Customer Service Operations Dashboard — Import Recommendations & Plan
+# Customer Service Operations Dashboard — Import Recommendations & Plan
 
-> ✅ **ALL ITEMS COMPLETE** — Last updated 2026-09-20. Every recommendation, bug fix, and standing rule in this document has been implemented and verified.
+> ✅ **ALL ITEMS COMPLETE** — Last updated 2026-09-27. Every recommendation, bug fix, and standing rule in this document has been implemented and verified.
 
 ## Objective
 
@@ -29,6 +29,7 @@ Upgrade the dashboard from a single-file CSV/text importer to a full mixed-forma
 | 🔴 High | Bug 3: HAND-OFFS column always shows 0.00 in the dashboard | Low | ✅ Completed |
 | 🔴 High | Bug 4: 2HR column always shows 0.00 in the dashboard | Low | ✅ Completed |
 | ⚠️ Rule | Standing Rule: Mapping fixes always go in `importPolicy.ts` only | Low | ✅ Implemented in all files |
+| 🟡 Medium | Recommendation 3: Auto-hide empty metric columns after import | Low | ✅ Completed |
 
 ---
 
@@ -614,7 +615,7 @@ The landing has `translateY(-2px)` hover lift on the dropzone, stagger-delay lis
 
 ## Recommendation 3 — Auto-Hide Empty Metric Columns After Import
 
-> Status: **Pending**
+> Status: **✅ Completed (2026-09-27)**
 > Priority: Medium
 > Effort: Low
 
@@ -661,3 +662,17 @@ The 4 core metrics (`vxs` / C-SAT, `resolve2hr` / 2HR, `resolve3d` / 3DR, `hando
 ### Expected result
 
 When the user imports a file with no sales data, **PHONE LINES**, **VHI**, **VTT**, and any other empty column disappear automatically. The table is compact and only shows columns that actually have values. The user can still re-enable any column via the Settings toggle at any time.
+
+### Implementation notes (as built, 2026-09-27)
+
+The plan assumed `visibleCols` lives in `hooks.ts`; it actually lives in `App.tsx` state (keys = `col.stateKey`), so the fix was adapted:
+
+- **`src/features/dashboard/emptyColumns.ts` (new)** — pure, React-free helpers:
+  - `METRIC_COLUMN_SOURCES`: maps each toggleable column's `stateKey` to the normalized-row fields that feed it, following the real data path in `applyBatchImport` + `aggregateRecords` (`handoffs` ← `handoffsCount` OR `handoffs`; `vtt` ← `viewTogether` / `vttSent` / `vttTransacted` / `vtt`). Derived metrics that never appear on rows (`ncw`, `bonus`, `calls`) are deliberately absent so those columns are never auto-hidden.
+  - `collectFieldsWithData(rows)`: set of row fields carrying at least one real (non-null / non-undefined / non-empty) value. Normalized rows omit absent fields entirely, so presence = data.
+  - `computeAutoHiddenVisibleCols(visibleCols, fieldsWithData)`: hides only currently-VISIBLE metric columns whose source fields are all absent; never re-enables hidden ones, leaves non-metric toggles (`trajectory`) and derived metrics untouched, returns the same reference when nothing changes, and never mutates the input.
+- **`hooks.ts` — `applyBatchImport`**: after the row loop (before `setHistoricalData`), calls `collectFieldsWithData(rowsToApply)` and notifies a new optional `onImportColumnsScan` callback (kept in a ref, mirroring the existing `aiResetRef` pattern). No import-pipeline files touched — consistent with the Standing Rule.
+- **`App.tsx`**: `visibleCols` state moved above the `useDashboardData(...)` call; App passes the scan callback which runs `setVisibleCols(prev => computeAutoHiddenVisibleCols(prev, fieldsWithData))`. Because the merge only flips `true → false` at import time, any Settings re-enable afterward is respected.
+- **`src/features/dashboard/emptyColumns.test.ts` (new)** — 10 unit tests: presence scan, null/undefined/'' exclusion, all-variant coverage for `handoffs`/`vtt`, core metrics not protected, non-metric toggles untouched, no-mutation, same-reference short-circuit, and safe handling of a missing scan set.
+
+> Note: `str_replace` could not match anchors in the large `src/App.tsx`, so edits there were applied with a verified exact-match, count-checked Node script (abort-on-mismatch). Final state was re-read and confirmed; full suite (170 tests) and `tsc -b --noEmit` pass.
