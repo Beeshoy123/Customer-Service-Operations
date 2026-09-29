@@ -257,7 +257,10 @@ const readPersistedDashboardState = () => {
 };
 
 // ─── Dashboard Context & Hook ──────────────────────────────────────
-export const DashboardContext = createContext(null);
+// Typed as `any` on purpose: consumers are spread across many extracted
+// component files that read the bundle loosely (no prop drilling). This keeps
+// those files out of @ts-nocheck land without inventing a full prop contract.
+export const DashboardContext = createContext<any>(null);
 export const useDashboard = () => useContext(DashboardContext);
 
 // ─── Dashboard Data Management Hook ──────────────────────────────────────

@@ -528,7 +528,59 @@ Common real-world column names that get missed:
 
 ---
 
-## Dashboard Visual Modernisation — Design Recommendations
+## App.tsx Restructure — Phase 1 (leaves + styles)
+
+> Status: **✅ Completed (2026-09-29)** — Phases 2–6 pending user approval
+> Approach: **move-only extraction** — no behavior changes; guardrails `npx tsc -b`, `npm test` (181), preview status after each batch.
+
+Extracted 5 units (169 lines) out of `App.tsx` (1,948 → 1,779) into checked (non-`@ts-nocheck`) files:
+
+- `src/app/errorBoundary.tsx` — ErrorBoundary (typed props/state; was untyped class)
+- `src/app/uploadStatus.tsx` — UploadStatus toast (+ exported `UploadStatusPayload` type)
+- `src/app/chartActionPlanModal.tsx` — ChartActionPlanModal. **Latent bug fixed during move:** it referenced bare `uiHandlers` (an `App()`-local `const`) from module scope — opening a chart action plan would have thrown `ReferenceError`. Now destructured from `useDashboard()` like every other component; tsc caught it because the file is checked.
+- `src/components/dropZone.tsx` — DropZone (renders ImportLanding)
+- `src/app/dashboardStyles.ts` — `DASHBOARD_STYLES` template literal (verified: zero `${}` interpolations, so byte-identical move)
+
+Supporting change: `DashboardContext` is now `createContext<any>(null)` (was `createContext(null)`) so extracted files can consume `useDashboard()` without per-file `@ts-nocheck` — the pattern that will make Phases 2–6 type-safe too.
+
+Extraction done by a count-checked Node script (anchors verified unique pre-cut, 16 post-conditions checked before write). `App.tsx` file-structure banner updated. Verified: `npx tsc -b` exit 0, 181/181 tests, preview HTTP 200 with clean HMR.
+
+Remaining phases: 2) `DASHBOARD_STYLES` → real CSS, 3) 8 floor tabs (~700 lines), 4) modal cluster (~600), 5) chrome (TopNavbar/MainStatsRow/FloorHeader), 6) uiReducer → pure module + tests.
+
+---
+
+## App.tsx Restructure — Phase 3 (8 floor tabs)
+
+> Status: **✅ Completed (2026-09-29)** — Phases 2, 4, 5, 6 pending
+> Approach: **move-only extraction** — components read all data via `useDashboard()`, so no props changed; guardrails `npx tsc -b`, `npm test` (181), preview status, plus Vite transform checks.
+
+Extracted the 8 floor tab components out of `App.tsx` (**1,778 → 1,114 lines, −664**) into new checked files under `src/features/dashboard/views/tabs/`:
+
+| File | Lines (final) |
+|---|---|
+| `FloorRosterTab.tsx` | 151 |
+| `FloorApprenticeTab.tsx` | 166 |
+| `FloorDowTab.tsx` | 86 |
+| `FloorOutliersTab.tsx` | 81 |
+| `FloorBurnoutTab.tsx` | 80 |
+| `FloorTrendsTab.tsx` | 63 |
+| `FloorCorrelationTab.tsx` | 38 |
+| `FloorAnalysisTab.tsx` | 34 |
+| **Total** | **699** |
+
+Extraction done by a count-checked Node script: all 10 region markers verified unique pre-cut, each tab had exactly 1 definition and 1 usage, a scope audit confirmed each component only touches the 7 context keys (`dashData`, `metrics`, `aiTools`, `uiState`, `uiHandlers`, `accountName`, `resetToLanding`), imports were auto-generated from the App.tsx import set, and all post-conditions passed before the file was written. `App.tsx` now imports all 8 tabs (lines 53–60) and renders them in the `mainTab` switch (lines 1096–1103).
+
+**Type fixes applied to the extracted files — annotation-only, zero behavior change** (this is the payoff of the phase: these files are now under `tsc` supervision, which `@ts-nocheck` App.tsx is not):
+
+- 37 × TS7006 — implicit-`any` callback params annotated (`(a: any) =>`, `filter((q: any) => …)` etc.). 16 of these were initially written as paren-less arrows (`a: any =>`, invalid syntax) and repaired to parenthesized form `(a: any) =>`.
+- 3 × TS7053 — `METRIC_CONFIG[m.key]` index sites wrapped as `(METRIC_CONFIG as Record<string, any>)[…]` (FloorApprenticeTab ×1, FloorTrendsTab ×2).
+- 2 × TS18047 — `dataA.calls`/`dataB.calls` possibly null in FloorApprenticeTab's auto-report `useEffect`, now `(dataA.calls ?? 0) > 0` (identical semantics: `null > 0` was already false).
+- 1 × TS2322 — `searchedOams[0]` (`unknown[]` from `new Set(any)`) cast to `string` when assigned to `activeOamName: string | null` in FloorRosterTab.
+- Earlier specials: 4 wrong `react` import paths (`../../../../react` → `react`), unused `metrics` destructure removed (FloorApprenticeTab), explicit `let` annotations for `displayVal` (FloorBurnoutTab) and `activeOamName` (FloorRosterTab).
+
+Verified: `npx tsc -b` exit 0, 181/181 tests, preview HTTP 200, and all 9 modules (`App.tsx` + 8 tabs) transform with HTTP 200 through the Vite dev server — this last check matters because App.tsx is `@ts-nocheck`, so only Vite actually resolving its imports proves the wiring.
+
+Remaining phases: 2) `DASHBOARD_STYLES` → real CSS, 4) modal cluster (~600), 5) chrome (TopNavbar/MainStatsRow/FloorHeader), 6) uiReducer → pure module + tests.
 
 > Comparison basis: `ImportLanding.tsx` / `ImportLanding.css` (the loading page) vs `App.tsx` / `App.css` (the main dashboard).
 > No code changes have been made yet. These are ideas only, ordered by impact vs effort.
