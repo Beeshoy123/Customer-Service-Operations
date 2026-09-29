@@ -26,6 +26,7 @@ export const useDashboardMetrics = ({
   selectedDate,
   selectedWeek,
   selectedDow,
+  selectedMonth,
   getAgentDataForTimeframe,
   searchQuery,
   sortConfig,
@@ -160,6 +161,7 @@ export const useDashboardMetrics = ({
     filteredAgents.forEach((a) => {
       const hist = historicalData[a.ccms] || {};
       Object.keys(hist).forEach((dateStr) => {
+        if (selectedMonth !== 'all' && !dateStr.startsWith(selectedMonth)) return;
         const d = new Date(dateStr + 'T00:00:00');
         const dayIdx = d.getDay();
         if (!isNaN(dayIdx)) {
@@ -194,7 +196,7 @@ export const useDashboardMetrics = ({
     });
 
     return { summary: result, worstIdx };
-  }, [filteredAgents, historicalData, hasUploadedData]);
+  }, [filteredAgents, historicalData, hasUploadedData, selectedMonth]);
 
   const orgBurnoutList = useMemo(() => {
     if (!hasUploadedData) return [];
@@ -235,12 +237,11 @@ export const useDashboardMetrics = ({
 
   const { allActiveDates, runChartData } = useMemo(() => {
     if (!hasUploadedData) return { allActiveDates: [], runChartData: [] };
-    const currentMonthPrefix = selectedDate.substring(0, 7);
-
     const datesSet = new Set();
     Object.values(historicalData).forEach((agentDates) => {
       Object.keys(agentDates).forEach((d) => {
-        if (d.startsWith(currentMonthPrefix)) datesSet.add(d);
+        if (selectedMonth !== 'all' && !d.startsWith(selectedMonth)) return;
+        datesSet.add(d);
       });
     });
     const dates = Array.from(datesSet).sort();
@@ -327,7 +328,7 @@ export const useDashboardMetrics = ({
 
     const validDates = finalDates.filter((d) => chartData.some((c) => c.series[d] !== undefined));
     return { allActiveDates: validDates, runChartData: chartData };
-  }, [supervisorStats, filteredAgents, parsedQueries, historicalData, selectedDate, hasUploadedData, runChartMetric, oamName, isCumulative, heatmapViewType]);
+  }, [supervisorStats, filteredAgents, parsedQueries, historicalData, selectedMonth, hasUploadedData, runChartMetric, oamName, isCumulative, heatmapViewType]);
 
   const sortedSupervisors = useMemo(() => {
     let result = [...supervisorStats];

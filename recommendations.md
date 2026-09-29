@@ -676,3 +676,63 @@ The plan assumed `visibleCols` lives in `hooks.ts`; it actually lives in `App.ts
 - **`src/features/dashboard/emptyColumns.test.ts` (new)** — 10 unit tests: presence scan, null/undefined/'' exclusion, all-variant coverage for `handoffs`/`vtt`, core metrics not protected, non-metric toggles untouched, no-mutation, same-reference short-circuit, and safe handling of a missing scan set.
 
 > Note: `str_replace` could not match anchors in the large `src/App.tsx`, so edits there were applied with a verified exact-match, count-checked Node script (abort-on-mismatch). Final state was re-read and confirmed; full suite (170 tests) and `tsc -b --noEmit` pass.
+
+## Recommendation 4 — Ask Wizard Questions Once Per Column, Not Once Per File
+
+> Status: **✅ Completed (2026-09-29)**
+> Priority: High
+> Effort: Low
+
+### What the user saw
+
+A multi-file import where three files share the same columns (e.g. **Access Call ID**, **Calls Answered**) made the mapping wizard ask the identical question once per file — the user answered "Access Call ID" three times with the same answer.
+
+### Root cause
+
+`handleAutomaticImport` built `reviewItems` from `result.mappingDiagnostics`, which carries one diagnostic per file+sheet. The dedupe guards only checked `header + fileName + sheetName`, so a header appearing in 3 files stayed 3 separate review items. Everything downstream was already header-global: the wizard stores answers by `item.header`, and `mapTableToNormalizedRows` applies `mappingOverrides[headers[i]]` by raw header across every file — so the extra questions were pure noise.
+
+### The fix (orchestration only — Standing Rule respected, no alias/mapping logic touched)
+
+- **`src/features/dashboard/hooks.ts`** — new top-level helper `consolidateHeaderDuplicates(items)`: merges diagnostics that share a normalized header (trim + lowercase), keeping the highest-`score` item as the question's face and attaching `duplicateFileNames` / `duplicateSheetNames` for display. Single-occurrence headers pass through untouched (same reference) and the input is never mutated.
+- `handleAutomaticImport` now consolidates the diagnostics **once, before** the special review groups run, so `resolveWindowReviewItems`' "more than 2 windows" gate and the customer-experience `choiceGroup` logic see one entry per column — the same behavior a single-file import has. (This also prevents a regression where three identical files would previously trip the window gate and ask a question that a single file would not.) Per-group push guards now compare headers only.
+- **`src/features/dashboard/import/types.ts`** — `MappingDiagnostic` gains optional `duplicateFileNames?` / `duplicateSheetNames?: string[]`.
+- **`src/features/dashboard/upload/ImportLanding.tsx`** — when consolidated questions are present, one explanatory line is shown: answers apply to every uploaded file. Rendering and answer storage still key on `header`, so no other UI changes were needed.
+
+### Verification
+
+- `timeout 180 npm test` — 170/170 pass, no hang.
+- `npx tsc -b` — clean.
+- `npm run build` — clean (pre-existing chunk-size warning only).
+
+## Recommendation 5 — Month Selector: Isolate a Single Month in Every Timeframe View
+
+> Status: **✅ Completed (2026-09-29)**
+> Priority: High
+> Effort: Medium
+
+### What the user saw
+
+Loading a full quarter (April, May, June) blended all months into one view — the "Monthly" timeframe meant "everything loaded, summed together" with no way to isolate one month.
+
+### Root cause (as traced before implementation)
+
+- `historicalData` is keyed `[agentId][date]` with dates always normalized to `YYYY-MM-DD`, so it was already month-addressable by date prefix.
+- No month selector existed; `activeTimeframe === 'monthly'` rendered a hardcoded `'MTD'` label (App.tsx spotter chip).
+- Every aggregate path iterated ALL dates: `agentDataCache` monthly/weekly/dow (weekly even mixed "Week 1" across April+May+June because it filtered by day-of-month only), and metrics.ts DoW analysis. The only month filter in the codebase was the run chart's `selectedDate.substring(0,7)` prefix — proof the cheap filtering approach was viable.
+
+### The fix (filtering of already-loaded data only — no import reprocessing)
+
+- **`src/features/dashboard/helpers.ts`** — new pure exports: `ALL_MONTHS` (`'all'`), `matchesSelectedMonth`, `collectLoadedMonths` (distinct `YYYY-MM` prefixes sorted latest-first), `monthLabel` (e.g. `April 2026`).
+- **`src/features/dashboard/hooks.ts`** — new `selectedMonth` state (persisted, with a `selectedMonthChosen` flag: before any explicit pick the dashboard defaults to the LATEST loaded month; "All months" is an explicit sticky choice; the selection self-heals to the latest month if its data disappears). `loadedMonths` memo updates automatically as more files are imported. `agentDataCache` now scopes monthly, weekly, AND dow paths through one `monthScopedDates` prefix filter; daily stays an exact-date lookup. `resetDashboard` clears the selection.
+- **`src/components/menus.tsx`** — month dropdown shown when Monthly is the active timeframe (sibling of the Week/date/DoW selectors): every distinct loaded month, latest first, plus "All months (loaded)".
+- **`src/features/dashboard/metrics.ts`** — DoW analysis and the run chart filter by `selectedMonth`; the run chart now takes its month from `selectedMonth` instead of deriving it from `selectedDate`.
+- **`src/App.tsx`** — TimeframeMenu receives the new props; the spotter chip label and the MTD card title show the selected month (or "All Months"). Edited via the count-checked Node script (abort-on-mismatch); one escaping mistake was caught because the script counted matches before writing and the file was re-read and corrected.
+
+### Verification
+
+- `npx tsc -b` — clean.
+- `timeout 180 npm test` — 170/170 pass, no hang.
+
+### Post-implementation audit (2026-09-29)
+
+Full backend audit after the user's test run. Preview healthy (HTTP 200, HMR-only logs, no server errors); import pipeline untouched this change and green. No render loops, no dangling references in `@ts-nocheck` files, helpers smoke-tested empirically (all 12 `dowFromDateStr` months verified against `Date.getDay`). Two structural risks recorded: (1) the dashboard-state persistence effect re-serialized the entire `historicalData` on every `selectedMonth` change — **FIXED same day**: persistence is now split into a heavy key (`customer-service-dashboard-state-v1`, rewritten only when data changes) and a tiny view key (`customer-service-dashboard-view-v1`, ~200 bytes, rewritten on every month/timeframe/date switch). The reader merges both with a legacy fallback for old single-key snapshots, and `resetDashboard` clears both. Month/timeframe switches now do zero multi-MB stringify work. (2) `hooks.ts` / `metrics.ts` / `helpers.ts` / `menus.tsx` are all `@ts-nocheck`, so `tsc -b` green does not validate the most-touched files — closed the immediate gap with 11 new `monthSelection.test.ts` tests (181/181 total) plus a `Set<string>` inference fix in `collectLoadedMonths`.

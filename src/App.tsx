@@ -297,6 +297,8 @@ const TopNavbar = React.memo(() => {
                     selectedWeek={dashData.selectedWeek} setSelectedWeek={dashData.setSelectedWeek}
                     selectedDate={dashData.selectedDate} setSelectedDate={dashData.setSelectedDate}
                     selectedDow={dashData.selectedDow} setSelectedDow={dashData.setSelectedDow}
+                    selectedMonth={dashData.selectedMonth} setSelectedMonth={dashData.setSelectedMonth}
+                    loadedMonths={dashData.loadedMonths}
                     closeMenu={() => uiHandlers.setShowTimeframeMenu(false)} 
                   />
                 </div>
@@ -340,7 +342,7 @@ const TopNavbar = React.memo(() => {
 const MainStatsRow = React.memo(() => {
   const { dashData, metrics, uiState } = useDashboard();
   const spotterPrefix = dashData.activeTimeframe === 'monthly' ? 'Monthly Spotter' : dashData.activeTimeframe === 'weekly' ? 'Weekly Spotter' : dashData.activeTimeframe === 'dow' ? 'Day of Week' : 'Daily Spotter';
-  const spotterDate = dashData.activeTimeframe === 'monthly' ? 'MTD' : dashData.activeTimeframe === 'weekly' ? dashData.selectedWeek : dashData.activeTimeframe === 'dow' ? dashData.selectedDow : dashData.selectedDate;
+  const spotterDate = dashData.activeTimeframe === 'monthly' ? dashData.monthLabel(dashData.selectedMonth) : dashData.activeTimeframe === 'weekly' ? dashData.selectedWeek : dashData.activeTimeframe === 'dow' ? dashData.selectedDow : dashData.selectedDate;
 
 
   return (
@@ -348,7 +350,7 @@ const MainStatsRow = React.memo(() => {
       <div className="metric-card card-mtd flex flex-col p-6">
         <div className="flex justify-between items-start mb-6">
           <div>
-            <h2 className="text-xl text-white m-0 font-bold">Month to Date</h2>
+            <h2 className="text-xl text-white m-0 font-bold">{dashData.activeTimeframe === 'monthly' ? (dashData.selectedMonth === 'all' ? 'All Months' : dashData.monthLabel(dashData.selectedMonth)) : 'Month to Date'}</h2>
             <div className="flex gap-3 mt-2">
               <span className="text-xs text-slate-400 bg-slate-800 py-1 px-2 rounded">Calls Handled: <strong className="text-white">{metrics.mtdLeaderData.calls ? metrics.mtdLeaderData.calls.toLocaleString() : '-'}</strong></span>
               <span className="text-xs text-slate-400 bg-slate-800 py-1 px-2 rounded">Res Contacts: <strong className="text-white">{metrics.mtdLeaderData.resolveTotalContacts ? metrics.mtdLeaderData.resolveTotalContacts.toLocaleString() : '-'}</strong></span>

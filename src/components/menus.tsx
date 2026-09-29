@@ -7,6 +7,7 @@
 
 import React from 'react';
 import { COL_DEFINITIONS } from '../features/dashboard/config';
+import { monthLabel } from '../features/dashboard/helpers';
 
 // ─── Timeframe Selection Menu ──────────────────────────────────────
 export const TimeframeMenu = ({
@@ -18,6 +19,9 @@ export const TimeframeMenu = ({
   setSelectedDate,
   selectedDow,
   setSelectedDow,
+  selectedMonth,
+  setSelectedMonth,
+  loadedMonths = [],
   closeMenu,
 }) => (
   <>
@@ -25,7 +29,7 @@ export const TimeframeMenu = ({
     <div className="flex gap-2 mb-4 flex-wrap">
       <button
         className={`flex-1 min-w-[70px] p-2 text-xs rounded-lg cursor-pointer transition-all ${activeTimeframe === 'monthly' ? 'bg-slate-700 shadow-sm font-bold text-white border border-slate-600' : 'bg-slate-900/60 font-semibold text-slate-300 border border-slate-700 hover:bg-slate-800 hover:text-white'}`}
-        onClick={() => { setActiveTimeframe('monthly'); closeMenu(); }}
+        onClick={() => { setActiveTimeframe('monthly'); }}
       >Monthly</button>
       <button
         className={`flex-1 min-w-[70px] p-2 text-xs rounded-lg cursor-pointer transition-all ${activeTimeframe === 'weekly' ? 'bg-slate-700 shadow-sm font-bold text-white border border-slate-600' : 'bg-slate-900/60 font-semibold text-slate-300 border border-slate-700 hover:bg-slate-800 hover:text-white'}`}
@@ -40,6 +44,25 @@ export const TimeframeMenu = ({
         onClick={() => { setActiveTimeframe('dow'); }}
       >Day of Week</button>
     </div>
+
+    {activeTimeframe === 'monthly' && (
+      <>
+        <select
+          value={selectedMonth || 'all'}
+          onChange={(e) => { setSelectedMonth(e.target.value); closeMenu(); }}
+          className="w-full p-2.5 text-sm rounded-lg border border-slate-700 bg-slate-900 text-slate-100 outline-none focus:border-blue-500 focus:bg-slate-800 transition-all shadow-sm cursor-pointer"
+          aria-label="Select month"
+        >
+          {loadedMonths.map((monthKey) => (
+            <option key={monthKey} value={monthKey}>{monthLabel(monthKey)}</option>
+          ))}
+          <option value="all">All months (loaded)</option>
+        </select>
+        {loadedMonths.length === 0 && (
+          <p className="text-xs text-slate-400 mt-2 mb-2">Import data to see available months.</p>
+        )}
+      </>
+    )}
 
     {activeTimeframe === 'weekly' && (
       <select

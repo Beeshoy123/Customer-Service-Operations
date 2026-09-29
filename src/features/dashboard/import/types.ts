@@ -126,6 +126,10 @@ export type MappingDiagnostic = {
   choiceQuestion?: string;
   unrecognizedPlausible?: boolean;
   fingerprint?: ColumnFingerprint;
+  // Present only when the same header appeared in multiple files/sheets during
+  // a multi-file import — the consolidated question lists affected sources.
+  duplicateFileNames?: string[];
+  duplicateSheetNames?: string[];
 };
 
 export type SheetGranularity = 'aggregate' | 'transaction' | 'unknown';

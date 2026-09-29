@@ -22,9 +22,12 @@ import {
   agentMatchesSearch,
   aggregateRecords,
   aggregateTeamMetrics,
+  ALL_MONTHS,
   calculateTrend,
   calculateWeightedVSF,
+  collectLoadedMonths,
   dowFromDateStr,
+  monthLabel,
   normalizeDate,
 } from './helpers';
 import {
@@ -56,6 +59,11 @@ import { collectFieldsWithData } from './emptyColumns';
 
 // ─── Local Storage Persistence Helpers ──────────────────────────────────────
 const DASHBOARD_STORAGE_KEY = 'customer-service-dashboard-state-v1';
+// Split in two so selection changes (month/timeframe switches) never
+// re-stringify the multi-MB history payload — audit finding #1 (month-switch
+// localStorage jank). DASHBOARD_STORAGE_KEY holds the heavy data; the tiny
+// view key below holds only the timeframe/date/month selections.
+const DASHBOARD_VIEW_STORAGE_KEY = 'customer-service-dashboard-view-v1';
 
 const CONTEXT_ONLY_HEADER_PATTERN = /(?:^|[_\s-])(location|department|dept|skill\s*group|skillgroup|track|tracking|intent|intent\s*description|description|category|categorical|queue|team|region|site|supervisor|manager|recovery|hour|geographic|scorecard|id|key)(?:$|[_\s-])|key$|id$/i;
 
@@ -80,6 +88,39 @@ const customerExperienceReviewItems = (diagnostics, accountProfile) => {
 const customMetricReviewItems = (diagnostics, accountProfile) => {
   const ignored = new Set(accountProfile?.ignoredCustomMetricColumns || []);
   return diagnostics.filter((item) => item.unrecognizedPlausible && !ignored.has(String(item.header).trim().toLowerCase()));
+};
+
+// Wizard questions are answered once per column header (answers are stored by
+// header and mappingOverrides are applied header-globally across every
+// file/sheet during import), so the same header appearing in multiple files
+// must produce ONE question, not one per file. Merge diagnostics that share a
+// header, keeping the highest-score item as the face of the question and
+// listing the affected files for display.
+const consolidateHeaderDuplicates = (items) => {
+  const byHeader = new Map();
+  const normalized = (header) => String(header || '').trim().toLowerCase();
+  for (const item of items) {
+    const headerKey = normalized(item.header);
+    if (!headerKey) continue;
+    const existing = byHeader.get(headerKey);
+    if (!existing) {
+      byHeader.set(headerKey, { item, fileNames: [item.fileName], sheetNames: [item.sheetName] });
+      continue;
+    }
+    if (!existing.fileNames.includes(item.fileName)) existing.fileNames.push(item.fileName);
+    if (!existing.sheetNames.includes(item.sheetName)) existing.sheetNames.push(item.sheetName);
+    if ((item.score ?? 0) > (existing.item.score ?? 0)) existing.item = item;
+  }
+  return Array.from(byHeader.values()).map((entry) => {
+    if (entry.fileNames.length <= 1 && entry.sheetNames.length <= 1) return entry.item;
+    return {
+      ...entry.item,
+      fileName: entry.fileNames[0],
+      sheetName: entry.sheetNames[0],
+      duplicateFileNames: entry.fileNames,
+      duplicateSheetNames: entry.sheetNames,
+    };
+  });
 };
 
 const customMetricKeyForHeader = (header) =>
@@ -192,6 +233,22 @@ const readPersistedDashboardState = () => {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object') return null;
+
+    // View selections live under a separate, tiny key. Legacy snapshots kept
+    // them inside the main key — those still work as a fallback, and fresh
+    // view-key values always win when present.
+    try {
+      const rawView = window.localStorage.getItem(DASHBOARD_VIEW_STORAGE_KEY);
+      if (rawView) {
+        const parsedView = JSON.parse(rawView);
+        if (parsedView && typeof parsedView === 'object') {
+          return { ...parsed, ...parsedView };
+        }
+      }
+    } catch (viewError) {
+      console.warn('Failed to load persisted dashboard view state:', viewError);
+    }
+
     return parsed;
   } catch (error) {
     console.warn('Failed to load persisted dashboard state:', error);
@@ -220,6 +277,14 @@ export const useDashboardData = (onDataReset = null, accountName = '', onImportC
   const [selectedWeek, setSelectedWeek] = useState(() => persistedState?.selectedWeek || 'Week 1');
   const [selectedDate, setSelectedDate] = useState(() => persistedState?.selectedDate || DEFAULT_DATE);
   const [selectedDow, setSelectedDow] = useState(() => persistedState?.selectedDow || 'Monday');
+  const [selectedMonth, setSelectedMonthRaw] = useState(() => persistedState?.selectedMonth || ALL_MONTHS);
+  const [selectedMonthChosen, setSelectedMonthChosen] = useState(() => Boolean(persistedState?.selectedMonthChosen));
+  // User-driven month picks (from the Timeframe menu) are remembered; before
+  // any explicit choice the dashboard defaults to the latest loaded month.
+  const setSelectedMonth = useCallback((value) => {
+    setSelectedMonthChosen(true);
+    setSelectedMonthRaw(value);
+  }, []);
 
   const [agents, setAgents] = useState(() => persistedState?.agents || []);
   const [supervisors, setSupervisors] = useState(() => persistedState?.supervisors || []);
@@ -236,6 +301,19 @@ export const useDashboardData = (onDataReset = null, accountName = '', onImportC
   const importAbortControllerRef = useRef(null);
   const onImportColumnsScanRef = useRef(onImportColumnsScan);
   onImportColumnsScanRef.current = onImportColumnsScan; // keep ref in sync (same pattern as aiResetRef in App.tsx)
+
+  const loadedMonths = useMemo(() => collectLoadedMonths(historicalData), [historicalData]);
+
+  // Keep the selection valid as data changes: default to the latest loaded
+  // month until the user picks one explicitly, and fall back to the latest
+  // month if the selected month's data disappears (reset / new import).
+  useEffect(() => {
+    if (loadedMonths.length === 0) return;
+    setSelectedMonthRaw((current) => {
+      if (selectedMonthChosen && (current === ALL_MONTHS || loadedMonths.includes(current))) return current;
+      return loadedMonths[0];
+    });
+  }, [loadedMonths, selectedMonthChosen]);
 
   const openImportPreview = useCallback((config) => {
     setImportPreview({
@@ -267,22 +345,24 @@ export const useDashboardData = (onDataReset = null, accountName = '', onImportC
     setSelectedWeek('Week 1');
     setSelectedDate(DEFAULT_DATE);
     setSelectedDow('Monday');
+    setSelectedMonthRaw(ALL_MONTHS);
+    setSelectedMonthChosen(false);
 
     if (typeof window !== 'undefined') {
       window.localStorage.removeItem(DASHBOARD_STORAGE_KEY);
+      window.localStorage.removeItem(DASHBOARD_VIEW_STORAGE_KEY);
     }
     onDataReset?.();
   }, [onDataReset]);
 
+  // Heavy data payload — rewritten only when the data itself changes (import /
+  // reset / roster edits). Selection changes never touch this key, so
+  // switching months no longer re-stringifies the whole historicalData.
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
     try {
       const payload = {
-        activeTimeframe,
-        selectedWeek,
-        selectedDate,
-        selectedDow,
         agents,
         supervisors,
         oamName,
@@ -293,7 +373,27 @@ export const useDashboardData = (onDataReset = null, accountName = '', onImportC
     } catch (error) {
       console.warn('Failed to persist dashboard state:', error);
     }
-  }, [activeTimeframe, selectedWeek, selectedDate, selectedDow, agents, supervisors, oamName, historicalData, hasUploadedData]);
+  }, [agents, supervisors, oamName, historicalData, hasUploadedData]);
+
+  // Tiny view payload (timeframe / date / month selections) — a few hundred
+  // bytes, safe to rewrite on every selection change without jank.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    try {
+      const payload = {
+        activeTimeframe,
+        selectedWeek,
+        selectedDate,
+        selectedDow,
+        selectedMonth,
+        selectedMonthChosen,
+      };
+      window.localStorage.setItem(DASHBOARD_VIEW_STORAGE_KEY, JSON.stringify(payload));
+    } catch (error) {
+      console.warn('Failed to persist dashboard view state:', error);
+    }
+  }, [activeTimeframe, selectedWeek, selectedDate, selectedDow, selectedMonth, selectedMonthChosen]);
 
   const MULTI_FILE_CONCURRENCY = 4;
 
@@ -679,31 +779,36 @@ export const useDashboardData = (onDataReset = null, accountName = '', onImportC
         // Rule 2: Structural/non-metric fingerprints and identifier keywords are silently ignored (no question).
         // Rule 3: Only unmapped columns with metric fingerprints (count-integer, percent-decimal, percent-whole, duration-seconds)
         //         are reviewed via customMetricReviewItems below.
-        const reviewItems = diagnostics.filter((item) =>
+        // Headers that appear in multiple files/sheets are consolidated to one
+        // question each BEFORE the special review groups run, so resolve-window
+        // gating ("more than 2 windows") and choice-group logic see one entry
+        // per column, exactly as they would for a single-file import.
+        const consolidatedDiagnostics = consolidateHeaderDuplicates(diagnostics);
+        const reviewItems = consolidatedDiagnostics.filter((item) =>
           (item.mappedField && item.confidence === 'low') ||
           Boolean(item.collisionWith?.length)
         );
-        const windowItems = resolveWindowReviewItems(diagnostics, hasSavedAccountProfile ? accountProfile : null);
+        const windowItems = resolveWindowReviewItems(consolidatedDiagnostics, hasSavedAccountProfile ? accountProfile : null);
         for (const item of windowItems) {
-          if (!reviewItems.some((candidate) => candidate.header === item.header && candidate.fileName === item.fileName && candidate.sheetName === item.sheetName)) {
+          if (!reviewItems.some((candidate) => candidate.header === item.header)) {
             reviewItems.push(item);
           }
         }
         const customerExperienceItems = customerExperienceReviewItems(
-          diagnostics,
+          consolidatedDiagnostics,
           hasSavedAccountProfile ? accountProfile : null
         );
         for (const item of customerExperienceItems) {
-          if (!reviewItems.some((candidate) => candidate.header === item.header && candidate.fileName === item.fileName && candidate.sheetName === item.sheetName)) {
+          if (!reviewItems.some((candidate) => candidate.header === item.header)) {
             reviewItems.push(item);
           }
         }
         const customItems = customMetricReviewItems(
-          diagnostics,
+          consolidatedDiagnostics,
           hasSavedAccountProfile ? accountProfile : null
         );
         for (const item of customItems) {
-          if (!reviewItems.some((candidate) => candidate.header === item.header && candidate.fileName === item.fileName && candidate.sheetName === item.sheetName)) {
+          if (!reviewItems.some((candidate) => candidate.header === item.header)) {
             reviewItems.push(item);
           }
         }
@@ -1117,14 +1222,18 @@ export const useDashboardData = (onDataReset = null, accountName = '', onImportC
     const startDay = (weekNum - 1) * 7 + 1;
     const endDay = weekNum >= 5 ? 31 : startDay + 6;
 
+    const monthScopedDates = (allDates) =>
+      selectedMonth === ALL_MONTHS ? allDates : allDates.filter((d) => d.startsWith(selectedMonth));
+
     Object.keys(historicalData).forEach((ccms) => {
       const agentHistory = historicalData[ccms];
       const allDates = Object.keys(agentHistory);
+      const scopedDates = monthScopedDates(allDates);
 
-      cache[`${ccms}|monthly`] = allDates.length > 0 ? aggregateRecords(allDates.map((d) => agentHistory[d])) : OFF;
+      cache[`${ccms}|monthly`] = scopedDates.length > 0 ? aggregateRecords(scopedDates.map((d) => agentHistory[d])) : OFF;
       cache[`${ccms}|daily`] = agentHistory[selectedDate] ? { ...agentHistory[selectedDate] } : OFF;
 
-      const weekDates = allDates.filter((d) => {
+      const weekDates = scopedDates.filter((d) => {
         const parts = d.split('-');
         if (parts.length !== 3) return false;
         const day = parseInt(parts[2], 10);
@@ -1132,12 +1241,12 @@ export const useDashboardData = (onDataReset = null, accountName = '', onImportC
       });
       cache[`${ccms}|weekly`] = weekDates.length > 0 ? aggregateRecords(weekDates.map((d) => agentHistory[d])) : OFF;
 
-      const dowDates = allDates.filter((d) => dowFromDateStr(d) === targetDow);
+      const dowDates = scopedDates.filter((d) => dowFromDateStr(d) === targetDow);
       cache[`${ccms}|dow`] = dowDates.length > 0 ? aggregateRecords(dowDates.map((d) => agentHistory[d])) : OFF;
     });
 
     return cache;
-  }, [historicalData, hasUploadedData, selectedDate, selectedWeek, selectedDow]);
+  }, [historicalData, hasUploadedData, selectedDate, selectedWeek, selectedDow, selectedMonth]);
 
   const getAgentDataForTimeframe = (agent, timeframe) => {
     if (!hasUploadedData) return { isOff: true, calls: 0 };
@@ -1188,7 +1297,7 @@ export const useDashboardData = (onDataReset = null, accountName = '', onImportC
   };
 
   const getTopHeadlineMonth = () => {
-    if (activeTimeframe === 'monthly') return getCurrentMonthName();
+    if (activeTimeframe === 'monthly') return monthLabel(selectedMonth);
     if (activeTimeframe === 'weekly') return selectedWeek;
     return getCurrentMonthName();
   };
@@ -1198,7 +1307,7 @@ export const useDashboardData = (onDataReset = null, accountName = '', onImportC
     handleFileUpload, handleFileDrop, handleAutomaticImport, handleAutomaticFileUpload, continueAutomaticImport, mappingReview, rateMergeStyle, setRateMergeStyle, applyBatchImport, resetDashboard,
     accountProfile, hasSavedAccountProfile, importPreview, openImportPreview, closeImportPreview, confirmImportPreview,
     activeTimeframe, setActiveTimeframe, selectedWeek, setSelectedWeek, selectedDate, setSelectedDate,
-    selectedDow, setSelectedDow,
+    selectedDow, setSelectedDow, selectedMonth, setSelectedMonth, loadedMonths, monthLabel,
     getAgentDataForTimeframe, handleDateChange, getTopHeadlineMonth,
   };
 };

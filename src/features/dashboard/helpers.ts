@@ -328,3 +328,31 @@ export const dowFromDateStr = (d) => {
   const yr = m < 3 ? y - 1 : y;
   return (yr + Math.floor(yr / 4) - Math.floor(yr / 100) + Math.floor(yr / 400) + t[m - 1] + day) % 7;
 };
+
+// ─── Month selection helpers (Recommendation 5) ────────────────────────────
+// Date keys in historicalData are always normalized to YYYY-MM-DD (see
+// normalizeDate), so a month is just the 7-char date prefix. Filtering happens
+// on the already-loaded per-agent-per-day records — no raw import reprocessing.
+export const ALL_MONTHS = 'all';
+
+export const matchesSelectedMonth = (dateStr, selectedMonth) =>
+  selectedMonth === ALL_MONTHS || String(dateStr).startsWith(selectedMonth);
+
+export const collectLoadedMonths = (historicalData) => {
+  const months = new Set<string>();
+  Object.values(historicalData || {}).forEach((agentDates) => {
+    Object.keys(agentDates || {}).forEach((dateStr) => {
+      if (/^\d{4}-\d{2}/.test(dateStr)) months.add(dateStr.substring(0, 7));
+    });
+  });
+  return Array.from(months).sort().reverse(); // latest first
+};
+
+const MONTH_NAME_FORMATTER = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' });
+
+export const monthLabel = (monthKey) => {
+  if (monthKey === ALL_MONTHS) return 'All months';
+  const [year, month] = String(monthKey || '').split('-');
+  const parsed = month && year ? new Date(Number(year), Number(month) - 1, 1) : null;
+  return parsed && !isNaN(parsed.getTime()) ? MONTH_NAME_FORMATTER.format(parsed) : 'Current Month';
+};

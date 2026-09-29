@@ -289,6 +289,11 @@ export const ImportLanding: React.FC<ImportLandingProps> = ({ accountName, accou
                   : customerExperienceChoices.length > 0
                   ? 'This answer is saved for the account and will not be asked again for these columns.'
                 : 'Import paused briefly for the few mappings that are genuinely ambiguous.'}</p>
+              {mappingReview.some((item) => item.duplicateFileNames?.length) && (
+                <small className="import-review-deduped">
+                  A header that appears in multiple files is asked once — the answer applies to every uploaded file.
+                </small>
+              )}
               <ul>
                 {mappingReview.slice(0, 12).map((item, index) => (
                   item.unrecognizedPlausible
