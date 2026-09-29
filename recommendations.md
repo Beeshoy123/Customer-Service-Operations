@@ -582,6 +582,36 @@ Verified: `npx tsc -b` exit 0, 181/181 tests, preview HTTP 200, and all 9 module
 
 Remaining phases: 2) `DASHBOARD_STYLES` → real CSS, 4) modal cluster (~600), 5) chrome (TopNavbar/MainStatsRow/FloorHeader), 6) uiReducer → pure module + tests.
 
+---
+
+## App.tsx Restructure — Phase 4 (modal cluster)
+
+> Status: **✅ Completed (2026-09-29)** — Phases 2, 5, 6 pending
+> Approach: **move-only extraction** — same guardrails as Phase 3 (count-checked script, tsc, 181 tests, lint, preview, Vite transform checks).
+
+Extracted the modal cluster (App.tsx lines 397–802, 406 lines) into **`src/features/dashboard/views/modals/MainModal.tsx`** (410 lines final). Three components moved:
+
+- `AskAiContent` — prop-driven (`{ aiTools, uiState, uiHandlers }`); keeps its prop signature, receives them from `MainModal` exactly as before
+- `SupervisorModalContent` — reads via `useDashboard()` (includes the rules-of-hooks fix: early `return null` now sits below all 8 `useMemo`s)
+- `MainModal` — `React.memo`, reads via `useDashboard()`, the file's only export
+
+**`App.tsx: 1,113 → 703 lines (−410)`.** Import (10 idents) auto-generated from App.tsx's import set; audit initially reported 9 but the extraction script recomputed it independently and caught `getDynamicTarget`. App.tsx file-structure banner updated (also cleaned the stale Phase 3 tab entries).
+
+**Type fixes — annotation-only except the noted dead code:**
+
+- 3 × TS7031 — `AskAiContent` binding elements → param annotated `: any`
+- 7 × TS7006 — callback params; this time paren-aware: 4 paren-less arrows wrapped (`(a: any) =>`, the Phase 3 failure mode), 3 already-parenthesized annotated in place
+- 1 × TS7053 — `METRIC_CONFIG[col.stateKey]` → `(METRIC_CONFIG as Record<string, any>)[…]`
+- 1 × TS2322 — `displayVal = Math.round(val)` → `let displayVal: string | number = '-'` (same fix as Phase 3 FloorBurnoutTab)
+- 4 × TS6133 — removed dead `topHandoffs`/`topSellers` useMemos (verified their declarations were the only references — pure computations, no observable behavior) and trimmed `MainModal`'s destructure to `{ aiTools, uiState, uiHandlers }`
+- 5 imports in App.tsx became unused when the region moved (`COL_DEFINITIONS`, `GeminiLoader`, `FormattedText`, `SubMetricCard`, `MetricCell`) — removed; pre-existing unused imports were left alone
+
+Also fixed earlier this session (pre-move, in the same uncommitted App.tsx): **8 × `react-hooks(rules-of-hooks)` errors** in `SupervisorModalContent` — early return before hooks (pre-existing since before Phase 1; latent "Rendered more hooks" crash). `npm run lint` now exits **0 errors / 123 warnings** (baseline was 127 warnings / 8 errors).
+
+Verified: `npx tsc -b` exit 0, 181/181 tests, preview HTTP 200 with clean HMR, all 3 modules (`App.tsx`, `MainModal.tsx`, root) transform with HTTP 200 through Vite.
+
+Remaining phases: 2) `DASHBOARD_STYLES` → real CSS, 5) chrome (TopNavbar/MainStatsRow/FloorHeader), 6) uiReducer → pure module + tests.
+
 > Comparison basis: `ImportLanding.tsx` / `ImportLanding.css` (the loading page) vs `App.tsx` / `App.css` (the main dashboard).
 > No code changes have been made yet. These are ideas only, ordered by impact vs effort.
 
