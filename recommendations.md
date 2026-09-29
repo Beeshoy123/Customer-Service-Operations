@@ -1,6 +1,6 @@
 # Customer Service Operations Dashboard — Import Recommendations & Plan
 
-> ✅ **ALL ITEMS COMPLETE** — Last updated 2026-09-27. Every recommendation, bug fix, and standing rule in this document has been implemented and verified.
+> **Status: active backlog.** This file lists *open* work only. Completed recommendations, resolved bugs and finished refactor phases were removed on 2026-09-29 and live in commit history (`git log`, and the pre-purge revision of this file). Current open work: `## Critical` (4 P0/P1 defects), `## Architecture Fixes` (Phase 2, Phase 6, S1–S23), `## UX & Accessibility Findings` (U1–U6), and the open design items in `## Design Gap Analysis`.
 
 ## Objective
 
@@ -13,37 +13,6 @@ Upgrade the dashboard from a single-file CSV/text importer to a full mixed-forma
 - Merge all data into one unified dataset
 - Validate and preview before final import
 - Keep compatibility with the current dashboard logic
-
----
-
-## Status Overview
-
-| Priority | Problem | Effort | Status |
-|----------|---------|--------|--------|
-| 🟡 Medium | Sheet selector silently drops valid sheets — user gets no feedback | Low | ✅ Completed |
-| 🟡 Medium | Modal shows flat sheet list with no workbook grouping | Medium | ✅ Completed |
-| 🟡 Medium | No "apply mapping to all matching sheets" shortcut | Medium | ✅ Completed |
-| 🟢 Low | Blind averaging across workbooks / duplicate upload detection | Medium | ✅ Completed |
-| 🔴 High | Bug 1: Progress bar resets to 0% after the mapping wizard | Low | ✅ Completed |
-| 🔴 High | Bug 2: Progress stalls at 99% for a long time before the dashboard appears | Low | ✅ Completed |
-| 🔴 High | Bug 3: HAND-OFFS column always shows 0.00 in the dashboard | Low | ✅ Completed |
-| 🔴 High | Bug 4: 2HR column always shows 0.00 in the dashboard | Low | ✅ Completed |
-| ⚠️ Rule | Standing Rule: Mapping fixes always go in `importPolicy.ts` only | Low | ✅ Implemented in all files |
-| 🟡 Medium | Recommendation 3: Auto-hide empty metric columns after import | Low | ✅ Completed |
-
----
-
-## Resolved Open Problems
-
-### Problem 7: `mergeNormalizedRows` averages rate fields blindly across workbooks — ✅ COMPLETED
-
-`mergeData.ts` treats `aht`, `vxs`, `resolve2hr`, etc., as simple averages when the same agent+date key appears more than once. When merging two workbooks from different scopes (e.g. phone AHT vs chat AHT for the same agent on the same day), the average blends metrics that should remain distinct.
-
-Also, if a user accidentally uploads the same file twice, summed fields (like `calls`) will be doubled.
-
-**Fix**:
-- Track `sourceFile` + `sourceSheet` on each row and detect duplicate source uploads.
-- Add an optional `mergeStrategy` parameter per field (sum, average, or last-seen for conflicting sources).
 
 ---
 
@@ -69,7 +38,7 @@ Also, if a user accidentally uploads the same file twice, summed fields (like `c
 | `ImportPreviewModal.tsx` | Preview UI — workbook-grouped tabs, column mapping table, granularity confirmation |
 | `aggregateTransactions.ts` | Roll up transaction-level rows to daily aggregates |
 | `types.ts` | All shared import types and normalized record contract |
-| `index.ts` | Public barrel export |
+| `index.ts` | Public barrel export — ⚠ unused, and S5 proposes deleting it |
 
 ### Data flow
 
@@ -108,86 +77,7 @@ User selects files
 
 ---
 
-## Acceptance Criteria
-
-The import system is complete when it can:
-
-- [x] Upload multiple files at once
-- [x] Accept CSV and Excel inputs
-- [x] Detect and process multiple workbook sheets
-- [x] Map fields from different export naming conventions
-- [x] Merge data into one dashboard-compatible dataset
-- [x] Show validation warnings before final import
-- [x] Successfully import realistic team-lead metric exports without manual reformatting
-- [x] Detect and reject/warn on duplicate file uploads
-- [x] Support per-field merge strategies (sum vs average vs last-seen)
-
----
-
-## Completed Improvements
-
-- [x] **Recommendation 1: Intelligent Column Mapping** (Layers 1–6 complete):
-  - `columnFingerprinter.ts`: Value pattern fingerprinter (dates, durations, percentages, IDs, false-positive blockers)
-  - `importPolicy.ts`: Scored candidate matching engine combining headers, value patterns, and memory
-  - `mappingMemory.ts`: LocalStorage persistence for user corrections with scope and global fallback
-  - `ImportPreviewModal.tsx`: Ranked candidate suggestions dropdown, `🔁 Remembered` badges, pattern tags, bulk-ignore button, and `ManageMemoryModal` dialog
-  - `schemaNormalizer.ts`: Value sample forwarding to auto-import paths, batch row normalization
-- [x] **Recommendation 2 — Problem 1**: Unified Excel single-file drops and uploads with the preview modal (routes through `convertWorkbookToSheets`, `selectSheets`, and `openImportPreview` with progress and cancellation).
-- [x] **Recommendation 2 — Problem 2**: Multi-file batch processing is now concurrent and non-blocking:
-  - `importService.ts`: `runImportService` replaced sequential `for` loop with a concurrency-limited pool (`BATCH_CONCURRENCY = 4`) using `Promise.all`. All workbooks in a batch are routed through `convertWorkbookToSheetsViaWorker` via the new `forceWorker` option in `ImportOptions`, keeping the main thread free regardless of file size.
-  - `types.ts`: Added `forceWorker?: boolean` to `ImportOptions`.
-- [x] **Recommendation 2 — Problem 3**: Live progress reporting and cancel capability for multi-file batch loads:
-  - `hooks.ts`: `handleMultipleFiles` rewritten — creates an `AbortController`, exposes a **Cancel** button in the status toast, processes up to 4 files concurrently via `convertWorkbookToSheetsViaWorker`, and emits live `"File N of M — filename — X%"` updates on every progress tick. Per-file errors are isolated and logged without aborting the rest of the batch.
-- [x] **Recommendation 2 — Problem 4**: Intelligent Sheet Selector & Skipped Sheets Override Banner:
-  - `sheetSelector.ts`: Lowered signal threshold (≥ 5 non-empty columns and > 5 rows retained by default), expanded operational keyword and regex matching (e.g. `Rep`, `Interaction Date`, `Handle Time`), and integrated column pattern fingerprinting via `analyzeColumnValues` from `columnFingerprinter.ts`.
-  - Added `evaluateSheet` and `selectSheetsWithDetails` returning `selectedSheets` alongside `skippedSheets` carrying descriptive exclusion reasons and source table references.
-  - `ImportPreviewModal.tsx`: Rendered a visible alert banner for skipped sheets displaying reasons and an **"+ Include Sheet"** manual override button that dynamically promotes skipped sheets to active import tabs with full column mapping and granularity confirmation.
-  - `hooks.ts` & `App.tsx`: Captured and forwarded skipped sheet metadata into `ImportPreviewModal` across both single-file and concurrent multi-file batch uploads.
-  - `sheetSelector.test.ts` & `ImportPreviewModal.test.ts`: Added 16 unit tests covering default shape retention, diverse account headers, column value fingerprinting detection, skipped sheet exclusion reasons, and override inclusion flows.
-- [x] **Recommendation 2 — Problem 5**: Workbook Grouping for Multi-File & Multi-Sheet Preview:
-  - `ImportPreviewModal.tsx`: Computed `workbookGroups` from loaded sheets. Grouped tab strips by workbook file with visual container cards and `📁 {workbookName}` header badges.
-  - Section Headers: Updated Section 1 and Section 2 headers to display `{workbookName} › {sheetName}` for unambiguous sheet attribution.
-  - Collision-Free Configs: Namespaced configurations and tab keys using `${sheet.workbookName}::${sheet.sheetName}` so workbooks with identical sheet names (e.g. `Sheet1`) never collide or overwrite each other.
-  - `hooks.ts`: Updated `confirmImportPreview` to resolve configs using namespaced keys.
-  - `ImportPreviewModal.test.ts`: Added unit tests verifying independent state and namespaced key generation across workbooks with identical sheet names.
-- [x] **Recommendation 2 — Problem 6**: "Apply to all matching sheets" column mapping shortcut:
-  - `ImportPreviewModal.tsx`: Added `findMatchingSheets` helper — compares sheets' normalized, sorted header arrays to detect same-schema sheets (order-insensitive, case-insensitive).
-  - Added `applyMappingsToSheets` helper — propagates `mappedField`, `confidence`, `isLowConfidence`, and `matchType` from source sheet to all matching target sheets by normalized header name lookup.
-  - Added `handleApplyMappingsToMatching` handler and `matchingSheetIndices` memo inside the modal component.
-  - Added **"⚡ Apply to N matching sheets"** button in the Section 2 column mapping toolbar, visible only when multiple sheets are loaded. Button is disabled (greyed) when no other sheet shares the same header set, and shows the live match count when active.
-  - Added a dismissible inline success notice that auto-hides after 4 seconds confirming how many sheets were updated.
-  - `ImportPreviewModal.test.ts`: Added 6 unit tests covering match detection, source exclusion, no false positives, order-insensitivity, field propagation by normalized header, and partial-overlap safety.
-- [x] **Recommendation 2 — Problem 7**: Per-field merge strategies & duplicate upload detection:
-  - `mergeData.ts`: Implemented `detectDuplicateFiles` to identify duplicate uploads by filename and size and emit `DUPLICATE_FILE_UPLOAD` warnings. Implemented same-source deduplication in `mergeNormalizedRows` via `sourceFile` + `sourceSheet` tracking to prevent additive fields like `calls` from doubling upon re-upload. Added per-field `mergeStrategy` parameter (`sum`, `average`, `last-seen`, `first-seen`) allowing conflicting scope metrics (e.g. phone vs chat AHT) to be resolved explicitly without blind averaging. Exported `mergeNormalizedRowsWithDetails` returning rows, warnings, and duplicate count.
-  - `importService.ts`: Filtered out duplicate file uploads at the batch ingestion level and wired `options.mergeStrategy` into `mergeNormalizedRows`.
-  - `hooks.ts`: Added duplicate file filtering to `handleMultipleFiles` and collected merge warnings in `confirmImportPreview`.
-  - `types.ts`: Added `MergeStrategy`, `MergeFieldStrategy`, `MergeOptions`, and updated `ImportOptions`.
-  - `mergeData.test.ts`: Added 9 unit tests covering duplicate source deduplication, prevention of double-counting, per-field merge strategies (`last-seen`, `first-seen`, `sum`, `average`), `mergeNormalizedRowsWithDetails`, and `detectDuplicateFiles`.
-- [x] **Recommendation 2 — Problem 8**: Zero-Dependency Scoped Styling for Import Preview Modal:
-  - `ImportPreviewModal.css`: Created dedicated scoped CSS with solid backdrop overlay (`rgba(11, 15, 25, 0.85)` + backdrop-blur) and `z-index: 9999` to eliminate bleed-through from underlying dashboard elements (`Floor Details`, search bar, navigation tabs).
-  - Constrained modal card dialog with `max-height: calc(100vh - 48px)` so header, tabs, and granularity sections remain visible without being clipped off the top of the viewport.
-  - Replaced missing Tailwind CSS utility dependencies in `ImportPreviewModal.tsx` and `ManageMemoryModal` with dedicated `.ipm-*` classes.
-  - Separated column headers and pattern fingerprint tags into clean, spaced badge elements to eliminate text concatenation (e.g. `RECOVERYKEYcount-Integer`).
-  - Loaded styles through `main.tsx` so the browser bundle renders properly while Node.js test execution (`tsx --test`) remains free of CSS loader errors.
-
-- [x] **Bug 1: Progress bar resets to 0% after the mapping wizard**:
-  - `hooks.ts`: Updated `continueAutomaticImport` to capture and reuse the cached `pendingAutomaticImport` directly rather than invoking `handleAutomaticImport` and triggering a full file re-parse cycle. Applied user decisions (custom metrics, resolve windows, and customer experience choices) directly onto cached diagnostics and transitioned progress to 100% immediately while applying rows.
-- [x] **Bug 2: Progress stalls at 99% for a long time before the dashboard appears**:
-  - `hooks.ts`: Added live progress emissions inside `applyBatchImport` at every chunk yield point (`Applying rows... N / Total`) with dynamic percentage calculations. Emitted a bridging `Finalizing dashboard...` status (100%) and yielded right before setting `historicalData` so the UI paints smoothly without freezing at 99%.
-- [x] **Bug 3: HAND-OFFS column always shows 0.00 in the dashboard**:
-  - `importPolicy.ts`: Added missing transfer and handoff rate column aliases (`transfers %`, `net transfers`, `net transfers %`, `transfer pct`, `net transfer rate`, `net transfer %`, `hand off %`, `hand off pct`, `warm transfer rate`, `warm transfer %`) to `handoffs.aliases`. Moved `'net handoffs'` and `'transfers'` from `handoffsCount` to `handoffs` to resolve map collisions in `ALIAS_LOOKUP_MAP`. Added `'transfer'` and `'transfers'` to `HEADER_TOKEN_HINTS.handoffs`. Added canonical alias prioritization in `findPairedCountField` so explicit aliases in `FIELD_ALIASES` (such as `Transfer Count`) are not hijacked as dynamic paired count fields (`handoffs_Cnt`).
-  - `importPolicy.test.ts`: Added unit tests verifying rate variants map to `handoffs` and count variants map to `handoffsCount`.
-- [x] **Bug 4: 2HR column always shows 0.00 in the dashboard**:
-  - `importPolicy.ts`: Removed generic shared aliases (`resolution rate`, `repeat rate`, `repeat callback rate`, `callback rate`, `rr`, `repeat callback`, `repeat callback %`) from both `resolve2hr` and `resolve3d` to eliminate collision and overwriting in `ALIAS_LOOKUP_MAP`. Added unambiguous 2HR-specific aliases (`2hr repeat`, `2 hour repeat`, `2-hour repeat`, `2hr repeat rate`, `2 hour repeat rate`, `2-hour repeat rate`, `2hr rr`, `rr 2hr`, `2-hour rr`, `2hr callback`, `2-hour callback`, `2hr callback rate`, `2-hour callback rate`, `within 2 hours`, `2 hour resolution rate`, `2-hour resolution rate`, `2hr resolution rate`, `2hr repeat callback rate`, etc.) to `resolve2hr.aliases`, and 3DR-specific aliases (`3dr repeat`, `3 day repeat`, `3-day repeat`, `3d repeat`, `3 day repeat rate`, `3-day repeat rate`, `3d repeat rate`, `3dr repeat rate`, `3d rr`, `3 day rr`, `3-day rr`, `rr 3d`, `rr 3dr`, `3dr callback`, `3 day callback`, `3-day callback`, `3dr callback rate`, `3 day callback rate`, `3-day callback rate`, `3 day resolution rate`, etc.) to `resolve3d.aliases`. Updated `HEADER_TOKEN_HINTS` with 2hr/3d context tokens and expanded `PAIRED_COUNT_FIELDS` pass/cnt aliases for repeat metrics.
-  - `importPolicy.test.ts`: Added unit tests verifying 0 shared alias collisions, comprehensive mapping of 2HR variants to `resolve2hr`, and mapping of 3DR variants to `resolve3d`.
-
-
----
-
-## Resolved Bugs — All Fixed ✅
----
-
-## ✅ STANDING RULE — Implemented — Mapping Fixes Always Go in `importPolicy.ts` Only
+## STANDING RULE — Mapping fixes always go in `importPolicy.ts` only
 
 > **This rule applies to ALL future mapping-related bugs, forever. Any AI model working on this codebase must read this before touching any import-related code.**
 
@@ -224,430 +114,790 @@ The rest of the pipeline (`schemaNormalizer.ts`, `importService.ts`, `helpers.ts
 
 ---
 
-> Bugs 1, 2, 3, and 4 were resolved and verified on 2026-09-20.
+> The four mapping bugs that motivated this rule (progress-reset, 99%-stall, HAND-OFFS zero, 2HR zero) were resolved and verified on 2026-09-20. Their full root-cause traces were removed from this file on 2026-09-29 and are preserved in commit history.
 
 ---
 
-### Bug 1 � Progress bar resets to 0% after the mapping wizard - [COMPLETED]
+## Critical
 
-#### What the user sees
-The import runs, the orb climbs from 0% to ~99%. Then the mapping wizard appears (the "?" screen asking the user to resolve ambiguous columns). The user answers and clicks **Finish and continue**. The orb immediately drops back to **0%** and runs all the way up again � so the user sees two full progress cycles for one import.
+Findings that are **live defects, not code smells** — things that are broken right now, or that will silently ship a secret or a customer dataset. Everything here was found by static reading of `src/` during the whole-codebase audit; **no code was changed and nothing was executed at runtime**, so step 0 of every fix is to reproduce the reported path in the browser before touching anything.
 
-#### Root cause (code trace)
+| # | Finding | Severity | Status |
+|---|---|---|---|
+| **C4** | `useAiTools` returns **13 of the 24** members the app calls — hard `TypeError` on modal close, on the Data Assistant, and on 3 of 8 tabs | **P0** | new — surfaced while writing this section |
+| **C1** | AI requests go browser → `api.anthropic.com` with **no auth header and no backend in the project**; one effect auto-fires with the whole dataset | **P0** | open |
+| **C2** | Gemini-named UI (`executeGeminiAction`, `GeminiLoader`, `.gemini-btn`) over an Anthropic endpoint | P1 | open |
+| **C3** | 244 lines of untested bonus/aggregate/VSF math in a `@ts-nocheck` file | P1 | open |
 
-1. `handleAutomaticImport` in `src/features/dashboard/hooks.ts` (~line 610) calls `runImportService` which does the full file parse and emits progress 0 ? 99%.
-2. When mapping review items are found, it stores the parsed result in `pendingAutomaticImport` state and sets `uploadStatus = null` (~line 687�691). The wizard appears.
-3. `continueAutomaticImport` (~line 731) is called when the user finishes the wizard. It does this:
-   ```
-   setPendingAutomaticImport(null);
-   setPendingAutomaticFiles([]);
-   setMappingReview([]);
-   await handleAutomaticImport(pendingAutomaticFiles, mappingOverrides, customMetricAnswers);
-   ```
-   It **throws away the already-parsed result** stored in `pendingAutomaticImport` and calls `handleAutomaticImport` again � which re-runs `runImportService` from scratch on the same files, resetting the orb to 0%.
-
-#### The fix � skip the re-parse, reuse the cached result
-
-Rewrite `continueAutomaticImport` so it takes the cached `pendingAutomaticImport` result directly and skips `handleAutomaticImport` entirely.
-
-**Step-by-step for the AI model:**
-
-1. Open `src/features/dashboard/hooks.ts`.
-2. Find `continueAutomaticImport` (~line 731). It currently calls `handleAutomaticImport` with the original files.
-3. Replace the body so it:
-   - Captures the cached result before clearing: `const cachedResult = pendingAutomaticImport`
-   - Clears pending state (`setPendingAutomaticImport(null)`, `setPendingAutomaticFiles([])`, `setMappingReview([])`)
-   - Resolves mapping overrides the same way `handleAutomaticImport` already does � call `saveCustomMetricDecisions`, `saveResolveWindowChoices`, and `saveCustomerExperienceChoice` with the cached diagnostics and the user-supplied overrides (these helpers are already imported/used in the same file)
-   - Sets `uploadStatus { type: 'info', message: 'Applying imported data...', progress: 100 }` immediately (parsing is already done, so show 100% at once)
-   - Calls `await applyBatchImport(null, cachedResult)` directly � this is the same final step `handleAutomaticImport` calls at ~line 703
-   - Wraps the whole thing in try/catch exactly as `handleAutomaticImport` does, setting an error toast on failure
-4. Update the `useCallback` dependency array: add `applyBatchImport`, `accountName`, `accountProfile`, `setUploadStatus`, and the save-helper functions � **remove `handleAutomaticImport`** since it is no longer called.
-5. No changes needed to `ImportLanding.tsx` or `importService.ts` for this fix.
-
-**Expected result:** The orb will not reset. When the wizard is dismissed the orb stays at 100% while rows are being applied, then the dashboard loads.
+Fix order: **C4 first** (it is the only one a user hits today), then C1, then C2, then C3. C1 and C4 are in the same subsystem and should be fixed in the same working session, C4 first — see C1's "do not" list, which is written assuming C4 is already closed.
 
 ---
 
-### Bug 2 � Progress stalls at 99% for a long time before the dashboard appears - [COMPLETED]
+### C4 — `useAiTools` returns 13 of the 24 members the app calls · **P0**
 
-#### What the user sees
-After all files are parsed the orb reaches 99% and **freezes** � sometimes for several seconds � before the dashboard appears. Nothing on screen indicates that work is still happening.
+**Evidence.** `useAiTools` (`src/features/dashboard/hooks.ts:1419–1486`) is 68 lines and its return object (`:1471–1486`) exposes exactly **13** members: `report`, `loading`, `teamReport`, `loadingTeam`, `chartActionPlan`, `loadingChartActionPlan`, `setChartActionPlan`, `correlationReport`, `loadingCorrelation`, `apprenticeReport`, `loadingApprentice`, `dowReport`, `loadingDow`.
 
-#### Root cause (code trace)
+The app consumes **24** `aiTools.*` members across 12 files. **11 are `undefined` at every call site**, reached from **21 call sites**:
 
-**Cause A � parsing caps at 99% by design.**
-In `src/features/dashboard/import/importService.ts`, `emitBatchProgress` (~line 273) hard-caps percent:
-```
-percent: Math.min(overallPercent, 99)
-```
-The orb never shows 100% during file parsing. This is intentional but creates a "stuck" appearance.
-
-**Cause B � `applyBatchImport` processes rows with no progress updates.**
-After parsing, `handleAutomaticImport` sets `progress: 100` and calls `await applyBatchImport(null, result)` (~line 703). Inside `applyBatchImport` (~line 463) there is a large synchronous loop:
-```
-for (let index = 0; index < rowsToApply.length; index += 1) {
-  if (index > 0 && index % chunkSize === 0) {
-    await new Promise((resolve) => setTimeout(resolve, 0)); // yields every 2500 rows
-  }
-  // ... row processing ...
-}
-```
-This loop can run for several seconds on large files. During this entire time `uploadStatus` is frozen at `progress: 100` with a static message � the orb and subtitle do not update at all.
-
-#### The fix � emit live row-apply progress inside `applyBatchImport`
-
-**Step-by-step for the AI model:**
-
-1. Open `src/features/dashboard/hooks.ts`.
-2. Find `applyBatchImport` (~line 463) and locate the row-processing `for` loop (~line 512).
-3. Inside the loop, at the yield point (where `await new Promise(...)` already exists), add a `setUploadStatus` call **before** the await so the UI re-renders before the thread yields:
-   ```
-   const applyPercent = Math.round((index / rowsToApply.length) * 100);
-   setUploadStatus({
-     type: 'info',
-     message: `Applying rows� ${index.toLocaleString()} / ${rowsToApply.length.toLocaleString()}`,
-     progress: applyPercent,
-   });
-   await new Promise((resolve) => setTimeout(resolve, 0));
-   ```
-4. After the loop ends, before calling `setHistoricalData`, emit one final bridging status:
-   ```
-   setUploadStatus({ type: 'info', message: 'Finalizing dashboard�', progress: 100 });
-   await new Promise((resolve) => setTimeout(resolve, 0)); // let UI paint
-   ```
-5. Leave the existing success toast at the very end of `applyBatchImport` (~line 606) unchanged � it will replace the "Finalizing" status once `setHasUploadedData(true)` fires and the component re-renders.
-6. No changes needed to `importService.ts`, `ImportLanding.tsx`, or any other file for this fix.
-
-**Expected result:** Instead of freezing at 99%, the orb animates through a live "applying rows" counter (0% ? 100%) so the user can see real progress at every stage of the import.
-
----
-
-
----
-
-### Bug 3 � HAND-OFFS column always shows 0.00 in the dashboard - [COMPLETED]
-
-#### What the user sees
-The dashboard shows 0.00 for every supervisor in the HAND-OFFS column even after a successful import. C-SAT and other metrics are populated correctly. The data files do contain a transfer/handoff column.
-
-#### Root cause � full code trace
-
-**Step 1 � What the dashboard displays.**
-`handoffs` is rendered by the roster table using values from `aggregateRecords` (`src/features/dashboard/helpers.ts` ~line 110):
-```
-const handoffs = callsWithHandoffs > 0 ? (sumHandoffsCount / callsWithHandoffs) * 100 : null;
-```
-It returns `null` (shown as `-`) if `callsWithHandoffs` is 0, and it returns a percentage if there is data. The dashboard shows `0.00` � not `-` � which means `callsWithHandoffs > 0` IS true but `sumHandoffsCount` is 0. This tells us the field IS mapping and arriving on rows, but the VALUE being stored is 0.
-
-**Step 2 � What feeds `sumHandoffsCount`.**
-In `aggregateRecords` (~line 75�81):
-```
-if (d.handoffsCount != null) {
-  sumHandoffsCount += d.handoffsCount;   // branch A: raw count field
-  callsWithHandoffs += c;
-} else if (d.handoffs != null) {
-  sumHandoffsCount += (d.handoffs / 100) * c;  // branch B: rate field
-  callsWithHandoffs += c;
-}
-```
-Branch A is for `handoffsCount` (raw count like "12 transfers"), Branch B is for `handoffs` (rate like "3.5%").
-Both are correct � but Branch B divides `handoffs` by 100 assuming it is already in percent form.
-
-**Step 3 � What the import stores.**
-In `hooks.ts` `applyBatchImport` (~line 582):
-```
-handoffs: toNumberOrNull(row.handoffs),
-handoffsCount: toNumberOrNull(row.handoffsCount),
-```
-The `handoffs` field is stored as a raw number, and `normalizeCellValue` in `schemaNormalizer.ts` calls `normalizeImportedValue` which for `kind: 'percent'` fields does:
-```
-const normalizedPercent = rawPercentNumber <= 1 ? rawPercentNumber * 100 : rawPercentNumber;
-```
-So if the file contains `0.035` (decimal), it gets stored as `3.5`. If it contains `3.5` (whole-number percent), it stores `3.5` unchanged. This is correct.
-
-**Step 4 � What "transfers" maps to.**
-The FIELD_ALIASES for `handoffs` include `'transfer rate'` and `'transfer %'` � meaning a column called exactly "Transfer Rate" or "Transfer %" would map to `handoffs` (the rate field).
-
-The FIELD_ALIASES for `handoffsCount` include `'transfers'` and `'transfer count'` � meaning a column called "Transfers" maps to `handoffsCount` (the integer count field).
-
-**Step 5 � The real problem: "transfers" maps to `handoffsCount`, not `handoffs`.**
-If the actual CSV column is named something like `"Transfers"` or `"Transfer Flag"`, it maps to `handoffsCount` (the count field) � **not** to `handoffs` (the rate field). The count is correctly accumulated in `sumHandoffsCount` (~line 76). HOWEVER � the final calculation at line 110 is:
-```
-const handoffs = callsWithHandoffs > 0 ? (sumHandoffsCount / callsWithHandoffs) * 100 : null;
-```
-This divides the raw count by total calls and multiplies by 100 to produce a rate � which is mathematically correct **only if** `handoffsCount` is actually the number of transferred calls (e.g. 12 out of 300 calls = 4%).
-
-**The most likely scenario causing 0.00:**
-The column in the actual file is named something like `"Transfer Flag"` or `"Transfers"` � it maps to `handoffsCount`. BUT the values in the column are binary flags (0 or 1 per row) that get aggregated (summed) to give a count. If the data coming in is already a per-agent RATE (e.g. `0.035` or `3.5`) stored in a column named `"Transfers"` or `"Net Handoffs"`, then:
-- `handoffsCount` gets the rate value (e.g. `3.5`)
-- `sumHandoffsCount` accumulates small float values like `3.5 + 3.1 + 2.8...`
-- `(sumHandoffsCount / callsWithHandoffs) * 100` produces a tiny near-zero value
-
-This is also consistent with the dashboard showing exactly `0.00` � a very small float rounded to 2 decimal places.
-
-**Secondary scenario � "Net Handoffs" matches `handoffsCount`:**
-The alias `'net handoffs'` is listed under `handoffsCount` (line 230 in importPolicy.ts). If the file has a column called `"Net Handoffs %"` it correctly goes to `handoffs` (rate). But `"Net Handoffs"` without the `%` goes to `handoffsCount` (count). If those values are rates expressed as whole numbers (e.g. `3.5`), the count-field path accumulates them and the math produces near-zero.
-
-#### The fix needed � update mapping aliases in `importPolicy.ts`
-
-The next AI model must NOT change any calculation logic. The fix is entirely in the alias lists in `FIELD_ALIASES` in `src/features/dashboard/import/importPolicy.ts`:
-
-**Step-by-step for the AI model:**
-
-1. Open `src/features/dashboard/import/importPolicy.ts`.
-2. Find the `handoffs` entry (~line 211) with `kind: 'percent'`.
-3. Add additional aliases that real Verizon/telecom exports use for the handoff/transfer RATE column. The current aliases cover `'transfer rate'` and `'transfer %'` but miss common variants. Add:
-   - `'transfers %'`
-   - `'net transfers'`
-   - `'net transfers %'`
-   - `'transfer pct'`
-   - `'net transfer rate'`
-   - `'net transfer %'`
-   - `'hand off %'`
-   - `'hand off pct'`
-   - `'warm transfer rate'`
-   - `'warm transfer %'`
-4. Find the `handoffsCount` entry (~line 227) with `kind: 'number'`. Review whether `'net handoffs'` (without %) should stay there or be moved. If the file column is named `"Net Handoffs"` but its values are a rate (floats like `3.5`), it should map to `handoffs` instead. Consider moving `'net handoffs'` from `handoffsCount` to `handoffs` aliases.
-5. Also check the `HEADER_TOKEN_HINTS` for `handoffs` (~line 456): currently only `['handoff', 'handoffs']`. Add `'transfer'` and `'transfers'` as token hints so the fuzzy scorer treats those words as signals for the `handoffs` field:
-   ```
-   handoffs: ['handoff', 'handoffs', 'transfer', 'transfers'],
-   ```
-6. No changes to `helpers.ts`, `hooks.ts`, `schemaNormalizer.ts`, or any dashboard display component.
-
-**Expected result:** Columns named "Transfers", "Net Handoffs", or any transfer-rate variant will map to the correct `handoffs` (rate) or `handoffsCount` (count) field, and the dashboard HAND-OFFS column will show the real percentage instead of 0.00.
-
----
-
-### Bug 4 — 2HR column always shows 0.00 in the dashboard - [COMPLETED]
-
-#### What the user sees
-Every supervisor row shows `0.00` in the 2HR column even after importing a file that contains a 2-hour resolve/repeat metric. 3DR (3-day resolve) appears correct.
-
-#### Root cause � full code trace
-
-**Step 1 � What the dashboard displays.**
-`resolve2hr` is rendered using values from `aggregateRecords` (`helpers.ts` ~line 109):
-```
-const resolve2hr = totalResContacts2hr > 0 ? (1 - totalRepeats2hr / totalResContacts2hr) * 100 : null;
-```
-It only computes if `totalResContacts2hr > 0`. If showing 0.00 rather than `-`, then `totalResContacts2hr > 0` � meaning data IS arriving but the math produces 0.
-
-**Step 2 � How `totalResContacts2hr` and `totalRepeats2hr` are built** (~line 93�96):
-```
-const resContacts2hr = d.resolveTotalContacts2hr != null ? d.resolveTotalContacts2hr : resTotal;
-if (d.resolve2hr != null) {
-  totalResContacts2hr += resContacts2hr;
-  totalRepeats2hr += resContacts2hr * ((100 - d.resolve2hr) / 100);
-}
-```
-When `resolveTotalContacts2hr` is absent from the data (common � most exports don't include it), `resContacts2hr` falls back to `resTotal` (total contacts). This is the correct path.
-
-**Step 3 � The percent normalization issue.**
-`normalizeImportedValue` for `kind: 'percent'` (~importPolicy.ts line 1195�1200):
-```
-const rawPercentNumber = Number(stringValue.replace(/[%,$\s]/g, ''));
-if (!Number.isNaN(rawPercentNumber)) {
-  const normalizedPercent = rawPercentNumber <= 1 ? rawPercentNumber * 100 : rawPercentNumber;
-  return normalizedPercent;
-}
-```
-If the CSV cell is `0.035` (3.5% in decimal) ? stored as `3.5` ?
-If the CSV cell is `3.5` ? stored as `3.5` ?
-If the CSV cell is `100` ? stored as `100` ?
-
-The math in `aggregateRecords`: `resContacts2hr * ((100 - d.resolve2hr) / 100)`
-If `d.resolve2hr` is `100` ? repeats = 0 ? final rate = 100% (looks like no repeats � shows 100)
-If `d.resolve2hr` is `3.5` ? that means 3.5% resolve rate ? dashboard shows 3.5% (very low)
-
-**Step 4 � The column naming / mapping failure.**
-Look at the `resolve2hr` aliases in `FIELD_ALIASES` (~line 128�131):
-```
-'resolve within 2hr', 'resolve 2hr', '2hr resolution', '2 hour resolve',
-'2hr', '2-hour resolve', '2 hour resolve %', 'resolve within 2 hour',
-'within 2hr', 'resolution rate', 'repeat rate', 'repeat callback rate',
-'callback rate', 'rr', 'repeat callback', 'repeat callback %'
-```
-**Critical problem:** `'resolution rate'`, `'repeat rate'`, `'repeat callback rate'`, and `'callback rate'` are SHARED between `resolve2hr` (line 129) and `resolve3d` (line 137). Both fields list these generic aliases.
-
-When two fields share the same alias in `ALIAS_LOOKUP_MAP` (built in `schemaNormalizer.ts` ~line 18�25), whichever field is iterated **last** in `Object.entries(FIELD_ALIASES)` wins the alias slot in the map. Since `resolve3d` is defined after `resolve2hr` in the object, `resolve3d` overwrites these shared aliases. A column called `"Repeat Callback Rate"` or `"Resolution Rate"` will map to `resolve3d` � never to `resolve2hr`.
-
-**Step 5 � Additional missing aliases for the 2HR field.**
-The `HEADER_TOKEN_HINTS` for `resolve2hr` (~line 446) are:
-```
-resolve2hr: ['resolve', '2hr', 'twohour', '2hour', '2 hour'],
-```
-Common real-world column names that get missed:
-- `"2-Hour Repeat"` � normalized to `2 hour repeat`, tokens include `2`, `hour`, `repeat` � no match to `resolve2hr` hints since `repeat` is not in the list
-- `"2hr Repeat Rate"` � similarly missed
-- `"RR 2HR"` or `"2HR RR"` � missed entirely
-
-#### The fix needed � clean up aliases in `importPolicy.ts`
-
-**Step-by-step for the AI model:**
-
-1. Open `src/features/dashboard/import/importPolicy.ts`.
-2. Find the `resolve2hr` entry (~line 128). **Remove** the following generic aliases that are shared with `resolve3d` and cause the map collision:
-   - `'resolution rate'`
-   - `'repeat rate'`
-   - `'repeat callback rate'`
-   - `'callback rate'`
-   - `'rr'`
-   - `'repeat callback'`
-   - `'repeat callback %'`
-   These belong ONLY on `resolve3d` (as the default/longer-window repeat metric) or should not be on either without a disambiguating token.
-3. Add new **unambiguous** 2HR-specific aliases to `resolve2hr`:
-   - `'2hr repeat'`
-   - `'2 hour repeat'`
-   - `'2hr repeat rate'`
-   - `'2 hour repeat rate'`
-   - `'2hr rr'`
-   - `'rr 2hr'`
-   - `'2hr callback'`
-   - `'2hr callback rate'`
-   - `'within 2 hours'`
-   - `'2 hour resolution rate'`
-4. Similarly, find the `resolve3d` entry (~line 136) and **remove** the same shared generic aliases from it too:
-   - `'resolution rate'`
-   - `'repeat rate'`
-   - `'repeat callback rate'`
-   - `'callback rate'`
-   - `'rr'`
-   - `'repeat callback'`
-   - `'repeat callback %'`
-   Instead add proper 3DR-specific aliases like `'3dr repeat'`, `'3 day repeat rate'`, `'3d rr'`, `'rr 3d'`.
-5. Update `HEADER_TOKEN_HINTS` for `resolve2hr` (~line 446) to include `'repeat'` and `'2'` as token hints:
-   ```
-   resolve2hr: ['resolve', '2hr', 'twohour', '2hour', '2 hour', '2', 'repeat', 'rr'],
-   ```
-   Be careful: adding `'repeat'` alone could score hits on 3DR columns too. Only add it when combined with the `2hr` context � or trust the alias fixes above to do the disambiguation.
-6. No changes to `helpers.ts`, `hooks.ts`, or any dashboard display file.
-
-**Expected result:** Columns unambiguously associated with the 2-hour window (`"2HR"`, `"2HR Repeat"`, `"2-Hour Repeat Rate"`) will map to `resolve2hr` instead of colliding with `resolve3d` aliases. The 2HR column in the dashboard will show the correct percentage instead of 0.00.
-
----
-
----
-
-## App.tsx Restructure — Phase 1 (leaves + styles)
-
-> Status: **✅ Completed (2026-09-29)** — Phases 2–6 pending user approval
-> Approach: **move-only extraction** — no behavior changes; guardrails `npx tsc -b`, `npm test` (181), preview status after each batch.
-
-Extracted 5 units (169 lines) out of `App.tsx` (1,948 → 1,779) into checked (non-`@ts-nocheck`) files:
-
-- `src/app/errorBoundary.tsx` — ErrorBoundary (typed props/state; was untyped class)
-- `src/app/uploadStatus.tsx` — UploadStatus toast (+ exported `UploadStatusPayload` type)
-- `src/app/chartActionPlanModal.tsx` — ChartActionPlanModal. **Latent bug fixed during move:** it referenced bare `uiHandlers` (an `App()`-local `const`) from module scope — opening a chart action plan would have thrown `ReferenceError`. Now destructured from `useDashboard()` like every other component; tsc caught it because the file is checked.
-- `src/components/dropZone.tsx` — DropZone (renders ImportLanding)
-- `src/app/dashboardStyles.ts` — `DASHBOARD_STYLES` template literal (verified: zero `${}` interpolations, so byte-identical move)
-
-Supporting change: `DashboardContext` is now `createContext<any>(null)` (was `createContext(null)`) so extracted files can consume `useDashboard()` without per-file `@ts-nocheck` — the pattern that will make Phases 2–6 type-safe too.
-
-Extraction done by a count-checked Node script (anchors verified unique pre-cut, 16 post-conditions checked before write). `App.tsx` file-structure banner updated. Verified: `npx tsc -b` exit 0, 181/181 tests, preview HTTP 200 with clean HMR.
-
-Remaining phases: 2) `DASHBOARD_STYLES` → real CSS, 3) 8 floor tabs (~700 lines), 4) modal cluster (~600), 5) chrome (TopNavbar/MainStatsRow/FloorHeader), 6) uiReducer → pure module + tests.
-
----
-
-## App.tsx Restructure — Phase 3 (8 floor tabs)
-
-> Status: **✅ Completed (2026-09-29)** — Phases 2, 4, 5, 6 pending
-> Approach: **move-only extraction** — components read all data via `useDashboard()`, so no props changed; guardrails `npx tsc -b`, `npm test` (181), preview status, plus Vite transform checks.
-
-Extracted the 8 floor tab components out of `App.tsx` (**1,778 → 1,114 lines, −664**) into new checked files under `src/features/dashboard/views/tabs/`:
-
-| File | Lines (final) |
+| Missing member | Call sites |
 |---|---|
-| `FloorRosterTab.tsx` | 151 |
-| `FloorApprenticeTab.tsx` | 166 |
-| `FloorDowTab.tsx` | 86 |
-| `FloorOutliersTab.tsx` | 81 |
-| `FloorBurnoutTab.tsx` | 80 |
-| `FloorTrendsTab.tsx` | 63 |
-| `FloorCorrelationTab.tsx` | 38 |
-| `FloorAnalysisTab.tsx` | 34 |
-| **Total** | **699** |
+| `generateExpertReport` | `App.tsx:224`, `App.tsx:235`, `FloorRosterTab.tsx:100`, `FloorOutliersTab.tsx:18` (+1 in a dep array, `App.tsx:239`) |
+| `generateTeamReport` | `FloorAnalysisTab.tsx:10` |
+| `generateChartActionPlan` | `FloorTrendsTab.tsx:54` |
+| `generateCorrelationReport` | `FloorCorrelationTab.tsx:10` |
+| `generateApprenticeReport` | `FloorApprenticeTab.tsx:45` |
+| `generateDowReport` | `FloorDowTab.tsx:12` |
+| `resetAiStates` | `App.tsx:187`, `App.tsx:212`, `App.tsx:213` |
+| `askAiQuery` / `setAskAiQuery` | `MainModal.tsx:29` / `MainModal.tsx:29` |
+| `handleAskAiSubmit` | `MainModal.tsx:29`, `:31`, `:39` |
+| `askAiLoading` | `MainModal.tsx:29`, `:31`, `:40`, `:48` |
+| `askAiResponse` | `MainModal.tsx:52`, `:55` |
 
-Extraction done by a count-checked Node script: all 10 region markers verified unique pre-cut, each tab had exactly 1 definition and 1 usage, a scope audit confirmed each component only touches the 7 context keys (`dashData`, `metrics`, `aiTools`, `uiState`, `uiHandlers`, `accountName`, `resetToLanding`), imports were auto-generated from the App.tsx import set, and all post-conditions passed before the file was written. `App.tsx` now imports all 8 tabs (lines 53–60) and renders them in the `mainTab` switch (lines 1096–1103).
+**Why no tool caught this.** `DashboardContext` is `createContext<any>(null)` (`hooks.ts:263`), so every consumer reads `any`; and `hooks.ts` is `@ts-nocheck`, so the hook's own return type is never compared against its consumers. The contract is enforced by *nothing*. (The `any` context was a deliberate Phase-1 trade-off to let the 12 extracted view files typecheck — it is correct for props, wrong for the provider value, and C4 is the bill coming due.)
 
-**Type fixes applied to the extracted files — annotation-only, zero behavior change** (this is the payoff of the phase: these files are now under `tsc` supervision, which `@ts-nocheck` App.tsx is not):
+**Concrete failure modes, most user-visible first.**
 
-- 37 × TS7006 — implicit-`any` callback params annotated (`(a: any) =>`, `filter((q: any) => …)` etc.). 16 of these were initially written as paren-less arrows (`a: any =>`, invalid syntax) and repaired to parenthesized form `(a: any) =>`.
-- 3 × TS7053 — `METRIC_CONFIG[m.key]` index sites wrapped as `(METRIC_CONFIG as Record<string, any>)[…]` (FloorApprenticeTab ×1, FloorTrendsTab ×2).
-- 2 × TS18047 — `dataA.calls`/`dataB.calls` possibly null in FloorApprenticeTab's auto-report `useEffect`, now `(dataA.calls ?? 0) > 0` (identical semantics: `null > 0` was already false).
-- 1 × TS2322 — `searchedOams[0]` (`unknown[]` from `new Set(any)`) cast to `string` when assigned to `activeOamName: string | null` in FloorRosterTab.
-- Earlier specials: 4 wrong `react` import paths (`../../../../react` → `react`), unused `metrics` destructure removed (FloorApprenticeTab), explicit `let` annotations for `displayVal` (FloorBurnoutTab) and `activeOamName` (FloorRosterTab).
+1. **The whole dashboard blanks when the user clicks "Data Assistant".** `TopNavbar.tsx:66` → `setActiveModal('askAi')` → `MainModal.tsx:402` renders `AskAiContent` → `MainModal.tsx:31` evaluates `!aiTools.askAiQuery.trim()` on `undefined` → **`TypeError: Cannot read properties of undefined (reading 'trim')` during render** → the nearest `<ErrorBoundary>` (`App.tsx:344`) replaces the entire dashboard with its fallback. (`MainModal.tsx:29` also makes the input uncontrolled: `value={undefined}`.)
+2. **Every modal close throws.** The ✕ Close button and the backdrop (`MainModal.tsx:371`, `:377`) both call `uiHandlers.closeModal` → `App.tsx:212` `aiTools.resetAiStates()` → **`TypeError: aiTools.resetAiStates is not a function`**. This affects the supervisor modal too, so it is not confined to the AI feature.
+3. **Three tabs throw on open, after any import.** `FloorAnalysisTab.tsx:10`, `FloorCorrelationTab.tsx:10` and `FloorDowTab.tsx:12` call their `generate*` inside a mount effect, guarded only on `dashData.hasUploadedData` — so once a workbook is imported, opening Analysis, Correlation or DOW throws in the effect and takes the dashboard down via the ErrorBoundary.
+4. **Two silent failures (no crash, wrong behaviour).** `App.tsx:187` assigns `aiResetRef.current = undefined`, so the guard at `App.tsx:111` (`if (aiResetRef.current) aiResetRef.current()`) is permanently false and **stale AI reports are never cleared when a new file is uploaded**. `FloorTrendsTab.tsx:54` passes `onClick={undefined}`, which React silently ignores — a dead button with no error.
 
-Verified: `npx tsc -b` exit 0, 181/181 tests, preview HTTP 200, and all 9 modules (`App.tsx` + 8 tabs) transform with HTTP 200 through the Vite dev server — this last check matters because App.tsx is `@ts-nocheck`, so only Vite actually resolving its imports proves the wiring.
+**Precisely what to do.** For each of the 11 members choose *implement* or *delete* — do not leave any consumer pointing at a member that does not exist:
 
-Remaining phases: 2) `DASHBOARD_STYLES` → real CSS, 4) modal cluster (~600), 5) chrome (TopNavbar/MainStatsRow/FloorHeader), 6) uiReducer → pure module + tests.
+- **Implement (9 members, 2 groups).** (a) Ask-AI chat state — `askAiQuery`, `setAskAiQuery`, `askAiResponse`, `askAiLoading`, `handleAskAiSubmit` — is a self-contained 5-member unit: one `useState` pair, one submit handler, one request through whatever C1 ends up building. (b) The six `generate*` functions plus `resetAiStates` — one `useCallback` each over the existing `executeGeminiAction` helper, each with its own system prompt; `resetAiStates` is the single place that nulls the six report states and their loading flags.
+- **Delete (0 members).** Nothing here should be deleted: every one of the 11 has a live UI behind it (7 tabs, the Data Assistant modal, the close handler). If a feature is not wanted, delete the **UI** in the same change — never leave the button.
+- **Then close the class of bug, not just the instance.** Replace `createContext<any>(null)` with `createContext<DashboardContextValue | null>(null)` and export an explicit `DashboardContextValue` interface composed of the three hook return types. Every one of the 12 view files is already checked by `tsc`, so the moment the interface exists, any other missing member becomes a compile error instead of a runtime `TypeError`. Expect this to surface further mismatches — that is the point, and it is the single highest-value change in this document.
+- **Guard it with a test.** Add `src/features/dashboard/aiToolsShape.test.ts` (node:test + tsx, same as the 12 existing suites) asserting that the set of `aiTools.*` members consumed anywhere in `src/` is a subset of the keys `useAiTools` returns. It is a static check over source text, so it needs no React runtime, and it makes this regression impossible to reintroduce silently. **Target: 181 → ~184 tests.**
+- **Do not** paper over the crashes with optional chaining (`aiTools.resetAiStates?.()`). That converts a loud failure into a dead button — exactly failure mode 4, which is how this bug stayed invisible.
 
----
-
-## App.tsx Restructure — Phase 4 (modal cluster)
-
-> Status: **✅ Completed (2026-09-29)** — Phases 2, 5, 6 pending
-> Approach: **move-only extraction** — same guardrails as Phase 3 (count-checked script, tsc, 181 tests, lint, preview, Vite transform checks).
-
-Extracted the modal cluster (App.tsx lines 397–802, 406 lines) into **`src/features/dashboard/views/modals/MainModal.tsx`** (410 lines final). Three components moved:
-
-- `AskAiContent` — prop-driven (`{ aiTools, uiState, uiHandlers }`); keeps its prop signature, receives them from `MainModal` exactly as before
-- `SupervisorModalContent` — reads via `useDashboard()` (includes the rules-of-hooks fix: early `return null` now sits below all 8 `useMemo`s)
-- `MainModal` — `React.memo`, reads via `useDashboard()`, the file's only export
-
-**`App.tsx: 1,113 → 703 lines (−410)`.** Import (10 idents) auto-generated from App.tsx's import set; audit initially reported 9 but the extraction script recomputed it independently and caught `getDynamicTarget`. App.tsx file-structure banner updated (also cleaned the stale Phase 3 tab entries).
-
-**Type fixes — annotation-only except the noted dead code:**
-
-- 3 × TS7031 — `AskAiContent` binding elements → param annotated `: any`
-- 7 × TS7006 — callback params; this time paren-aware: 4 paren-less arrows wrapped (`(a: any) =>`, the Phase 3 failure mode), 3 already-parenthesized annotated in place
-- 1 × TS7053 — `METRIC_CONFIG[col.stateKey]` → `(METRIC_CONFIG as Record<string, any>)[…]`
-- 1 × TS2322 — `displayVal = Math.round(val)` → `let displayVal: string | number = '-'` (same fix as Phase 3 FloorBurnoutTab)
-- 4 × TS6133 — removed dead `topHandoffs`/`topSellers` useMemos (verified their declarations were the only references — pure computations, no observable behavior) and trimmed `MainModal`'s destructure to `{ aiTools, uiState, uiHandlers }`
-- 5 imports in App.tsx became unused when the region moved (`COL_DEFINITIONS`, `GeminiLoader`, `FormattedText`, `SubMetricCard`, `MetricCell`) — removed; pre-existing unused imports were left alone
-
-Also fixed earlier this session (pre-move, in the same uncommitted App.tsx): **8 × `react-hooks(rules-of-hooks)` errors** in `SupervisorModalContent` — early return before hooks (pre-existing since before Phase 1; latent "Rendered more hooks" crash). `npm run lint` now exits **0 errors / 123 warnings** (baseline was 127 warnings / 8 errors).
-
-Verified: `npx tsc -b` exit 0, 181/181 tests, preview HTTP 200 with clean HMR, all 3 modules (`App.tsx`, `MainModal.tsx`, root) transform with HTTP 200 through Vite.
-
-Remaining phases: 2) `DASHBOARD_STYLES` → real CSS, 5) chrome (TopNavbar/MainStatsRow/FloorHeader), 6) uiReducer → pure module + tests.
+**Verification.** (1) Reproduce all four failure modes in the browser first, so the fix is provable. (2) After the fix: open the Data Assistant, open and close the supervisor modal, and open Analysis / Correlation / DOW after an import — all must work with no console errors. (3) `npx tsc -b` exit 0, `npm test` 181 → ~184 all green, `npm run lint` 0 errors / ≤123 warnings, preview HTTP 200, Vite transform 200 for `hooks.ts` and all 12 view files.
 
 ---
 
-## App.tsx Restructure — Phase 5 (chrome)
+### C1 — AI requests go browser → Anthropic with no auth header, and there is no backend · **P0**
 
-> Status: **✅ Completed (2026-09-29)** — Phases 2 and 6 pending
-> Approach: **move-only extraction** — same guardrails as Phases 3/4 (count-checked script, independent import recount, tsc, 181 tests, lint, preview, Vite transforms, origin diff).
+**Evidence.** `hooks.ts:1353–1400` `executeGeminiAction` POSTs to `https://api.anthropic.com/v1/messages` from client code. The request sends **one** header — `Content-Type: application/json`. There is **no `x-api-key`, no `Authorization`, and no `anthropic-version`**. Body: `{ model: 'claude-sonnet-4-6', max_tokens: 1000, system, messages }`. Retries go through `fetchWithRetry` (`:1323`, 2 retries, 30 s timeout, exponential backoff) and cancellation through the module-level `_aiControllers` map (`:1319`).
 
-Extracted the dashboard chrome (App.tsx lines 79–384, 306 lines) into three files under **`src/features/dashboard/views/chrome/`**:
+There is **no server layer in this project at all**: no `api/`, `server/`, `functions/`, `netlify/`, or `vercel.json`, and `vite.config.ts` declares only the React plugin and `worker: { format: 'es' }` — **no `server.proxy`**. So the call cannot succeed: it 401s, and the browser blocks it on CORS before the status even matters. All 6 AI tools (expert report, team report, chart action plan, correlation, apprentice, DOW) are non-functional for this reason, independent of C4.
 
-| File | Region | Final lines |
+**The part that makes this urgent.** The effect at `hooks.ts:1449` has a 15-item dependency list and calls `executeGeminiAction` **on mount and on every change** to `agents`, `supervisors`, `oamName`, `historicalData`, `selectedDate`, `activeTimeframe`, `selectedWeek`, `selectedDow`, leader data, `supervisorStats`, `runChartData`, `allActiveDates` — with no user action, no opt-in, and no consent gate. Its prompt payload (`JSON.stringify`, `:1450–1464`) contains **`agents`, `supervisors`, `activeLeaderData`, `mtdLeaderData`, `supervisorStats`, `runChartData` and `allActiveDates`** — i.e. the full agent roster, every supervisor, and the underlying metric series, serialized into an outbound request body.
+
+Today that request is inert because it 401s. **The moment anyone "fixes" the 401 by adding a key to the client, this app ships the entire workforce dataset to a third party on every state change** — including the 300 ms debounced search keystrokes described in S3.
+
+**Precisely what to do.**
+
+1. **Add a server-side proxy that holds the key.** The key must never enter the Vite bundle. In particular: **do not** use an `import.meta.env.VITE_*` variable — every `VITE_`-prefixed value is inlined into the client JavaScript and is readable by anyone who opens the page. The project is currently pure client-side (`react`, `react-dom`, `xlsx` only), so this is a genuinely new layer, not a refactor; pick the smallest thing that can hold a secret.
+2. Move `executeGeminiAction`, `fetchWithRetry`, `delayForRetry` (`:1321`) and `_aiControllers` (`:1319`) to that server layer. The client keeps the `AbortController` cancellation semantics (`:1356–1359`) — a user-initiated request must remain cancellable.
+3. Point the client at the proxy. The client must not know the provider URL or the model id; both belong on the server so a provider change is a server edit.
+4. **Make the expert report user-triggered.** Remove the auto-fire at `hooks.ts:1449` and put it behind the existing explicit entry point (`App.tsx:224`/`:235` `handleAiLinkClick`, and the supervisor-modal action) — or, if an automatic summary is genuinely wanted, gate it behind a visible opt-in. An automatic outbound transfer of employee performance data on page load is not something to ship by default.
+5. **Minimize the payload.** Send aggregates and the slices the prompt actually needs, not the raw roster and full time series. This is the same data-minimization argument as C3 below, applied to egress.
+6. Handle the failure honestly: today every path ends in a `TypeError` or a silent no-op. A failed AI call should render a visible, non-destructive error state in the component that requested it, not a thrown exception.
+
+**Do not:** add the key to the client; add a `VITE_`-prefixed key variable; "temporarily" bypass CORS with `mode: 'no-cors'`.
+
+**Verification.** `grep -rn "api.anthropic.com" src` → **0 hits** (the provider string lives only on the server). The key exists only in server-side environment config, never in `dist/`. In the browser's Network panel: **no outbound AI request on page load with no user action**, and exactly one per user-initiated action. One real report generates and renders. Then the standard gate: `tsc -b` 0, 181/181, lint 0 errors / ≤123, preview 200.
+
+---
+
+### C2 — Gemini-named UI over an Anthropic endpoint · **P1**
+
+**Evidence.** A half-finished provider migration left the old brand in the code while the endpoint changed:
+
+| Old name | Location |
+|---|---|
+| `executeGeminiAction` | `hooks.ts:1353` (definition), called at `hooks.ts:1468` |
+| `GeminiLoader` | `src/components/shared.tsx:17` (default `message = 'Cooking it up...'`), imported by `FloorApprenticeTab`, `FloorCorrelationTab`, `FloorDowTab` |
+| `.gemini-btn` | defined in `src/app/dashboardStyles.ts`, used in **7 files**: `FloorTrendsTab`, `FloorApprenticeTab`, `FloorCorrelationTab`, `FloorDowTab`, `FloorAnalysisTab`, `views/modals/MainModal`, `app/chartActionPlanModal` |
+
+**Why it is more than cosmetic.** It is a debugging trap: a maintainer chasing a 401, a 429, a model-id error or a token-limit error will grep `gemini`, find the function that made the call, and conclude the wrong provider is in play. It is also inventory debt — `.gemini-btn` is one of the 189 hand-rolled classes that Phase 2 has to relocate, so renaming it after the CSS move means touching the stylesheet twice.
+
+**Precisely what to do.** One mechanical pass, **after C1 and C4 land** so the rename does not sit inside a functional diff: `executeGeminiAction` → `executeAiAction`, `GeminiLoader` → `AiLoader`, `.gemini-btn` → `.ai-btn` (definition in `dashboardStyles.ts` + all 7 usages). Add a one-line comment at each renamed symbol recording the rename and the date, so the next reader does not re-litigate it. Pick one neutral name and apply it everywhere — do not leave `.ai-btn` and `.gemini-btn` side by side.
+
+**Verification.** `grep -rin "gemini" src` → **0 hits**. `tsc -b` 0, 181/181, lint 0 errors / ≤123 (unchanged — a rename cannot add warnings), and a visual pass over the 7 files to confirm the buttons still render (the class rename is the only thing that can break them).
+
+---
+
+### C3 — 244 lines of untested business math in a `@ts-nocheck` file · **P1**
+
+**Evidence.** `src/features/dashboard/helpers.ts` is 358 lines, starts with `// @ts-nocheck` (`:1`), and exports 15 functions. Only **6 are covered** by `monthSelection.test.ts` (11 tests): `normalizeDate`, `getWeekNumber`, `dowFromDateStr`, `matchesSelectedMonth`, `collectLoadedMonths`, `monthLabel` — all date/month helpers.
+
+**Untested: lines 40–283, 244 lines** — the functions that decide what people see and get paid:
+
+| Function | Lines | Decides |
 |---|---|---|
-| `TopNavbar.tsx` | 144L | 149 |
-| `MainStatsRow.tsx` | 96L | 102 |
-| `FloorHeader.tsx` | 66L | 69 |
+| `agentMatchesSearch` | 28–39 | roster search filtering |
+| `calculateBonus` | 40–48 | **bonus payout** |
+| `aggregateRecords` | 49–137 | per-agent metric rollup |
+| `aggregateTeamMetrics` | 138–212 | **team/supervisor rollup** |
+| `calculateWeightedVSF` | 213–271 | **weighted satisfaction score** |
+| `calculateTrend` | 272–283 | trend arrows and deltas |
 
-**`App.tsx: 695 → 386 lines (−309)`.** Per-file imports auto-generated (TopNavbar: React/useDashboard/useRef/useEffect/TimeframeMenu/SettingsMenu; MainStatsRow: React/useDashboard/DonutChart/getDynamicTarget/METRIC_CONFIG/getDynamicMax; FloorHeader: React/useDashboard), with a guard that aborts if a region uses any import not on its list. Banner updated.
+**Why it is critical rather than merely untested.** This is the only file in the project where a silent refactor can change numbers on screen with **zero signal from any gate**: `tsc` does not read it (`@ts-nocheck`) and no test exercises it. `calculateBonus` and `calculateWeightedVSF` are compensation-adjacent outputs. A typo in a threshold, an off-by-one in a day bucket, or a changed rounding rule would ship silently and plausibly.
 
-**Type fixes:**
+**Precisely what to do** (test-first; production code is not expected to change):
 
-- 14 × TS7053 — `METRIC_CONFIG[key]` sites in MainStatsRow wrapped as `(METRIC_CONFIG as Record<string, any>)[…]` (8 lines; lines 31/74 had 4 sites each — wrap-all-per-line, not per-error)
-- 6 × TS7006 — TopNavbar callbacks; paren-aware (5 wrapped `(q: any) =>`, 1 annotated `(event: any)`)
-- 8 × TS2322 — `style.opacity = 1` / `= 0.7` assignments quoted to `'1'`/`'0.7'` (CSSOM coerces identically at runtime); the 2 `style={{ opacity: ternary }}` object properties were left numeric (valid, not flagged)
-- 2 × TS2339 — `useRef(null)` → `useRef<any>(null)` so `.contains()` type-checks in the click-outside handler
-- 1 × TS6133 — removed dead `currentTab` local in FloorHeader (proved unused by both tsc and oxlint)
-- 6 imports became unused when the chrome left App.tsx (`SettingsMenu`, `TimeframeMenu`, `DonutChart`, `getDynamicTarget`, `METRIC_CONFIG`, `getDynamicMax`) — removed; lint warnings returned to the 123 baseline
+1. Add `src/features/dashboard/helpers.test.ts` (node:test + tsx, matching the 12 existing suites) — **target ~20–25 new tests, 181 → ~205**.
+2. Suggested cases: `calculateBonus` at each tier boundary and with missing/partial inputs; `aggregateRecords` on an empty array, a single row, and rows spanning multiple days/months (day-of-week bucketing is the classic off-by-one); `aggregateTeamMetrics` rollup totals matching the sum of its member agents (a property-style assertion, not a golden value); `calculateWeightedVSF` weighting math and division-by-zero when a denominator is 0; `calculateTrend` for flat, rising, falling and single-point series; `agentMatchesSearch` case-insensitivity and the `linkedEntities` name matching used by `handleAiLinkClick`; `formatName` / `shortenManagerName` on short, long and already-formatted names.
+3. Assert against **values computed by hand from the current implementation**, not against the implementation itself — write the expectation, then confirm the code agrees. If they disagree, stop: that is a live bug, and it belongs in this document, not in a test rewrite.
+4. Only after the tests are green, remove `// @ts-nocheck` from `helpers.ts` and fix what `tsc` reports. Expect the fixes to be type annotations only; treat any behavioral change as a defect to report.
+5. `emptyColumns.ts` (96 lines) is the same situation in miniature: 10 tests pass but the file is still `@ts-nocheck`. Remove the suppression in the same pass.
 
-**Parity audit: PASS** — diffed each new file against its origin region in HEAD (`0833dcf`): every changed hunk is one of the fixes above; zero unexplained deletions.
+**Do not** change any threshold, formula or rounding rule as part of this work. This item adds a safety net; it is not permission to tune the math.
 
-Verified: `npx tsc -b` exit 0, 181/181 tests, lint **0 errors / 123 warnings**, preview HTTP 200 with clean HMR, all 3 chrome modules + App transform with HTTP 200.
+**Verification.** 181 → ~205 tests, all green, **with zero production-code changes** in step 1–3. After step 4: `tsc -b` exit 0, lint 0 errors / ≤123. Audit note: once `helpers.ts` is type-checked, the `@ts-nocheck` count drops from 3,348 lines to ~2,990 across 7 files.
 
-Remaining phases: 2) `DASHBOARD_STYLES` → real CSS, 6) uiReducer → pure module + tests.
+---
+
+### Critical — verification notes
+
+- All findings above come from **static reading**, not from running the app. The four C4 failure modes are derived from the call graph; reproduce each in the browser before fixing so the fix is provable rather than assumed.
+- No code was changed while producing this section. The audit baseline it was measured against is recorded under **Structural Findings S1–S12** below: `tsc -b` exit 0, 181/181 tests, lint 0 errors / 123 warnings.
+- C1 and C4 share a subsystem and a fix session; C1's data-egress decision should be made *after* C4, because C4 is what currently stops the auto-firing effect at `hooks.ts:1449` from reaching a live endpoint.
+- The non-AI findings (S1–S12) are structural and can proceed independently at any point.
+
+## Architecture Fixes
+
+The two phases left in the 6-phase `App.tsx` split. Four phases of pure move-only extraction were completed first and their write-ups were removed from this file on 2026-09-29 (see commit history); these two are the ones that still carry real architectural change, so each one gets its own plan and its own verification gate. Current state: `App.tsx` is 386 lines (`MODAL_INITIAL`, `UI_INITIAL`, `export default function App()`, and the composition tree), and the two targets still live in the most awkward places possible — CSS inside a TS string in `src/app/`, and the UI reducer inline in a component body.
+
+---
+
+### How to work in this repository — read this before implementing anything below
+
+This subsection is aimed at whoever (human or model) picks up the next item. Everything below it was written by static reading, so **re-verify the line numbers before you touch anything** — they are accurate as of commit `26c5661` + the documentation changes of 2026-09-29, and this file is the only place they are recorded.
+
+**Baseline you are working against (2026-09-29).**
+
+| File | Lines | Notes |
+|---|---|---|
+| `src/App.tsx` | 386 | `@ts-nocheck`; only state + reducers + composition |
+| `src/features/dashboard/hooks.ts` | 1,486 | `@ts-nocheck`; `useDashboardData` is lines 267–1317, `useAiTools` 1419–1486 |
+| `src/features/dashboard/import/ImportPreviewModal.tsx` | 1,858 | `tsc`-checked; helpers 1–390, `ManageMemoryModal` 397–568, main component 580–1858 |
+| `src/features/dashboard/metrics.ts` | 391 | `@ts-nocheck`; 10 unconditional `useMemo`s |
+| `src/features/dashboard/helpers.ts` | 358 | `@ts-nocheck`; 244 lines of untested business math (see C3) |
+| `src/app/dashboardStyles.ts` | 43 | 16,916 bytes of CSS in a template literal |
+
+**The gate. A change is not done until all of these are true.**
+
+```bash
+npx tsc -b            # must exit 0   (note: `npx tsc -b | tail` HIDES the exit code — do not pipe it)
+timeout 180 npm test  # 181/181 at baseline; count may only go UP, and no existing test may be edited
+npm run lint          # 0 errors, and warnings <= 123 (the baseline; never above)
+```
+
+Then: preview returns HTTP 200 with no HMR errors, and **every touched module returns HTTP 200 when fetched through the Vite dev server** — `/src/App.tsx`, `/src/features/dashboard/hooks.ts`, and each new file. That last check is not optional; see trap 1.
+
+**Ten traps. Each of these has already cost time in this repo.**
+
+1. **`tsc` is blind to `App.tsx`, `hooks.ts`, `metrics.ts`, `helpers.ts`, `config.ts`, `emptyColumns.ts`, `shared.tsx`, `menus.tsx`** (3,348 lines, all `@ts-nocheck`). A clean `tsc -b` proves nothing about them. Verify those files by **requesting them through the Vite dev server** (`curl -s -o /dev/null -w "%{http_code}" http://localhost:5173/src/App.tsx`) and by reading the diff. This is how the latent `ReferenceError` in `chartActionPlanModal` was caught in Phase 1, and it is how you will catch your own.
+2. **The context value is `any`.** `DashboardContext = createContext<any>(null)` (`hooks.ts:263`) is what lets the 12 extracted view files typecheck without their own suppression. Consequence: **adding a member to a hook's return object is not checked against its consumers** — that is precisely how C4 shipped 11 undefined members across 21 call sites. If your change adds or removes a context member, grep every consumer.
+3. **The 37-key object returned at `hooks.ts:1308` is a public contract.** It is consumed by 8 tabs, 3 chrome components, the modal and `App`. Do not rename, reorder-with-meaning, or drop a key as part of a refactor. Adding is fine; removing is a breaking change that must be grepped first.
+4. **`str_replace`-style edits fail on the large `src/App.tsx`.** The working method is a **count-checked Node script**: assert the anchor appears exactly N times, compute the replacement, verify all post-conditions, *then* write. Several attempts have aborted with zero partial writes, which is the point of the pattern — keep it.
+5. **The `import/` folder is layered and acyclic, and must stay that way:** `types → (importPolicy | schemaNormalizer | mergeData | columnFingerprinter | granularityDetector | mappingMemory | csvParser | fileTypeDetector | sheetSelector | validation)` → `importService` → `ImportPreviewModal`. Pure functions only below the UI line. The **STANDING RULE** above governs this folder: column-mapping and alias logic belongs in `importPolicy.ts` and nowhere else.
+6. **There is no Tailwind.** `package.json` runtime deps are `react`, `react-dom`, `xlsx` and nothing else. The 189 "utility" classes are hand-rolled and live inside a TS template string. Do not add Tailwind, do not use `clsx`, and do not add a dependency to fix a style problem — Phase 2 is the answer.
+7. **S3 can produce stale data, not an error.** Memoizing the three hook returns is the highest-value change in this document and the only one whose mistake is invisible: a wrong dependency list simply keeps showing yesterday's numbers. Use a render counter and click through all 8 tabs plus a timeframe change.
+8. **Rules of hooks are not optional.** Two real violations were fixed during the earlier phases (early `return null` above 8 `useMemo`s in `MainModal`; `supName` read from a possibly-undefined supervisor). When you move a component, check that every early return sits *below* every hook.
+9. **The dev server is managed.** Do not start, stop or restart it; edit the files and the platform picks them up. Never `npm run dev` in the background.
+10. **Every timer that calls `setState` needs an owner.** S2 exists because 16 of them did not. If you add a `setTimeout`, add the `clearTimeout` in the same edit.
+
+**Suggested batching — one commit per line, each independently revertible.**
+
+| Batch | Items | Why grouped |
+|---|---|---|
+| 1 | **S5** (delete 6 dead files), **S10** (10 specifiers), **S8** (`asyncUtils`), **S9** (debug logs) | Zero-risk mechanical work; grep proves S5, tests prove the rest |
+| 2 | **S7.1** (duplicate `normalizeHeader`) | 15 minutes, byte-identical, proven by 60 existing tests |
+| 3 | **Phase 6** (`uiReducer` + tests) | Pure module + new tests; no consumer changes at all |
+| 4 | **S2** (`scheduleStatusClear`), **S12** (copy button) | Small, self-contained, both visible in the UI so verify by hand |
+| 5 | **S6** (storage module), **S11** (`buildAccountProfile`) | Touch persisted data; both need a manual round trip |
+| 6 | **S4** (ImportPreviewModal split) | Move-only; collect **S15/S16** inline while the file is open |
+| 7 | **S1** (`useDashboardData`, steps a→b→e→c→d as five commits) | Biggest win, five separately revertible commits |
+| 8 | **S13, S19, S21, S22** (render-path hot spots) | Each is a `useMemo`; land together, measure together |
+| 9 | **S3** (memoize hook returns) | Alone, with a render counter, after batch 7 |
+| 10 | **S14, S17, S18, S20, S23** (cosmetic/dup) | Opportunistic — fold into whatever you are already editing |
+| 11 | **Phase 2** step 1, then step 2 | Last: it is the only item no automated gate can verify |
+
+**Definition of done for a single item.** Copy this into your commit message and tick it:
+
+```text
+[ ] Anchors re-verified against the current file before editing
+[ ] New file(s) created; no existing file deleted except dead code (justified)
+[ ] No context member added/removed without grepping all 12 view files
+[ ] npx tsc -b exits 0
+[ ] npm test: no existing test edited, total count >= baseline
+[ ] npm run lint: 0 errors, warnings <= 123
+[ ] Every touched module returns 200 through the Vite dev server
+[ ] Origin-diff audit: diff new file against its origin region; every hunk is a
+    documented fix, nothing unexplained
+[ ] This document updated (item struck, line count and file list corrected)
+```
+
+**Updating this document when you finish an item.** Per the Working rule at the end of this file: delete the item's entry rather than ticking it, correct any line counts that changed, and if the item was harder or easier than stated, leave one line saying which — that is the only feedback loop this file has.
+
+### Phase 2 — `DASHBOARD_STYLES` → real CSS
+
+> Status: **📋 Open** (the four completed extraction phases were removed from this file on 2026-09-29; this and Phase 6 are the remainder)
+> Approach: **byte-for-byte CSS move first, structure second** — no visual change is allowed in the same step as the reorganization.
+
+**Problem.** `src/app/dashboardStyles.ts` (43 lines, 16,916 bytes) is a TypeScript module whose only export is a template literal holding 16,790 bytes of CSS: ~9.6 KB of dashboard component rules (`.analyst-dashboard`, `.top-navbar`, `.glass-panel`, `.roster-table`, `.metric-card`, `.main-modal`, `.chat-*`, `.heatmap-table`, `.range-slider`, …) plus ~7.2 KB of a **hand-rolled Tailwind subset — 189 utility classes** (`.flex`, `.gap-4`, `.text-slate-700`, `.rounded-xl`, `.grid-cols-auto-110`, `.animate-slide-down`, …). It is injected at `App.tsx:347` via `<style dangerouslySetInnerHTML={{ __html: DASHBOARD_STYLES }} />`, so:
+
+- the whole stylesheet is re-parsed by the browser on every render of `App` (a 17 KB style node rebuilt per keystroke-driven state change),
+- CSS lives in a `.ts` file — no syntax highlighting, no PostCSS/autoprefixer, no devtools "edit rule" workflow, and it is invisible to any CSS tooling in the project,
+- `dangerouslySetInnerHTML` on a `<style>` tag is a permanent false-positive for XSS/security scans, and it can only ever be mounted from inside React.
+
+**Goal.** Move the bytes into a real stylesheet that the bundler owns, then (separate step) stop pretending this project ships Tailwind.
+
+**Scope — step 1 (mechanical, no behavior change).**
+
+1. Create `src/styles/dashboard.css` containing the CSS verbatim (component block, then the `/* UTILITIES */` block), keeping the two `@keyframes` (`slideDown`, `spin`).
+2. Import it in `src/main.tsx` next to the existing `import './styles/index.css'` and `import './features/dashboard/import/ImportPreviewModal.css'` — the project's established pattern for global CSS.
+3. Delete `src/app/dashboardStyles.ts` and the `<style dangerouslySetInnerHTML …>` line in `App.tsx`, plus the now-dead import.
+4. Guard: the extracted file must be byte-identical to the current template literal (a Node script that reads the literal, writes the file, and diffs the CSS text before/after is the way to prove it; assert 0 byte delta and 2 `@keyframes` present).
+
+**Scope — step 2 (only after step 1 is green and merged).** Two sub-decisions, both worth an explicit call:
+
+- **Utility block:** 189 custom classes that shadow nothing today but are a maintenance trap. Either keep them verbatim in a clearly labelled `dashboard-utilities.css`, or replace the usages with real utility classes from the project's existing tokens. Sub-replacement is the higher-value, higher-risk option — it is a visual-diff job, not a move.
+- **Name collisions:** `.badge`, `.close-btn`, `.gemini-btn`, `.card-daily` are generic enough to be at risk from other stylesheets. Scope them under `.analyst-dashboard` (or rename with a `ds-` prefix) as part of the move so the utilities can never bleed onto the landing page.
+
+**Risks / parity checks.** Cascade order changes (a `<style>` in the body currently wins over `index.css` loaded in `<head>` in some cases and loses in others — moving to a bundled stylesheet flips that), so verify: navbar sticky/z-index (`z-40` navbar vs `z-50` roster header vs `z-90` modal backdrop), the `::-webkit-scrollbar` rules, `min-width:800px` on `.roster-table` inside `.table-scroll-area` horizontal scroll, and the `850px` `.stats-row` breakpoint. A visual screenshot pass at desktop + mobile widths is required, not optional — this is the one phase where "tsc + tests" proves nothing.
+
+**Expected file outcomes.**
+
+| File | Change |
+|---|---|
+| `src/styles/dashboard.css` | **new** — 41 lines, ~16.8 KB, CSS extracted verbatim |
+| `src/main.tsx` | +1 import |
+| `src/app/dashboardStyles.ts` | **deleted** |
+| `src/App.tsx` | −1 import, −1 `<style>` element (386 → 384 lines) |
+
+**Gate.** `npx tsc -b` exit 0, `npm test` 181/181, lint at or below the 123-warning baseline, preview 200 with clean HMR, Vite transform 200 for `main.tsx` and `App.tsx`, plus a visual comparison of every rule group listed above.
+
+---
+
+### Phase 6 — `uiReducer` → pure module + tests
+
+> Status: **📋 Planned** — lowest risk of the two, and the one that pays off immediately for correctness.
+
+**Problem.** `App.tsx` still holds the whole UI state machine inline in the component body:
+
+- `MODAL_INITIAL` (`App.tsx:78`) — 5 modal fields (`activeModal`, `selectedSupervisorObj`, `expandedBurnoutAgentId`, `highlightedAgentId`, `supTab`),
+- `UI_INITIAL` (`App.tsx:83`) — 12 display fields (`mainTab`, `activeMainAiTool`, `activeSupAiTool`, `showColMenu`, `showModalColMenu`, `showTimeframeMenu`, `runChartMetric`, `isCumulative`, `heatmapViewType`, `outlierMode`, `outlierLevel`, `apprenticeViewMode`),
+- the reducers themselves, written as anonymous merge lambdas: `React.useReducer((s, a) => ({ ...s, ...a }), MODAL_INITIAL)` (`:125`) and the same shape for `UI_INITIAL` (`:137`),
+- 17 setter shims (`setMainTab`, `setShowColMenu`, …) that exist only to call `dispatchUi({ key: v })`.
+
+Because the state, the reducer, and the setters are all declared inside `App()`, and `App.tsx` is `@ts-nocheck`, none of the 17 UI transitions are typed, none are tested, and a typo in a key (`showCollMenu`) is a silent no-op at runtime instead of a type error. The merge-reducer shape also has no place to grow: any future transition logic (e.g. "switching `mainTab` must close `showColMenu` and reset `activeMainAiTool`") has nowhere to live except inside an inline lambda that no test can reach.
+
+**Goal.** Make the UI state a first-class, typed, testable module — the same move that made `importPolicy.ts` the single home for mapping fixes.
+
+**Scope.**
+
+1. New module `src/features/dashboard/uiReducer.ts` (checked, no `@ts-nocheck`) exporting:
+   - `MODAL_INITIAL`, `UI_INITIAL` (moved verbatim),
+   - `ModalState`, `UiState` interfaces plus an `UiPatch`/`ModalPatch` partial type so a dispatch is `{ mainTab?: TabId }` rather than `any`,
+   - `modalReducer(state, patch)` and `uiReducer(state, patch)` as named exported functions (same `{ ...s, ...a }` semantics — a move, not a redesign), and
+   - `resetAll` / `resetUi` constants so `dispatchModal(MODAL_INITIAL)` at `App.tsx:210` reads as a named reset.
+2. `App.tsx`: import them, drop the two `const … INITIAL` blocks, pass the named reducers to `useReducer`, and delete the `import React, { … }` dependency on `React.useReducer` in favor of the already-imported `useReducer` (or keep `React.useReducer` — either is fine, but only one form should survive).
+3. Keep the 17 setter shims where they are for now: they are part of the context contract consumed by `views/tabs/*`, `views/modals/*`, and `views/chrome/*`, and removing them would be a Phase-7-sized change.
+4. Remove the now-stale `// NOTE: keep reducer state kept here so …` comment and refresh the `FILE STRUCTURE` banner at the top of `App.tsx`.
+
+**New tests** — `src/features/dashboard/uiReducer.test.ts`, `node:test` + `tsx` (matches the 10 existing `*.test.ts` suites and the `npm test` glob), covering:
+
+- `UI_INITIAL` / `MODAL_INITIAL` key sets are exactly the documented 12 / 5 fields (guards against silent drift),
+- patching one key leaves the other 11 / 4 untouched (the regression that the inline spread is supposed to guarantee),
+- patching to a value equal to the current value returns a new state object but identical field values (documents the re-render semantics the `uiState` `useMemo` depends on),
+- resetting via `UI_INITIAL` returns every field to its default,
+- an unknown key is rejected (once the patch type is typed) rather than silently added,
+- the reducer never mutates its input state object.
+
+Target: **+10 to 12 tests**, taking the suite from 181 to ~193. No existing test may change.
+
+**Expected file outcomes.**
+
+| File | Change |
+|---|---|
+| `src/features/dashboard/uiReducer.ts` | **new** — ~60 lines (initial state, types, 2 reducers, reset constants) |
+| `src/features/dashboard/uiReducer.test.ts` | **new** — ~110 lines, 10–12 tests |
+| `src/App.tsx` | −14 lines of state defaults/reducer defs, +1 import, banner refresh (386 → ~372) |
+
+**Gate.** `npx tsc -b` exit 0, `npm test` at the new count with 0 failures, lint 0 errors and no new warnings, preview 200, Vite transform 200 for `uiReducer.ts` + `App.tsx`, and an **origin-diff parity audit** of the moved lines against `26c5661` — every hunk must be either a name change or the documented removal, nothing else.
+
+---
+
+**Phase order.** Phase 6 first: it is pure, testable, and independent of the visual work. Phase 2 last: it is the only phase where correctness cannot be established by `tsc`/tests, and it is far easier to review once `App.tsx` is down to state + composition.
+
+---
+
+### Structural Findings S1–S12 — whole-codebase audit (2026-09-29, no code changes)
+
+Read-only sweep of all 64 files in `src/`. Baseline at time of audit: `npx tsc -b` exit 0 · `npm test` 181/181 · `npm run lint` **0 errors / 123 warnings** (53 `no-unused-vars`, 38 `react-hooks/exhaustive-deps`, 13 `no-useless-escape`, 9 `set-state-in-effect`, 4 `only-export-components`, 2 `no-this-alias`, 2 `react(refs)`, 1 `no-constant-condition`, 1 `no-constant-binary-expression`). 17,489 lines total, **3,348 of them (21%) under `@ts-nocheck`** across 8 files: `hooks.ts` 1,486 · `metrics.ts` 391 · `App.tsx` 386 · `helpers.ts` 358 · `shared.tsx` 274 · `config.ts` 234 · `menus.tsx` 123 · `emptyColumns.ts` 96.
+
+These are **in addition to** Phases 2 and 6 above, and they are independent of them — S1–S12 can be executed in any order relative to the two phases.
+
+#### S1 — `useDashboardData` is a 1,051-line hook · **HIGH (structure)**
+
+**Evidence.** `src/features/dashboard/hooks.ts:267–1317` — a single function body containing 16 `useState`, 3 `useEffect`, 15 `useCallback`, 2 `useMemo`, 18 `setTimeout`, and a 37-key return object (`:1308–1317`). Splitting `App.tsx` to 386 lines moved the real monolith one level down.
+
+**Problem.** One hook owns upload, drag-drop, multi-file, automatic import, batch import, mapping review, import preview, account profile, rate-merge style, and all four time selectors. There is no seam to test any of it, and every unrelated feature shares one failure domain (a throw in the auto-import path unmounts the dashboard).
+
+**Precisely what to do** — extract in this order, each a move-only step verified by the standard gate (`tsc -b` 0, 181/181, lint ≤123, preview 200, origin-diff parity audit):
+
+| # | Region (current lines) | Extract to | Notes |
+|---|---|---|---|
+| a | 268–309 (16 `useState`, `accountProfile`, `loadedMonths`) | `src/features/dashboard/state.ts` → `useDashboardDataState()` | Pure state + initializers; takes `persistedState` as an argument. No behavior change. |
+| b | 370–402 (both `localStorage` write effects + `resetDashboard` at 334) | `src/features/dashboard/persistence.ts` → `useDashboardPersistence(state)` | Must also absorb S6 (single storage module). |
+| c | 403–574 `handleMultipleFiles` (172 lines) + 737–857 `handleAutomaticImport` (121) + 863–921 `continueAutomaticImport` / `handleAutomaticFileUpload` | `src/features/dashboard/import/uploadFlow.ts` → `useUploadFlow(deps)` | Largest pair; the automatic-import state machine lives here. |
+| d | 575–736 `applyBatchImport` (162) + 922–1049 `confirmImportPreview` (128) + 1050–1179 `processFile` (130) | `src/features/dashboard/import/batchImport.ts` → `useBatchImport(deps)` | `processFile` owns steps 1–5 of the pipeline (comments at 940/1001/1016/1034) — keep those comments with the code. |
+| e | 1217–1306 `agentDataCache` + `getAgentDataForTimeframe` + `getTopHeadlineMonth` (1302) | `src/features/dashboard/timeframe.ts` → `useTimeframeSelectors(state)` | Pure derivation over `historicalData`; the most testable slice — add tests in the same step. |
+
+`useDashboardData` then becomes a ~60-line composition of (a)–(e) that keeps the identical 37-key return object, so **no consumer changes**. Order matters: do (a) and (b) first (they unblock everything), then (e) (pure, testable), then (c) and (d).
+
+**Do not** change the return key names, add new context layers, or move keys into `App.tsx` — that would re-inflate the file this program just shrank.
+
+**Verification.** Existing 181 tests unchanged; add ~12 tests for (e) covering `getAgentDataForTimeframe` across the four timeframes × `selectedDow`/`selectedWeek`/`selectedMonth` boundaries. Origin-diff audit must show zero logic changes.
+
+#### S2 — 16 hand-rolled toast timers, none cleared on unmount · **MEDIUM (correctness + duplication)**
+
+**Evidence.** `setTimeout(() => setUploadStatus(null), N)` appears **16 times** inside `useDashboardData` at lines **442, 544, 560, 579, 596, 734, 839, 848, 895, 1011, 1044, 1076, 1112, 1130, 1166, 1175** (22 total `setUploadStatus(null)` calls) with four ad-hoc durations: 9× 5000 ms, 3× 2000 ms, 2× 4000 ms, 2× 6000 ms. `hooks.ts` declares only two refs (`:304 importAbortControllerRef`, `:305 onImportColumnsScanRef`) — **no timer ref exists**, so a timer fired after unmount still calls `setState` on a dead component.
+
+**Precisely what to do.** In the S1(a) module, add:
+
+```ts
+// one timer, one owner
+const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+const scheduleStatusClear = useCallback((ms = 5000) => {
+  if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
+  statusTimerRef.current = setTimeout(() => setUploadStatus(null), ms);
+}, []);
+useEffect(() => () => { if (statusTimerRef.current) clearTimeout(statusTimerRef.current); }, []);
+```
+
+Then replace all 16 sites with `scheduleStatusClear(2000 | 4000 | 5000 | 6000)` — **keep each site's existing duration exactly**; do not normalize them in this change. Make the cleanup effect the one unmount-time cleanup in the hook (note: `importAbortControllerRef` at `:304` is not aborted on unmount either — audit that in the same step and abort it there if it is genuinely needed).
+
+**Verification.** `grep -c "setTimeout(() => setUploadStatus(null)" src/features/dashboard/hooks.ts` → must be `0`; `scheduleStatusClear` call count → 16; behavior unchanged (toast still clears after the same delay). This change is visible in the UI, so verify by triggering one upload path per duration in the browser.
+
+#### S3 — The context memo can never hit; all 12 view components re-render per keystroke · **HIGH (performance)**
+
+**Evidence.** `App.tsx:254–257` wraps `ctxValue` in `useMemo` with deps `[dashData, metrics, aiTools, uiState, uiHandlers, normalizedAccountName, resetToLanding]`. But all three hook returns are **fresh object literals**: `hooks.ts:1308` (`useDashboardData`), `hooks.ts:1471` (`useAiTools`), `metrics.ts:380` (`useDashboardMetrics`). None is wrapped in `useMemo`, so three of the seven deps change identity on every render and **the memo never hits**. Amplifiers: the 300 ms debounced search input (`App.tsx:175–181`) and 10 unconditional `useMemo`s in `metrics.ts` that compute roster, pareto, burnout, DOW and chart data for the seven tabs that are *not* mounted (`App.tsx:369–376` mounts exactly one).
+
+**Precisely what to do** (three small, independent edits — do them in this order and measure after each):
+
+1. **Stabilize `dashData`.** Wrap the return at `hooks.ts:1308` in `useMemo` with deps equal to the values actually used. The object has 37 keys; the safe mechanical version is to memoize on the full state list already visible in the hook. Verify no consumer mutates the returned object (grep for `dashData.x =` — must be 0 hits) before memoizing; if any consumer mutates, fix the consumer, do not skip the memo.
+2. **Stabilize `metrics` and `aiTools`.** Same treatment at `metrics.ts:380` and `hooks.ts:1471`. `useAiTools`'s value is the easiest win: most of its 30+ keys are `useState` primitives, so the memo deps are the state list, and the functions it returns are already `useCallback`-stable — verify that before memoizing, otherwise the memo will still miss.
+3. **Do not add `mainTab` gating to `metrics.ts` in this change.** Gating the 10 memos on the active tab is a real follow-up win, but it changes what is computed and can surface latent ordering bugs; land 1–2, measure, then decide.
+
+**Verification.** Add a temporary render counter to one extracted tab (e.g. `FloorRosterTab`) and confirm the count no longer increments on a search keystroke. Then: `tsc -b` 0, 181/181, lint ≤123, preview 200. **Risk: MEDIUM** — this is the one item in S1–S12 where a wrong dependency list causes *stale* data rather than a crash, so the render-counter check and a manual pass over all 8 tabs (each must still show live data after a timeframe/month change) are mandatory.
+
+#### S4 — `ImportPreviewModal.tsx`: 1,858 lines, ~1,278 of them one component · **HIGH (structure)**
+
+**Evidence.** Layout of `src/features/dashboard/import/ImportPreviewModal.tsx`: pure helpers `1–390` (well-factored, 14 tests) · `ManageMemoryModal` `397–568` (172 lines) · **`ImportPreviewModal` `580–1858` (1,278 lines)** with 11 `useState`, 6 `useEffect` (4 of which call `setState` synchronously — the source of the 9 `set-state-in-effect` warnings), 5 `useMemo`, 1 `useCallback`, and a large JSX body.
+
+**Precisely what to do** — three move-only extractions into the same folder (keep the `.tsx` for components, `.ts` for logic — do not create a new feature folder, and do not touch `importPolicy.ts`):
+
+| # | Region | Target | Notes |
+|---|---|---|---|
+| a | `1–390` helpers (keep exports as-is) | `src/features/dashboard/import/previewState.ts` | Pure move — `getCanonicalFieldLabel`, `buildInitialSheetStates`, `findMatchingSheets`, `applyMappingsToSheets` and friends. Re-point the 14 existing tests at the new path in the same commit. |
+| b | `397–568` `ManageMemoryModal` | `src/features/dashboard/import/ManageMemoryModal.tsx` | Self-contained dialog; own file also removes one `only-export-components` warning. |
+| c | `580–1858` internals → 3 hooks | `src/features/dashboard/import/useImportPreview.ts` | Split as: sheet/column state + the 3 mapping handlers (`handleColumnMapChange:687`, `handleBulkIgnoreUnmapped:767`, `handleIncludeSkippedSheet:662`); granularity + CX/additional-metric config (the 4 `setState`-in-effect sites at `602/613/621/639`); commit/confirm (`handleCommit`, `handleGranularityChange:674`). Leave the JSX in place. |
+
+**Do not** "fix" the 4 `setState`-in-effect warnings while moving them — moving first, then addressing the effects as a separate change, keeps the diff reviewable. Two of the six effects derive config from `sheetStates` and should ultimately become derived values (computed during render) rather than effects.
+
+**Verification.** `tsc -b` 0, 181/181 (14 of them re-pointed, none rewritten), lint ≤123 with **fewer** warnings (expect −1 `only-export-components`), preview 200, Vite transform 200 for all 4 touched modules, origin-diff parity audit against `26c5661`.
+
+#### S5 — Dead modules and unused barrels · **LOW (pure deletion)**
+
+**Evidence.** Verified zero importers for each:
+
+| Path | Lines | Content | Action |
+|---|---|---|---|
+| `src/features/dashboard/index.ts` | 5 | barrel → config, helpers, hooks, metrics, import | **delete** (0 importers — grep `from './features/dashboard'` returns nothing) |
+| `src/features/dashboard/import/index.ts` | 15 | barrel → 15 modules incl. the `ImportPreviewModal` **component** | **delete, but not free** — ⚠ see the correction below. Also a second Fast-Refresh boundary: a barrel that mixes a component with pure functions |
+| `src/features/dashboard/reporting/index.ts` | 1 | `export const reportingSummary = () => 'reporting'` | **delete** (placeholder, 0 importers) |
+| `src/features/dashboard/insights/index.ts` | 1 | `export const dashboardInsightSummary = () => 'insights'` | **delete** (placeholder, 0 importers) |
+| `src/features/dashboard/upload/index.ts` | 3 | `uploadDashboardFile` returns the file unchanged | **delete** (0 importers). If the folder is expected to grow, delete only the file |
+| `src/features/accountSetup/metric-detection-engine.ts` | 6 | comment-only tombstone, 0 code lines | **delete** (the comment it carries is already in `README.md`) |
+
+**⚠ Correction (2026-09-29).** An earlier revision of this entry claimed every file had zero importers. That is wrong for **`import/index.ts`**: `src/features/dashboard/hooks.ts:33–45` imports **11 named symbols** from the `./import` barrel. Deleting the barrel without rewriting that import breaks the single largest file in the app. The other five are genuinely unreferenced.
+
+**Precisely what to do.** Five files delete outright. The sixth requires a de-barrelling edit first — replace the single import at `hooks.ts:33–45` with direct module paths:
+
+| Symbol (all currently via `./import`) | New source |
+|---|---|
+| `convertWorkbookToSheets`, `convertWorkbookToSheetsViaWorker` | `./import/workbookLoader` |
+| `selectSheets`, `selectSheetsWithDetails` | `./import/sheetSelector` |
+| `parseCsvFileText` | `./import/csvParser` |
+| `aggregateTransactions` | `./import/aggregateTransactions` |
+| `validateNormalizedRows` | `./import/validation` |
+| `mergeNormalizedRows` | `./import/mergeData` |
+| `runImportService` | `./import/importService` |
+| `normalizeCellValue`, `normalizeHeaderToField` | `./import/schemaNormalizer` |
+
+Then `grep -rn "from './import'" src` must return **zero** hits before the file is deleted, and the six deletions follow. Use the module-boundary convention already in the folder: no new import edges, no new exports, no re-exports to keep the barrel alive.
+
+**Verification.** `tsc -b` 0, 181/181 (the import pipeline is covered by 10 of the 12 test suites), lint ≤123, preview 200, and `/src/features/dashboard/hooks.ts` returns 200 through the dev server — it is `@ts-nocheck`, so that request is the only thing that proves the de-barrelling resolves.
+
+#### S6 — Four incompatible `localStorage` namespaces, no migration path · **MEDIUM (data risk)**
+
+**Evidence.** Keys are hardcoded string literals in three files, with three different safety strategies:
+
+| Key | File:line | Strategy |
+|---|---|---|
+| `cs-ops:account-profile:<name>` | `account-profile-storage.ts:9,23,29` | raw `localStorage.*` |
+| `cs-ops:calculation-style:<name>` | `account-profile-storage.ts:10,47,52` | raw `localStorage.*` |
+| `dashboard_column_mapping_memory_v1` | `mappingMemory.ts:14` | full storage shim + in-memory fallback (`:17–40`) |
+| `customer-service-dashboard-state-v1` | `hooks.ts:61,232,376` | try/catch + `console.warn` |
+| `customer-service-dashboard-view-v1` | `hooks.ts:66,241` | try/catch + `console.warn` |
+
+**Precisely what to do.** Create `src/features/dashboard/storage.ts` exporting one `safeStorage` object (adopt `mappingMemory.ts`'s shim verbatim — it is the only complete implementation) and one `storageKeys` object. Change all three files to import it. **Do not rename any key in this step** — existing users have data under the current names and there is no migration code; renaming without a migration silently discards every learned mapping and account profile. Namespace adoption (`cs-ops:`) is a separate, later decision.
+
+**Verification.** `grep -rn "localStorage" src --include=*.ts --include=*.tsx` must show direct access in `storage.ts` and `storageKeys` only (test mocks excepted). `mappingMemory.test.ts` (13 tests) and `emptyColumns`/`monthSelection` suites must pass unchanged — they already mock `globalThis.localStorage`, which is the behavior to preserve.
+
+#### S7 — Header normalization exists in three variants; two Excel-serial thresholds disagree · **MEDIUM (STANDING RULE domain)**
+
+**Evidence.**
+- `importPolicy.ts:565` `export const normalizeHeader` and `schemaNormalizer.ts:11` `const normalizeHeader` are **byte-identical implementations** (same two camelCase regexes, lowercase, strip non-alphanumerics) — pure duplication inside the exact domain the STANDING RULE governs.
+- `ImportPreviewModal.tsx:336` adds a third, weaker variant (`.map(m => m.normalized.toLowerCase().trim())`) for sheet matching.
+- `EXCEL_SERIAL_MIN` is `1` at `importPolicy.ts:1267` but `35000` at `columnFingerprinter.ts:30` (with `MAX = 60000` in both). Both carry explanatory comments and the divergence is *arguably intentional* (convert-vs-classify), but it means a 5-digit serial in 1–34999 is converted to a date by the policy and is **not** classified as date-like by the fingerprinter — and neither file reveals the other.
+
+**Precisely what to do.**
+1. In `schemaNormalizer.ts`, delete the private copy and import the exported one from `./importPolicy` — **zero behavior change, byte-identical function**. Add a one-line comment pointing at `importPolicy` as the single owner of header normalization.
+2. Leave `ImportPreviewModal.tsx:336` alone (it normalizes already-normalized field names — different input, different contract). Add a comment saying so, so the next reader does not "fix" it.
+3. For the thresholds: **do not unify them in this step.** Instead, cross-reference the two constants in comments and record the known divergence window in this file. Unifying is a *behavioral* change to date detection and needs its own test pass (importPolicy has 42 tests; add cases for serials 1, 10000, 34999, 35000, 45383, 60000, 60001 to `importPolicy.test.ts` **before** touching either constant).
+
+**Verification.** `tsc -b` 0, 181/181 — all 42 `importPolicy` tests and 18 `columnFingerprinter` tests must pass unchanged, which is what proves step 1 was byte-identical.
+
+#### S8 — `createAbortError` ×3, `yieldToEventLoop` ×2 · **LOW (duplication)**
+
+**Evidence.** `createAbortError`: `importService.ts:27`, `workbookLoader.ts:39`, `workbookWorker.ts:63`. `yieldToEventLoop`: `importService.ts:25`, `workbookLoader.ts:29`.
+
+**Precisely what to do.** Extract both into `src/features/dashboard/import/asyncUtils.ts`. The `workbookWorker.ts` copy **must stay inline** — the worker is instantiated from a blob/URL and must not gain an import edge; leave a comment there saying so. Net result: 1 shared module, 2 call sites converted, 1 deliberate inline copy.
+
+**Verification.** 181/181 (16 `workbookLoader` tests exercise the worker bridge and will catch a broken edge), `tsc -b` 0.
+
+#### S9 — 13 leftover debug logs in the production import path · **LOW (hygiene)**
+
+**Evidence.** `workbookLoader.ts:437, 482, 486, 488, 498, 520, 531, 560, 563, 568` (labels `[WORKER-LOADER]`, `[DEBUG 3d…3i]`) and `workbookWorker.ts:223, 260, 263` (labels `[WORKER]`). They fire on every workbook import. Meanwhile legitimate diagnostics use `console.warn` in `mappingMemory.ts:78,95,314` and `hooks.ts:249,254,377` — so debug and real warnings are indistinguishable.
+
+**Precisely what to do.** Delete the 13 debug logs. For the three that carry operational value (`workbookLoader.ts:437` timing, `:520` worker error, `:531` `onerror`) keep them as `console.warn` with the `[import]` prefix; for the `[DEBUG 3*]` trace lines delete outright. Do not add a logging framework in this step — the goal is that a user reporting a failed import sees warnings, not a 13-line trace.
+
+**Verification.** `grep -c "DEBUG 3" src/features/dashboard/import/workbookLoader.ts` → `0`. 181/181, preview 200, and one real workbook import exercised in the browser to confirm no diagnostics were lost.
+
+#### S10 — Mixed module specifier conventions · **LOW (consistency)**
+
+**Evidence.** 159 extensionless relative imports vs **10 with an explicit `.ts` extension**, all inside `import/`: `./schemaNormalizer.ts` ×3, `./importPolicy.ts` ×2, `./columnFingerprinter.ts` ×2, `./workbookLoader.ts`, `./validation.ts`, `./sheetSelector.ts`, `./mergeData.ts`, `./mappingMemory.ts`, `./granularityDetector.ts`, `./aggregateTransactions.ts`.
+
+**Precisely what to do.** Drop the 10 extensions (Vite and `tsc` both resolve extensionless, and it matches the other 159). **Exception:** if any of those 10 are dynamic `import()` calls for the worker, leave them and comment why. Purely mechanical — no behavior change.
+
+**Verification.** `tsc -b` 0, 181/181 (the 10 sites are all in tested modules), lint unchanged.
+
+#### S11 — `AccountProfile` shape defined twice · **MEDIUM (data contract)**
+
+**Evidence.** `src/features/accountSetup/account-profile-schema.ts` (235 lines, 17 exports) is the schema; `buildAccountProfile` at `ImportPreviewModal.tsx:201–274` (74 lines) constructs the object inline in the modal. A persisted, schema-versioned object with two sources of truth.
+
+**Precisely what to do.** Move `buildAccountProfile` into `account-profile-schema.ts` as a pure builder next to the type it produces, and export it. This keeps the STANDING RULE intact (no mapping/alias logic is involved — it is object assembly from already-resolved fields). If any of its 74 lines turn out to be *policy* decisions (defaults, inferences), those lines belong in `importPolicy.ts` per the standing rule — audit the body before moving and split accordingly. Re-point the single import site; `ImportPreviewModal.test.ts` must pass untouched.
+
+**Verification.** `tsc -b` 0, 181/181, preview 200, and a full import → account-profile save → reload round trip in the browser (this object is persisted, so a silent shape change is the risk).
+
+#### S12 — Copy-to-clipboard button duplicated in 4 tabs · **LOW (duplication)**
+
+**Evidence.** Identical `navigator.clipboard.writeText(aiTools.X)` + `.gemini-btn btn-alt` button in `FloorAnalysisTab.tsx`, `FloorApprenticeTab.tsx:157`, `FloorCorrelationTab.tsx:22`, `FloorDowTab.tsx:24`. None of the four handles clipboard-permission failure, so a denied permission is silent.
+
+**Precisely what to do.** Add `<CopyReportButton text={aiTools.correlationReport} label="Copy" />` to `src/components/shared.tsx` (where `FormattedText` and `GeminiLoader` already live) with a `useState` "Copied ✓" confirmation that resets after ~1.5 s, plus a `catch` that surfaces "Copy failed — select the text manually". Replace the 4 sites. Note `shared.tsx` is `@ts-nocheck` — the new component should be typed explicitly anyway, and that file is already a candidate for having the suppression removed.
+
+**Verification.** `tsc -b` 0, 181/181, lint ≤123, and a manual click in each of the 4 tabs including a denied-permission case.
+
+---
+
+### Implementation notes — exact contracts for the five highest-risk items
+
+The entries above say *what* to change. This subsection says *how*, concretely enough to implement without re-deriving it. Each is still a **move-only** change: if you find yourself editing logic rather than relocating it, you are out of scope — stop and re-read the entry.
+
+---
+
+#### S1 — `useDashboardData` split: module contracts
+
+Five new files, five commits, in this order. The composition hook at `hooks.ts:267` keeps its name, its 3 parameters and its **exact 37-key return object** (`hooks.ts:1308–1317`) — that object is the contract 13 consumer files depend on (trap 3).
+
+**Step (a) → `src/features/dashboard/state.ts`**
+
+```ts
+// no @ts-nocheck. Takes no arguments; returns the 16 state values + their setters.
+export const useDashboardDataState = (persistedState: PersistedState | null) => ({
+  activeTimeframe, setActiveTimeframe, selectedWeek, setSelectedWeek,
+  selectedDate, setSelectedDate, selectedDow, setSelectedDow,
+  selectedMonth, setSelectedMonth,          // already the useCallback wrapper from :287
+  selectedMonthChosen, agents, setAgents, supervisors, setSupervisors,
+  oamName, setOamName, historicalData, setHistoricalData,
+  hasUploadedData, setHasUploadedData, uploadStatus, setUploadStatus,
+  batchImportSummary, setBatchImportSummary, importPreview, setImportPreview,
+  mappingReview, setMappingReview, pendingAutomaticImport, setPendingAutomaticImport,
+  pendingAutomaticFiles, setPendingAutomaticFiles,
+  rateMergeStyle, setRateMergeStyleState, accountProfile, hasSavedAccountProfile,
+  loadedMonths,
+});
+```
+
+Move verbatim from `hooks.ts:268–309`. **Keep `setSelectedMonth`'s wrapper** (`:287`, the one that also flips `selectedMonthChosen`) intact — it is not a plain `setState` and is the one place where two states must change together.
+
+**Step (b) → `src/features/dashboard/persistence.ts`** (also does S6 step 1)
+
+```ts
+export const useDashboardPersistence = (state: {
+  agents, supervisors, oamName, historicalData, hasUploadedData,
+  activeTimeframe, selectedWeek, selectedDate, selectedDow,
+  selectedMonth, selectedMonthChosen,
+}) => void;   // two effects today: the heavy payload (:370-378) and the view payload (:381+)
+```
+
+Move the two write effects verbatim. Keep the two key names **unchanged** — existing users have data under them and there is no migration code (S6).
+
+**Step (c) → `src/features/dashboard/import/uploadFlow.ts`**
+
+```ts
+export const useUploadFlow = (deps: {
+  accountName, setStatus, scheduleStatusClear, setPendingAutomaticImport,
+  setPendingAutomaticFiles, setBatchImportSummary, setMappingReview,
+  setRateMergeStyle, setImportPreview, onImportColumnsScan, importAbortControllerRef,
+}) => ({ handleFileUpload, handleFileDrop, handleMultipleFiles,
+         handleAutomaticImport, handleAutomaticFileUpload, continueAutomaticImport });
+```
+
+Sources: `handleMultipleFiles` `:403–574`, `handleAutomaticImport` `:737–857`, `handleAutomaticFileUpload` `:913–921`, `continueAutomaticImport` `:863–912`, `handleFileUpload` `:1180–1196`, `handleFileDrop` `:1197–1216`. Create the file in `import/` **only if** it imports nothing from `../hooks`; otherwise keep it at `src/features/dashboard/uploadFlow.ts` to avoid a cycle (trap 5). **It will** import `./import/*` — that is allowed and already the pattern.
+
+**Step (d) → `src/features/dashboard/import/batchImport.ts`**
+
+```ts
+export const useBatchImport = (deps: { /* same shape as (c) plus setImportPreview, importPreview */ }) =>
+  ({ applyBatchImport, confirmImportPreview, processFile });
+```
+
+Sources: `applyBatchImport` `:575–736`, `confirmImportPreview` `:922–1049`, `processFile` `:1050–1179`. **Carry the numbered pipeline comments with the code** — the comments at `:940`, `:1001`, `:1016`, `:1034` mark steps 1–5 of the import pipeline and are the only documentation of that ordering.
+
+**Step (e) → `src/features/dashboard/timeframe.ts`** *(do this one second — it is pure, so it is testable)*
+
+```ts
+export const useTimeframeSelectors = (deps: {
+  historicalData, hasUploadedData, activeTimeframe, selectedWeek,
+  selectedDow, selectedMonth, agents,
+}) => ({ agentDataCache, getAgentDataForTimeframe, getTopHeadlineMonth, monthLabel, handleDateChange });
+```
+
+Sources: `agentDataCache` `:1217–1253`, `getAgentDataForTimeframe` `:1254–1301`, `getTopHeadlineMonth` `:1302–1306`. This is the only step that is a **pure derivation**, so add its tests in the same commit: at least 4 timeframes × the `selectedDow` / `selectedWeek` / `selectedMonth` boundaries.
+
+**Post-conditions for every step.** `hooks.ts` line count drops by exactly the moved block; the return object at `:1308` is byte-identical; no consumer file changed; `wc -l` of the new file equals the removed block ± 5.
+
+---
+
+#### S3 — Memoizing the three hook returns: how not to ship stale data
+
+The whole point is that the `useMemo` at `App.tsx:254` currently never hits. The three returns to wrap are `hooks.ts:1308`, `hooks.ts:1471`, `metrics.ts:380`.
+
+**Order matters — do them one at a time, measuring after each.**
+
+1. **`dashData` (`hooks.ts:1308`).** Before memoizing, prove nothing mutates it: `grep -rn "dashData\.[a-zA-Z]* *=" src` must return **0 hits**. If it returns any, fix the mutator first. Then wrap the return with a dep list of every value referenced in the 37 keys. This is the largest and riskiest of the three — the dep list is long, and `getAgentDataForTimeframe` / `monthLabel` / `handleDateChange` are **functions**, so they must either be `useCallback`-wrapped (S1(e) gives you the seam) or omitted, which silently re-creates them and re-breaks the memo.
+2. **`metrics` (`metrics.ts:380`).** Its 10 internal `useMemo`s already handle the expensive work; memoizing the *returned object* is cheap and safe. Dep list = the 10 memo results plus the few raw values returned directly.
+3. **`aiTools` (`hooks.ts:1471`).** Easiest: nearly every key is a `useState` primitive. Verify each returned function is `useCallback`-stable first — if one is not, it will defeat the memo and the work is wasted.
+
+**How to prove it worked** (a `tsc`-clean build proves nothing here):
+
+```bash
+# temporary, remove before committing
+# add a module-level counter + console.log to FloorRosterTab's body
+# 1. open the app, upload a file, land on the roster tab
+# 2. type in the search box  -> counter must NOT increment per keystroke (300 ms debounce = 1 render)
+# 3. switch timeframe, month, week, day, floor -> counter increments exactly once per change
+# 4. click through all 8 tabs -> each renders live data, no stale numbers
+```
+
+If step 3 shows **zero** increments, the dep list is too wide (functions recreated). If a value is stale, the dep list is too narrow. Remove the counter in the same commit.
+
+---
+
+#### S4 — `ImportPreviewModal.tsx` split: file map and what must not move
+
+| Target file | Source region | Export names preserved |
+|---|---|---|
+| `import/previewState.ts` | `:1–390` | `getCanonicalFieldLabel`, `buildInitialSheetStates`, `findMatchingSheets`, `applyMappingsToSheets` + the internal draft builders |
+| `import/ManageMemoryModal.tsx` | `:397–568` | `ManageMemoryModal` + `ManageMemoryModalProps` |
+| `import/useImportPreview.ts` | `:580–1858` internals | `ImportPreviewModal` stays in `ImportPreviewModal.tsx` |
+
+**Four constraints.**
+
+1. **Re-point the 14 tests, do not rewrite them.** `ImportPreviewModal.test.ts` imports four symbols from `'./ImportPreviewModal'`; change the import line to `'./previewState'` and change nothing else in the file. A rewritten test is a test that no longer proves what it proved.
+2. **`only-export-components` warnings will not disappear for `previewState.ts`** — a `.ts` file with no components cannot have one. That is correct and expected; the warning moves, it does not go away.
+3. **Do not fix the 4 `setState`-in-effect sites** (`:602`, `:613`, `:621`, `:639`) while moving. Two of them derive config from `sheetStates` and should eventually become render-time derivations — that is a separate behavioural commit with its own review.
+4. **Keep the component in place.** Only its internals move; the JSX stays in `ImportPreviewModal.tsx`. Moving the JSX too is a fourth file and a much larger review.
+
+---
+
+#### S6 — `storage.ts`: exact surface, and the key rule
+
+```ts
+// src/features/dashboard/storage.ts — no @ts-nocheck
+import { inMemoryStore } from './storageMemory';   // moved from mappingMemory.ts:18-21
+
+// lift getStorage() VERBATIM from mappingMemory.ts:23-36 — the only complete
+// storage-safety implementation in the repo: window.localStorage →
+// globalThis.localStorage → null, all inside try/catch for SecurityError
+// (restricted iframes, private browsing).
+function getStorage(): Storage | null { /* …exact copy… */ }
+
+// the facade every caller should use instead of touching storage directly
+export const safeStorage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem' | 'key' | 'length'>;
+// wrap getStorage() ?? inMemoryStore so every read/write has a working backing store
+
+export const storageKeys = {
+  accountProfile:    (name: string) => `cs-ops:account-profile:${name}`,
+  calculationStyle:  (name: string) => `cs-ops:calculation-style:${name}`,
+  mappingMemory:     'dashboard_column_mapping_memory_v1',
+  dashboardState:    'customer-service-dashboard-state-v1',
+  dashboardView:     'customer-service-dashboard-view-v1',
+} as const;
+```
+
+**The key values above are the current values, deliberately unchanged.** Do **not** normalise them to the `cs-ops:` namespace in this change: there is no migration code, so renaming silently discards every learned mapping and every saved account profile. Namespace consolidation is a separate change that must ship with a migration.
+
+Then convert `account-profile-storage.ts` (raw `localStorage` today) and `hooks.ts:228–262` (try/catch today) to the shared surface. `mappingMemory.ts` keeps `getStorage()` and the in-memory fallback — it just sources the key from `storageKeys` and calls the facade instead of `getStorage()` directly.
+
+**Round trip to verify by hand:** import a file → account profile saves → reload the page → profile and learned mappings are still there.
+
+---
+
+#### S11 — `buildAccountProfile`: audit before you move it
+
+`ImportPreviewModal.tsx:201–274` builds the persisted `AccountProfile` inline; the schema lives in `account-profile-schema.ts:1–235`. Move the builder next to its type — **but read all 74 lines first and split it.** Any line that makes a *policy* decision (a default value, an inference from a header, a fallback name) is mapping/domain logic and belongs in `importPolicy.ts` per the STANDING RULE. Any line that merely assembles already-resolved values moves. If you cannot cleanly separate them, stop and report it — do not move policy into the schema file.
+
+---
+
+### Remediation order for S1–S12
+
+| Rank | Item | Effort | Risk | Why this position |
+|---|---|---|---|---|
+| 1 | S5 dead files | minutes | none | pure deletion, zero importers, shrinks the audit surface for everything after |
+| 2 | S10 specifiers, S8 asyncUtils, S9 debug logs | ~1 h | none | mechanical; each verified by the existing 181 tests |
+| 3 | S7.1 (remove duplicate `normalizeHeader`) | ~15 min | none | byte-identical, proven by 60 existing tests |
+| 4 | S2 `scheduleStatusClear` | ~1 h | low | removes 16 sites and a real unmount leak; visible in the UI, so verify by hand |
+| 5 | S12 copy button | ~1 h | low | small, self-contained |
+| 6 | S6 storage module | ~2 h | medium | no key renames; touches 3 files, all with existing test coverage |
+| 7 | S4 ImportPreviewModal split | ~4 h | low | move-only; expect the warning count to drop |
+| 8 | S1 `useDashboardData` split (a→b→e→c→d) | ~1 day | low | the biggest win, but move-only and gated by the origin-diff audit |
+| 9 | **S3 memoize hook returns** | ~3 h | **medium** | the largest runtime win, but a wrong dep list causes *stale* data, not a crash — do it after the extractions so the diff is small and the render counter is easy to reason about |
+| 10 | S11 `buildAccountProfile` | ~2 h | medium | persisted shape; needs a manual round trip |
+| 11 | S7.3 (unify Excel serial thresholds) | ~2 h | medium | **behavioral** — write the 7 new boundary tests first, then decide |
+
+**Explicitly out of scope for S1–S12** (already known, unchanged, and each needs its own decision): the `if (false && !hasAccountName)` dead gate at `App.tsx:259` that makes the ~70-line account-setup screen unreachable; the ref-write-during-render at `App.tsx:187` and `hooks.ts:1447`; 53 `no-unused-vars`; and the `window.tailwind` shim at `App.tsx:56–59` — a global set for a Tailwind that is not installed, whose 189 hand-rolled substitute classes are precisely what Phase 2 above resolves.
+
+---
+
+### Structural Findings (continued) — S13–S23, imported from `todo-list.md` (2026-09-29)
+
+`todo-list.md` was a hand-maintained backlog last edited on 2026-09-27 — **before** Phases 1/3/4/5. Its architecture and performance items are consolidated here so this file is the single source of reference; the file itself has been deleted. Every item below was **re-verified against current code** before import, and the full disposition of all 50 checklist lines (31 open + 19 completed) is recorded in the **Consolidation Record** at the end of this document.
+
+| # | Finding | Verified evidence | Severity |
+|---|---|---|---|
+| **S13** | `searchedOams` computed 3× in 3 files | `FloorRosterTab.tsx:36`, `TopNavbar.tsx:27`, `metrics.ts:254` — byte-identical one-liner | MEDIUM |
+| **S14** | `liveSupObj` computed in the modal render body | `MainModal.tsx:115` (inside JSX) — `supAgentsList` was already fixed into a `useMemo` at `:69` | LOW |
+| **S15** | 154 inline `style={{}}` objects | `grep -rho "style={{" src --include=*.tsx` → 154 (backlog said 41) | LOW |
+| **S16** | 62 inline arrow handlers in JSX | spread over 17 files; `ImportPreviewModal.tsx` 12, `MainModal.tsx` 8 (backlog said 47) | LOW |
+| **S17** | MTD and Daily metric cards duplicate their JSX | `MainStatsRow.tsx:16` (`.card-mtd`) vs `:58` (`.card-daily`) — ~40 duplicated lines | LOW |
+| **S18** | 21 conditional `className={… ? … : …}` chains | across the tab/modal/chrome files (backlog: "reduces readability without clsx") | LOW |
+| **S19** | `supBurnoutList` filtered inside a JSX IIFE | `MainModal.tsx:267` — re-filters `metrics.orgBurnoutList` on every modal render | MEDIUM |
+| **S20** | `COL_DEFINITIONS` referenced 23× across 8 files | `FloorRosterTab` 5, `MainModal` 6, `FloorDowTab` 3, `FloorBurnoutTab` 2, `menus` 2, `config` 3, `emptyColumns` 1, `metrics` 1 (backlog said 14) | LOW |
+| **S21** | `Object.keys(uiState.visibleCols)` called 4× in one render body | `FloorRosterTab.tsx` — exactly 4, as reported | LOW |
+| **S22** | `getWeekNumber` recomputed in a nested loop, uncached | `metrics.ts:295` — inside `finalDates.forEach(week) → dates.forEach(date)`, i.e. O(weeks × dates) string parses per recompute | MEDIUM |
+| **S23** | `runChartData` rebuilds its date set from scratch | `metrics.ts:240–246` — iterates every value of `historicalData` on each recompute | LOW |
+
+**Precisely what to do.** All eleven are render-path work with no behavior change, and they are independent of each other and of S1–S12:
+
+- **S13** — move the one-liner into `src/features/dashboard/helpers.ts` as `resolveSearchedOams(agents, queries): string[]` and call it from all three sites. The three copies already diverge in what they do with the result (auto-select the OAM, set a header name, build an "(OAM Overall)" label), so the helper returns the list and each caller keeps its own rule.
+- **S19 / S21** — hoist both into a `useMemo` at the top of their component with an explicit dep array. S19's dep is `metrics.orgBurnoutList` + `uiState.selectedSupervisorObj?.name`; S21's is `uiState.visibleCols`. These two are the only two in this batch that run on a hot path (a modal open and a keystroke-debounced roster render).
+- **S22** — memoize the date→week map once per recompute (`new Map(dates.map(d => [d, getWeekNumber(d)]))`) and read from it inside the loop, or lift the map into the same `useMemo` that already owns `allActiveDates`. Pure speed-up, identical results.
+- **S14 / S17** — S14 becomes a `useMemo` next to the existing `supAgentsList` one. S17 becomes a single `<MetricCard>` in `MainStatsRow` parameterised by the two datasets, replacing ~40 duplicated lines.
+- **S15 / S16 / S18 / S20 / S23** — treat as **opportunistic**: fix the ones in code you are already editing for S1/S3/S4, and do not open a dedicated pass for the rest. S15 and S16 are heavily concentrated in the two files S4 rewrites (`ImportPreviewModal.tsx`, `MainModal.tsx`), so **do S4 first and collect them there**. S20 and S23 improve automatically if S3's memoization lands, because both recompute on the render path S3 stabilizes.
+
+**Verification.** `tsc -b` 0, 181/181 (S13/S22 in particular are pure refactors — `helpers.test.ts` from C3 and the existing `monthSelection` suite are the proof), lint 0 errors / ≤123, preview 200, and a roster-search + modal-open + timeframe-switch pass in the browser with the roster results compared before/after.
+
+---
+
+## UX & Accessibility Findings (U1–U6)
+
+`todo-list.md`'s Priority 3 bucket was the one dimension never covered by the restructure work or by any earlier section here, so it is imported in full. These are **usability and accessibility** items — none is a crash, none blocks a release, and none should be mixed into a correctness change. Treat them as a batch.
+
+| # | Finding | Verified evidence | Severity |
+|---|---|---|---|
+| **U1** | Emoji are the entire icon system | **51** JSX text positions lead with an emoji glyph — `ImportPreviewModal.tsx` alone has 🧠 💡 📥 📁 ⚠️ 📋 📊 ✓ 🗺️ 🚫; `shared.tsx:17` `GeminiLoader` defaults to `icon = '✨'` | MEDIUM |
+| **U2** | Hover-reveal buttons implemented in JS, not CSS | `TopNavbar.tsx:118–129` and `:87` set `opacity: 0.7` in markup and swap it via `onMouseOut`; on touch devices there is no hover, so these controls stay dimmed permanently | HIGH |
+| **U3** | Red used as a neutral accent label colour | 10 `text-red-*` sites; red carries an universal error/danger meaning that this usage dilutes | LOW |
+| **U4** | Comma-separated search syntax is placeholder-only | `FloorHeader.tsx:41` `placeholder="Search multiple (comma separated)..."` is the only affordance; no helper text, no chip/token rendering of the parsed terms | MEDIUM |
+| **U5** | No loading/skeleton state for the initial metric cards | `MainStatsRow` renders immediately with no pending state; the app has no data-fetching phase, so this is the "empty vs not yet resolved" ambiguity | MEDIUM |
+| **U6** | Inconsistent button affordance | pill-shaped icon buttons (`FloorHeader.tsx:34–35` ◀ ▶) sit beside labelled rectangular buttons (`:52–61` tabs) in the same header | LOW |
+
+*(Six items, renumbered from the backlog's seven — see the Consolidation Record: the backlog's "no visible upload/empty-state guidance" item was verified false and retired, and its "no skeleton/loading state" item was listed **twice**, once under Priority 3 and once under Priority 4, and is carried once here as U5.)*
+
+**Precisely what to do.**
+
+- **U2 first** — it is the only one that makes a control genuinely hard to use. Replace the inline `opacity` + `onMouseOut` pattern with a real CSS `:hover`/`:focus-visible` rule in the stylesheet Phase 2 creates, and keep the visible state at `opacity: 1` (the current `0.7` is the resting state, which is why it reads as disabled). Do it **after Phase 2** so the rule lands in `dashboard.css` instead of the TS string.
+- **U1** — do not rip out emoji. Introduce one `<Icon name="…" />` in `components/shared.tsx` with an inline SVG map, and migrate the **9 highest-traffic glyphs** (the tab-bar and navbar set) first; leave decorative in-card emoji until later. Pair it with C2, which already renames `GeminiLoader` → `AiLoader` in the same file.
+- **U4** — render the parsed queries as removable chips under the input (`uiState.inputValue` is already comma-split by `helpers.ts`), so the syntax is visible rather than documented. This also makes the 300 ms debounce in S3 legible to the user.
+- **U5** — add an explicit `isResolving` flag to the dashboard state rather than a fake skeleton timer; show a neutral placeholder card until the first `historicalData` lands. Only worth doing alongside S1(a), where the state module is created.
+- **U3 / U6** — colour and shape decisions. Batch them into a single visual pass, ideally with the design work already proposed in `## Design Gap Analysis` below. Do not do either as a drive-by.
+
+**Verification.** No automated gate exists for this section — `tsc`, tests and lint will not move. Verification is: keyboard-only pass over the navbar and header (U2, U5), a touch-device or DevTools touch emulation pass (U2, U6), and a screenshot review of the header before/after (U1, U3, U6). Record the before screenshots, or the change cannot be reviewed.
+
+---
+
+## Working rule
+
+Carried over verbatim in substance from `todo-list.md` (which has been retired) so that the discipline survives the file:
+
+- If a task is fixed or intentionally accepted, remove it from the active backlog immediately.
+- Keep only open, actionable issues in the main list.
+- Historical completed work belongs in commit history or a consolidation record, not in the active list.
+- Revisit the backlog after each cleanup pass and delete stale or superseded items.
+
+Applied to this document: `## Critical` and the S/U series are the active backlog; the Consolidation Record below is the archive; `recommendations.md` is now the **single source of reference** for known issues in this repository.
+
+---
+
+## Consolidation Record — `todo-list.md` (2026-09-29)
+
+`todo-list.md` (80 lines, last edited 2026-09-27 in commit `b547a73`, i.e. before Phases 1/3/4/5) has been **merged into this file and deleted**. Nothing was dropped silently: every one of its **31 `- [ ]` lines** (27 real backlog items + the 4 Working-rule lines, now carried above) and **19 `- [x]` lines** is accounted for below. Counts were taken programmatically from the file, and every item was re-verified against current code rather than trusted.
+
+**Imported as new findings (17):** S13 `searchedOams` ×3 · S14 `liveSupObj` in render · S15 154 inline styles · S16 62 inline arrow handlers · S17 MTD/Daily card duplication · S18 21 conditional `className` chains · S19 `supBurnoutList` IIFE filter · S20 `COL_DEFINITIONS` ×23 · S21 `Object.keys(visibleCols)` ×4 · S22 uncached `getWeekNumber` loop · S23 `runChartData` date-set rebuild · U1 emoji icon system · U2 JS hover-reveal buttons · U3 red as neutral accent · U4 comma-search affordance · U5 no loading state · U6 inconsistent button affordance. (The backlog's separate "no visible upload/empty-state guidance" item was verified false — see retired — and its "no skeleton/loading state" item was listed **twice**, once in Priority 3 and once in Priority 4, and is carried once as U5.)
+
+**Already covered here — backlog item retired as duplicate (5):**
+
+| Backlog item | Now documented as |
+|---|---|
+| No backend — all logic and storage client-side | **C1** (and the egress severity is worse than the backlog recorded) |
+| No environment/config separation | **C1** step 1 |
+| Business logic tightly coupled to React hooks | **S1** — quantified at 1,051 lines |
+| `DASHBOARD_STYLES` re-injected every render | **Phase 2** |
+| 2 leaked `setTimeout`s on upload status | **S2** — re-verified at **16**, not 2 |
+
+**Retired as stale — no longer matches the code (4):**
+
+| Backlog item | Why retired |
+|---|---|
+| Hardcoded OAM names for phase detection | No OAM name list exists anywhere in `src/`; `config.ts` contains none. Either fixed before the file was written or never real. |
+| 8 navigation destinations hidden behind one unlabeled icon button | False. `FloorHeader.tsx:52–61` renders a visible, labelled 8-tab bar. |
+| `DASHBOARD_STYLES` defined inside the App render tree | False since Phase 1 — it is a module export in `src/app/dashboardStyles.ts`. Only the per-render *injection* remains, and that is Phase 2. |
+| No visible upload/empty-state guidance for first-time users | Largely false. `App.tsx:323` routes the no-data state to `ImportLanding` (566 lines) with a drop zone, account selector and mapping review. The genuine gap — the missing *loading* state after import — is carried as U5. |
+
+**Archived as completed — 17 of 19 verified against current code:** memoize `getAgentDataForTimeframe` (⚠ see correction below); extract `agentMatchesSearch` to top level ✓ `helpers.ts:28`; fix the double `calculateTrend` call ✓ one call site, `metrics.ts:63`; remove dead `LEADERSHIP_DATA` and `apiKey` ✓ zero hits repo-wide; `React.memo` on always-mounted components ✓ `FloorHeader`, `MainStatsRow`, `TopNavbar`, `MainModal`; stable `uiState`/`uiHandlers` references ✓ `App.tsx:171`, `:242`; `searchQuery` parsed 12× per render ✓ `parsedQueries` memoized, `metrics.ts:37`; `agents.filter(agentMatchesSearch)` 6× per render ✓ memoized, `metrics.ts:43`; `closeModal` fired 14 sequential `setState` calls ✓ single dispatch, `App.tsx:210`; 12 UI states → one `useReducer` ✓ 13 `dispatchUi` sites, one reducer; `SupervisorModalContent` filter/sort in render ✓ 7 `useMemo`s; `FloorApprenticeTab` filtering in render ✓ memoized at `:24`, `:28`, `:33`; `days` array defined twice ✓ single `DAYS_OF_WEEK` import from `config.ts`; `colors` array inside the `runChartData` memo ✓ uses `CHART_COLORS` from config; prop drilling of 5 prop bundles ✓ every view file now reads `useDashboard()`; add drag-to-upload zone ✓ `src/components/dropZone.tsx`; `new Date()` per date per agent in `agentDataCache` ✓ zero occurrences in `hooks.ts:1217–1254`; **AI resilience layer** ✓ `fetchWithRetry` with 2 retries / 30 s timeout / exponential backoff (`hooks.ts:1323`) plus `importAbortControllerRef` (`:304`, aborted at `:335`, `:406`).
+
+**⚠ Two of the 19 `[x]` claims did not survive verification and are re-opened rather than archived:**
+
+1. **"Memoize `getAgentDataForTimeframe`" — done by other means, not as described.** `hooks.ts:1254` is a plain function, not a `useCallback`; the memoization lives one level down in the `agentDataCache` `useMemo` (`:1217`). Effective intent achieved, claim imprecise. No new work item — but it is the reason S3's dependency work must not assume this function is referentially stable.
+2. **"Guard AI auto-triggers + reset on re-upload" — NOT done; re-opened under C4.** The only guard on the auto-firing effect (`hooks.ts:1449`) is `if (!agents.length) return;`; it still fires on all 15 of its dependencies with no opt-in, and the reset half is inert because `aiTools.resetAiStates` is `undefined` (`App.tsx:187`, `:212`). This item is therefore **not** archived — it is part of C4's failure mode 4 and C1's data-egress finding.
+
+**One side observation from the verification:** `App.tsx:12` still imports `agentMatchesSearch` and never uses it — a dead import left behind by the L20 extraction, part of the 53 `no-unused-vars` already noted as out of scope above.
+
+**Two counts in the backlog were materially understated** and are corrected above: inline styles 41 → **154**, inline arrow handlers 47 → **62**, `COL_DEFINITIONS` 14 → **23**, leaked timeouts 2 → **16**.
+
+**One backlog item was better than this document's own audit:** the leaked-upload-timer entry is the original source of finding S2.
+
+## Design Gap Analysis — landing page vs dashboard (open)
 
 > Comparison basis: `ImportLanding.tsx` / `ImportLanding.css` (the loading page) vs `App.tsx` / `App.css` (the main dashboard).
-> No code changes have been made yet. These are ideas only, ordered by impact vs effort.
-
-### Gap Analysis — What the Landing Has That the Dashboard Lacks
+> These are ideas only, ordered by impact vs effort. Nothing here has been implemented.
 
 #### 1. Dark atmospheric background
 The landing uses `#0b0b0a` + a radial blue glow (`rgba(55, 138, 221, 0.12)`) that gives it depth and warmth. The dashboard sits on a flat `bg-slate-50` / white base — it reads as a standard enterprise spreadsheet tool.
@@ -727,126 +977,3 @@ The landing has `translateY(-2px)` hover lift on the dropzone, stagger-delay lis
 
 ---
 
-## Recommendation 3 — Auto-Hide Empty Metric Columns After Import
-
-> Status: **✅ Completed (2026-09-27)**
-> Priority: Medium
-> Effort: Low
-
-### What the user sees
-
-After importing a file that contains no sales data, columns like **PHONE LINES**, **HAND-OFFS**, or any other metric column still appear in the roster table and KPI cards — but every row shows `-`. The table wastes horizontal space and looks broken, and the user has to manually open Settings and toggle each empty column off.
-
-### The rule
-
-> **If the imported dataset contains zero non-null values for a metric, that metric column must be hidden automatically in the dashboard. No manual toggle required.**
-
-This is purely additive — the existing manual Settings toggle still works exactly as before. Auto-hide only fires once at import time. If the user manually re-enables a column via Settings, that choice is respected.
-
-### Which columns are affected
-
-Any column whose canonical field (`calls`, `phoneAdds`, `vhi`, `vtt`, `handoffs`, `handoffsCount`, `creditAmount`, `creditTransactions`, `vttEligible`, `vttIndicated`, `vttAttach`, and any custom metric) has **all null values** across every row in the imported dataset should be auto-hidden.
-
-The 4 core metrics (`vxs` / C-SAT, `resolve2hr` / 2HR, `resolve3d` / 3DR, `handoffs` / Hand-offs) follow the same rule — if data is absent, hide them too. There is no special protection for any column.
-
-### Where the fix goes
-
-- **`hooks.ts` — `applyBatchImport`**: After the row loop finishes, scan `rowsToApply` once. For each field in `visibleCols`, check whether any row has a non-null value. Build a `Set<string>` of fields that have at least one real value.
-- **`hooks.ts` — initial `visibleCols` state**: When calling `setVisibleCols` at the end of import, merge the current user preferences with the auto-hide result: any field in `visibleCols` that is NOT in the "has data" set gets forced to `false`.
-- **No changes to `importPolicy.ts`, `schemaNormalizer.ts`, `mergeData.ts`, helpers, or any import pipeline file.**
-
-### Checklist for the fix
-
-1. At the end of `applyBatchImport` (after the row loop, before `setHistoricalData`), compute:
-   ```ts
-   const fieldsWithData = new Set(
-     rowsToApply.flatMap(row =>
-       Object.entries(row)
-         .filter(([, v]) => v !== null && v !== undefined)
-         .map(([k]) => k)
-     )
-   );
-   ```
-2. Get the current `visibleCols` state (already accessible inside `applyBatchImport` via closure or passed in).
-3. Build the new `visibleCols` by iterating current keys: if `visibleCols[key] === true` but `!fieldsWithData.has(canonicalKey)`, set it to `false`.
-4. Call `setVisibleCols(newVisibleCols)` once before `setHistoricalData`.
-5. The canonical key mapping (`col.stateKey` in `COL_DEFINITIONS`) must be used — not the display label — so the field names match what is actually stored on rows.
-6. Write a simple unit test: mock `rowsToApply` with all-null `phoneAdds`, assert that `phoneAdds` is `false` in the resulting `visibleCols`.
-
-### Expected result
-
-When the user imports a file with no sales data, **PHONE LINES**, **VHI**, **VTT**, and any other empty column disappear automatically. The table is compact and only shows columns that actually have values. The user can still re-enable any column via the Settings toggle at any time.
-
-### Implementation notes (as built, 2026-09-27)
-
-The plan assumed `visibleCols` lives in `hooks.ts`; it actually lives in `App.tsx` state (keys = `col.stateKey`), so the fix was adapted:
-
-- **`src/features/dashboard/emptyColumns.ts` (new)** — pure, React-free helpers:
-  - `METRIC_COLUMN_SOURCES`: maps each toggleable column's `stateKey` to the normalized-row fields that feed it, following the real data path in `applyBatchImport` + `aggregateRecords` (`handoffs` ← `handoffsCount` OR `handoffs`; `vtt` ← `viewTogether` / `vttSent` / `vttTransacted` / `vtt`). Derived metrics that never appear on rows (`ncw`, `bonus`, `calls`) are deliberately absent so those columns are never auto-hidden.
-  - `collectFieldsWithData(rows)`: set of row fields carrying at least one real (non-null / non-undefined / non-empty) value. Normalized rows omit absent fields entirely, so presence = data.
-  - `computeAutoHiddenVisibleCols(visibleCols, fieldsWithData)`: hides only currently-VISIBLE metric columns whose source fields are all absent; never re-enables hidden ones, leaves non-metric toggles (`trajectory`) and derived metrics untouched, returns the same reference when nothing changes, and never mutates the input.
-- **`hooks.ts` — `applyBatchImport`**: after the row loop (before `setHistoricalData`), calls `collectFieldsWithData(rowsToApply)` and notifies a new optional `onImportColumnsScan` callback (kept in a ref, mirroring the existing `aiResetRef` pattern). No import-pipeline files touched — consistent with the Standing Rule.
-- **`App.tsx`**: `visibleCols` state moved above the `useDashboardData(...)` call; App passes the scan callback which runs `setVisibleCols(prev => computeAutoHiddenVisibleCols(prev, fieldsWithData))`. Because the merge only flips `true → false` at import time, any Settings re-enable afterward is respected.
-- **`src/features/dashboard/emptyColumns.test.ts` (new)** — 10 unit tests: presence scan, null/undefined/'' exclusion, all-variant coverage for `handoffs`/`vtt`, core metrics not protected, non-metric toggles untouched, no-mutation, same-reference short-circuit, and safe handling of a missing scan set.
-
-> Note: `str_replace` could not match anchors in the large `src/App.tsx`, so edits there were applied with a verified exact-match, count-checked Node script (abort-on-mismatch). Final state was re-read and confirmed; full suite (170 tests) and `tsc -b --noEmit` pass.
-
-## Recommendation 4 — Ask Wizard Questions Once Per Column, Not Once Per File
-
-> Status: **✅ Completed (2026-09-29)**
-> Priority: High
-> Effort: Low
-
-### What the user saw
-
-A multi-file import where three files share the same columns (e.g. **Access Call ID**, **Calls Answered**) made the mapping wizard ask the identical question once per file — the user answered "Access Call ID" three times with the same answer.
-
-### Root cause
-
-`handleAutomaticImport` built `reviewItems` from `result.mappingDiagnostics`, which carries one diagnostic per file+sheet. The dedupe guards only checked `header + fileName + sheetName`, so a header appearing in 3 files stayed 3 separate review items. Everything downstream was already header-global: the wizard stores answers by `item.header`, and `mapTableToNormalizedRows` applies `mappingOverrides[headers[i]]` by raw header across every file — so the extra questions were pure noise.
-
-### The fix (orchestration only — Standing Rule respected, no alias/mapping logic touched)
-
-- **`src/features/dashboard/hooks.ts`** — new top-level helper `consolidateHeaderDuplicates(items)`: merges diagnostics that share a normalized header (trim + lowercase), keeping the highest-`score` item as the question's face and attaching `duplicateFileNames` / `duplicateSheetNames` for display. Single-occurrence headers pass through untouched (same reference) and the input is never mutated.
-- `handleAutomaticImport` now consolidates the diagnostics **once, before** the special review groups run, so `resolveWindowReviewItems`' "more than 2 windows" gate and the customer-experience `choiceGroup` logic see one entry per column — the same behavior a single-file import has. (This also prevents a regression where three identical files would previously trip the window gate and ask a question that a single file would not.) Per-group push guards now compare headers only.
-- **`src/features/dashboard/import/types.ts`** — `MappingDiagnostic` gains optional `duplicateFileNames?` / `duplicateSheetNames?: string[]`.
-- **`src/features/dashboard/upload/ImportLanding.tsx`** — when consolidated questions are present, one explanatory line is shown: answers apply to every uploaded file. Rendering and answer storage still key on `header`, so no other UI changes were needed.
-
-### Verification
-
-- `timeout 180 npm test` — 170/170 pass, no hang.
-- `npx tsc -b` — clean.
-- `npm run build` — clean (pre-existing chunk-size warning only).
-
-## Recommendation 5 — Month Selector: Isolate a Single Month in Every Timeframe View
-
-> Status: **✅ Completed (2026-09-29)**
-> Priority: High
-> Effort: Medium
-
-### What the user saw
-
-Loading a full quarter (April, May, June) blended all months into one view — the "Monthly" timeframe meant "everything loaded, summed together" with no way to isolate one month.
-
-### Root cause (as traced before implementation)
-
-- `historicalData` is keyed `[agentId][date]` with dates always normalized to `YYYY-MM-DD`, so it was already month-addressable by date prefix.
-- No month selector existed; `activeTimeframe === 'monthly'` rendered a hardcoded `'MTD'` label (App.tsx spotter chip).
-- Every aggregate path iterated ALL dates: `agentDataCache` monthly/weekly/dow (weekly even mixed "Week 1" across April+May+June because it filtered by day-of-month only), and metrics.ts DoW analysis. The only month filter in the codebase was the run chart's `selectedDate.substring(0,7)` prefix — proof the cheap filtering approach was viable.
-
-### The fix (filtering of already-loaded data only — no import reprocessing)
-
-- **`src/features/dashboard/helpers.ts`** — new pure exports: `ALL_MONTHS` (`'all'`), `matchesSelectedMonth`, `collectLoadedMonths` (distinct `YYYY-MM` prefixes sorted latest-first), `monthLabel` (e.g. `April 2026`).
-- **`src/features/dashboard/hooks.ts`** — new `selectedMonth` state (persisted, with a `selectedMonthChosen` flag: before any explicit pick the dashboard defaults to the LATEST loaded month; "All months" is an explicit sticky choice; the selection self-heals to the latest month if its data disappears). `loadedMonths` memo updates automatically as more files are imported. `agentDataCache` now scopes monthly, weekly, AND dow paths through one `monthScopedDates` prefix filter; daily stays an exact-date lookup. `resetDashboard` clears the selection.
-- **`src/components/menus.tsx`** — month dropdown shown when Monthly is the active timeframe (sibling of the Week/date/DoW selectors): every distinct loaded month, latest first, plus "All months (loaded)".
-- **`src/features/dashboard/metrics.ts`** — DoW analysis and the run chart filter by `selectedMonth`; the run chart now takes its month from `selectedMonth` instead of deriving it from `selectedDate`.
-- **`src/App.tsx`** — TimeframeMenu receives the new props; the spotter chip label and the MTD card title show the selected month (or "All Months"). Edited via the count-checked Node script (abort-on-mismatch); one escaping mistake was caught because the script counted matches before writing and the file was re-read and corrected.
-
-### Verification
-
-- `npx tsc -b` — clean.
-- `timeout 180 npm test` — 170/170 pass, no hang.
-
-### Post-implementation audit (2026-09-29)
-
-Full backend audit after the user's test run. Preview healthy (HTTP 200, HMR-only logs, no server errors); import pipeline untouched this change and green. No render loops, no dangling references in `@ts-nocheck` files, helpers smoke-tested empirically (all 12 `dowFromDateStr` months verified against `Date.getDay`). Two structural risks recorded: (1) the dashboard-state persistence effect re-serialized the entire `historicalData` on every `selectedMonth` change — **FIXED same day**: persistence is now split into a heavy key (`customer-service-dashboard-state-v1`, rewritten only when data changes) and a tiny view key (`customer-service-dashboard-view-v1`, ~200 bytes, rewritten on every month/timeframe/date switch). The reader merges both with a legacy fallback for old single-key snapshots, and `resetDashboard` clears both. Month/timeframe switches now do zero multi-MB stringify work. (2) `hooks.ts` / `metrics.ts` / `helpers.ts` / `menus.tsx` are all `@ts-nocheck`, so `tsc -b` green does not validate the most-touched files — closed the immediate gap with 11 new `monthSelection.test.ts` tests (181/181 total) plus a `Set<string>` inference fix in `collectLoadedMonths`.
