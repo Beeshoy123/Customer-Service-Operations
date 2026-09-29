@@ -6,9 +6,6 @@ import {
   DAYS_OF_WEEK,
   CHART_COLORS,
   TARGETS,
-  METRIC_CONFIG,
-  getDynamicTarget,
-  getDynamicMax,
   PERSONA,
 } from './features/dashboard/config';
 import {
@@ -26,7 +23,6 @@ import {
 } from './features/dashboard/helpers';
 import { computeAutoHiddenVisibleCols } from './features/dashboard/emptyColumns';
 import {
-  DonutChart,
   ParetoColumn,
   PerformanceHeatmap,
 } from './components/shared';
@@ -37,7 +33,6 @@ import {
   useAiTools,
 } from './features/dashboard/hooks';
 import { useDashboardMetrics } from './features/dashboard/metrics';
-import { SettingsMenu, TimeframeMenu } from './components/menus';
 import { ImportLanding } from './features/dashboard/upload/ImportLanding';
 import { listAccountNames } from './features/accountSetup/account-profile-storage';
 import { ErrorBoundary } from './app/errorBoundary';
@@ -54,6 +49,9 @@ import { FloorCorrelationTab } from './features/dashboard/views/tabs/FloorCorrel
 import { FloorBurnoutTab } from './features/dashboard/views/tabs/FloorBurnoutTab';
 import { FloorDowTab } from './features/dashboard/views/tabs/FloorDowTab';
 import { MainModal } from './features/dashboard/views/modals/MainModal';
+import { TopNavbar } from './features/dashboard/views/chrome/TopNavbar';
+import { MainStatsRow } from './features/dashboard/views/chrome/MainStatsRow';
+import { FloorHeader } from './features/dashboard/views/chrome/FloorHeader';
 
 if (typeof window !== 'undefined') {
   window.tailwind = window.tailwind || { config: {} };
@@ -68,319 +66,12 @@ var tailwind = typeof window !== 'undefined' ? window.tailwind : { config: {} };
 //   Phase 3 → src/features/dashboard/views/tabs/* (8 floor tabs)
 //   Phase 4 → src/features/dashboard/views/modals/MainModal.tsx
 //             (Ask AI content, Supervisor modal content, Main modal shell)
+//   Phase 5 → src/features/dashboard/views/chrome/* (TopNavbar,
+//             MainStatsRow, FloorHeader)
 // What remains in this file:
-// ├── Top Navigation Bar
-// ├── KPI Summary Row
-// ├── Floor Header & Selector Bar
 // ├── App State & Reducer Defaults
 // └── Main App Composition
 // ============================================================================
-
-// ─── Top Navigation Bar ──────────────────────────────────────
-const TopNavbar = React.memo(() => {
-  const { dashData, uiState, uiHandlers, resetToLanding } = useDashboard();
-  const menuRef = useRef(null);
-  const timeframeRef = useRef(null);
-  const batchSummary = dashData.batchImportSummary;
-
-
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (menuRef.current && !menuRef.current.contains(event.target)) uiHandlers.setShowColMenu(false);
-      if (timeframeRef.current && !timeframeRef.current.contains(event.target)) uiHandlers.setShowTimeframeMenu(false);
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [uiHandlers]);
-
-
-  let headerName = dashData.oamName;
-  const queries = uiState.searchQuery.toLowerCase().split(',').map(q => q.trim()).filter(q => q);
-  if (queries.length > 0) {
-      const searchedOams = [...new Set(dashData.agents.map(a => a.oam).filter(o => o && queries.some(q => o.toLowerCase().includes(q))))];
-      if (searchedOams.length === 1) {
-          headerName = searchedOams[0]; 
-      }
-  }
-
-
-  return (
-    <div className="top-navbar">
-      <div className="top-navbar-inner">
-        <div className="header-info">
-          <div className="flex flex-col">
-            <h1 className="text-xl font-bold m-0 mb-1 text-white tracking-wide">
-              {headerName} <span className="opacity-50 mx-1 font-normal">|</span> Floor
-            </h1>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-slate-400 italic">
-                {uiState.searchQuery ? 'Filtered View' : `${dashData.supervisors.length} Supervisors / ${dashData.agents.length} Agents`}
-              </span>
-            </div>
-          </div>
-        </div>
-        
-        <div className="action-buttons">
-          <div className="flex gap-2 items-center">
-            {batchSummary && (
-              <div className="flex items-center gap-2 rounded-full bg-slate-800/80 border border-slate-600 px-3 py-1 text-[10px] uppercase tracking-[0.18em] text-slate-200 whitespace-nowrap">
-                <span>{batchSummary.files} file(s)</span>
-                <span>•</span>
-                <span>{batchSummary.sheets} sheet(s)</span>
-                <span>•</span>
-                <span>{batchSummary.rows?.length ?? 0} rows</span>
-              </div>
-            )}
-
-            <button 
-              title="Data Assistant"
-              className="py-1 px-4 rounded-full cursor-pointer transition-all flex items-center justify-center text-lg text-white"
-              style={{ background: 'transparent', border: '1px solid transparent', opacity: 0.7 }}
-              onClick={() => uiHandlers.setActiveModal('askAi')}
-              onMouseOver={(e) => e.currentTarget.style.opacity = 1}
-              onMouseOut={(e) => e.currentTarget.style.opacity = 0.7}
-            >
-              🔍
-            </button>
-
-            <button
-              type="button"
-              title="Exit to import landing page"
-              aria-label="Exit to import landing page"
-              className="py-1 px-4 rounded-full cursor-pointer transition-all flex items-center justify-center text-lg text-white" 
-              style={{ background: 'transparent', border: '1px solid transparent', opacity: 0.7 }}
-              onClick={resetToLanding}
-              onMouseOver={(e) => e.currentTarget.style.opacity = 1}
-              onMouseOut={(e) => e.currentTarget.style.opacity = 0.7}
-            >
-              🚪
-            </button>
-
-            <div className="column-menu-container flex" ref={timeframeRef}>
-              <button 
-                title="Timeframe Filter" 
-                onClick={() => uiHandlers.setShowTimeframeMenu(!uiState.showTimeframeMenu)}
-                className="py-1 px-4 rounded-full cursor-pointer transition-all flex items-center justify-center text-lg"
-                style={{ 
-                  background: uiState.showTimeframeMenu ? '#ffffff' : 'transparent', 
-                  border: uiState.showTimeframeMenu ? '1px solid #cbd5e1' : '1px solid transparent', 
-                  boxShadow: uiState.showTimeframeMenu ? '0 2px 4px rgba(0,0,0,0.05)' : 'none',
-                  opacity: uiState.showTimeframeMenu ? 1 : 0.7
-                }}
-                onMouseOver={(e) => e.currentTarget.style.opacity = 1}
-                onMouseOut={(e) => e.currentTarget.style.opacity = uiState.showTimeframeMenu ? 1 : 0.7}
-              >
-                📅
-              </button>
-              {uiState.showTimeframeMenu && (
-                <div className="column-menu-dropdown overflow-y-auto" style={{ maxHeight: '70vh' }}>
-                  <TimeframeMenu 
-                    activeTimeframe={dashData.activeTimeframe} setActiveTimeframe={dashData.setActiveTimeframe}
-                    selectedWeek={dashData.selectedWeek} setSelectedWeek={dashData.setSelectedWeek}
-                    selectedDate={dashData.selectedDate} setSelectedDate={dashData.setSelectedDate}
-                    selectedDow={dashData.selectedDow} setSelectedDow={dashData.setSelectedDow}
-                    selectedMonth={dashData.selectedMonth} setSelectedMonth={dashData.setSelectedMonth}
-                    loadedMonths={dashData.loadedMonths}
-                    closeMenu={() => uiHandlers.setShowTimeframeMenu(false)} 
-                  />
-                </div>
-              )}
-            </div>
-
-            <div className="column-menu-container flex" ref={menuRef}>
-              <button 
-                title="Toggle Metrics" 
-                onClick={() => uiHandlers.setShowColMenu(!uiState.showColMenu)}
-                className="py-1 px-4 rounded-full cursor-pointer transition-all flex items-center justify-center text-lg"
-                style={{ 
-                  background: uiState.showColMenu ? '#ffffff' : 'transparent', 
-                  border: uiState.showColMenu ? '1px solid #cbd5e1' : '1px solid transparent', 
-                  boxShadow: uiState.showColMenu ? '0 2px 4px rgba(0,0,0,0.05)' : 'none',
-                  opacity: uiState.showColMenu ? 1 : 0.7
-                }}
-                onMouseOver={(e) => e.currentTarget.style.opacity = 1}
-                onMouseOut={(e) => e.currentTarget.style.opacity = uiState.showColMenu ? 1 : 0.7}
-              >
-                ⚙️
-              </button>
-              {uiState.showColMenu && (
-                <div className="column-menu-dropdown overflow-y-auto" style={{ maxHeight: '70vh' }}>
-                  <SettingsMenu 
-                    visibleCols={uiState.visibleCols} toggleCol={uiHandlers.toggleCol} closeMenu={() => uiHandlers.setShowColMenu(false)} 
-                  />
-                </div>
-              )}
-            </div>
-          </div>
-
-        </div>
-      </div>
-    </div>
-  );
-});
-
-
-// ─── KPI Summary Row ──────────────────────────────────────
-const MainStatsRow = React.memo(() => {
-  const { dashData, metrics, uiState } = useDashboard();
-  const spotterPrefix = dashData.activeTimeframe === 'monthly' ? 'Monthly Spotter' : dashData.activeTimeframe === 'weekly' ? 'Weekly Spotter' : dashData.activeTimeframe === 'dow' ? 'Day of Week' : 'Daily Spotter';
-  const spotterDate = dashData.activeTimeframe === 'monthly' ? dashData.monthLabel(dashData.selectedMonth) : dashData.activeTimeframe === 'weekly' ? dashData.selectedWeek : dashData.activeTimeframe === 'dow' ? dashData.selectedDow : dashData.selectedDate;
-
-
-  return (
-    <div className="stats-row">
-      <div className="metric-card card-mtd flex flex-col p-6">
-        <div className="flex justify-between items-start mb-6">
-          <div>
-            <h2 className="text-xl text-white m-0 font-bold">{dashData.activeTimeframe === 'monthly' ? (dashData.selectedMonth === 'all' ? 'All Months' : dashData.monthLabel(dashData.selectedMonth)) : 'Month to Date'}</h2>
-            <div className="flex gap-3 mt-2">
-              <span className="text-xs text-slate-400 bg-slate-800 py-1 px-2 rounded">Calls Handled: <strong className="text-white">{metrics.mtdLeaderData.calls ? metrics.mtdLeaderData.calls.toLocaleString() : '-'}</strong></span>
-              <span className="text-xs text-slate-400 bg-slate-800 py-1 px-2 rounded">Res Contacts: <strong className="text-white">{metrics.mtdLeaderData.resolveTotalContacts ? metrics.mtdLeaderData.resolveTotalContacts.toLocaleString() : '-'}</strong></span>
-            </div>
-          </div>
-          <span className="bg-red-900 bg-opacity-20 text-red-300 py-1 px-2 rounded text-xs font-bold">MONTH-END STRATEGY</span>
-        </div>
-
-
-        <div className="flex flex-wrap justify-around gap-4 pb-6 border-b border-slate-800">
-          {['vxs', 'resolve2hr', 'handoffs', 'resolve3d'].filter(key => uiState.visibleCols[key]).map(key => (
-            <DonutChart key={key} value={metrics.mtdLeaderData[key]} target={getDynamicTarget(key, metrics.mtdLeaderData.activeAgentCount || dashData.agents.length)} label={METRIC_CONFIG[key].label} format={METRIC_CONFIG[key].format} reverse={METRIC_CONFIG[key].reverse} max={getDynamicMax(key, metrics.mtdLeaderData.activeAgentCount || dashData.agents.length)} isInteger={METRIC_CONFIG[key].isInteger} />
-          ))}
-        </div>
-
-
-        <div className="grid grid-cols-auto-110 gap-3 pt-5">
-          {Object.keys(uiState.visibleCols).filter(key => uiState.visibleCols[key] && !['bonus', 'vxs', 'resolve3d', 'resolve2hr', 'handoffs', 'trajectory'].includes(key) && METRIC_CONFIG[key]).map(key => {
-              const config = METRIC_CONFIG[key];
-              const val = metrics.mtdLeaderData[key];
-              const tgt = getDynamicTarget(key, metrics.mtdLeaderData.activeAgentCount || dashData.agents.length);
-              const isGood = config.reverse ? val <= tgt : val >= tgt;
-              let displayVal = val === null || val === undefined || isNaN(val) ? '-' : (config.isInteger ? Math.round(val) : Number(val).toFixed(2));
-              
-              return (
-                <div key={key} className="bg-slate-900 border border-slate-800 p-3 rounded-lg flex flex-col">
-                  <span className="text-xs text-slate-500 uppercase font-extrabold tracking-wide">{config.label}</span>
-                  <span className={`text-lg font-bold mt-1 ${isGood ? 'text-emerald-400' : 'text-red-400'}`}>{displayVal}{config.format}</span>
-                </div>
-              );
-            })}
-        </div>
-        {Object.keys(uiState.visibleCols).filter(key => uiState.visibleCols[key] && METRIC_CONFIG[key]).length === 0 && (
-          <span className="text-slate-500 text-sm">No metrics selected for display. Use Global Settings.</span>
-        )}
-      </div>
-
-
-      <div className="metric-card card-daily flex flex-col p-6">
-        <div className="flex justify-between items-start mb-6">
-          <div>
-            <h2 className="text-xl text-white m-0 font-bold flex items-baseline">
-              {spotterPrefix} <span className="text-sm text-slate-400 italic ml-2 font-normal">({spotterDate})</span>
-            </h2>
-            <div className="flex gap-3 mt-2">
-              <span className="text-xs text-slate-400 bg-slate-800 py-1 px-2 rounded">Calls Handled: <strong className="text-white">{metrics.activeLeaderData.calls ? metrics.activeLeaderData.calls.toLocaleString() : '-'}</strong></span>
-              <span className="text-xs text-slate-400 bg-slate-800 py-1 px-2 rounded">Res Contacts: <strong className="text-white">{metrics.activeLeaderData.resolveTotalContacts ? metrics.activeLeaderData.resolveTotalContacts.toLocaleString() : '-'}</strong></span>
-            </div>
-          </div>
-          <span className="bg-red-900 bg-opacity-20 text-red-300 py-1 px-2 rounded text-xs font-bold">DAILY EXECUTION</span>
-        </div>
-        
-        <div className="flex flex-wrap justify-around gap-4 pb-6 border-b border-slate-800">
-          {['vxs', 'resolve2hr', 'handoffs', 'resolve3d'].filter(key => uiState.visibleCols[key]).map(key => (
-            <DonutChart key={key} value={metrics.activeLeaderData[key]} target={getDynamicTarget(key, metrics.activeLeaderData.activeAgentCount || dashData.agents.length)} label={METRIC_CONFIG[key].label} format={METRIC_CONFIG[key].format} reverse={METRIC_CONFIG[key].reverse} max={getDynamicMax(key, metrics.activeLeaderData.activeAgentCount || dashData.agents.length)} isInteger={METRIC_CONFIG[key].isInteger} />
-          ))}
-        </div>
-
-
-        <div className="grid grid-cols-auto-110 gap-3 pt-5">
-          {Object.keys(uiState.visibleCols).filter(key => uiState.visibleCols[key] && !['bonus', 'vxs', 'resolve3d', 'resolve2hr', 'handoffs', 'trajectory'].includes(key) && METRIC_CONFIG[key]).map(key => {
-              const config = METRIC_CONFIG[key];
-              const val = metrics.activeLeaderData[key];
-              const tgt = getDynamicTarget(key, metrics.activeLeaderData.activeAgentCount || dashData.agents.length);
-              const isGood = config.reverse ? val <= tgt : val >= tgt;
-              let displayVal = val === null || val === undefined || isNaN(val) ? '-' : (config.isInteger ? Math.round(val) : Number(val).toFixed(2));
-              return (
-                <div key={key} className="bg-slate-900 border border-slate-800 p-3 rounded-lg flex flex-col">
-                  <span className="text-xs text-slate-500 uppercase font-extrabold tracking-wide">{config.label}</span>
-                  <span className={`text-lg font-bold mt-1 ${isGood ? 'text-emerald-400' : 'text-red-400'}`}>{displayVal}{config.format}</span>
-                </div>
-              );
-            })}
-        </div>
-        {Object.keys(uiState.visibleCols).filter(key => uiState.visibleCols[key] && METRIC_CONFIG[key]).length === 0 && (
-          <span className="text-slate-500 text-sm">No metrics selected for display. Use Global Settings.</span>
-        )}
-      </div>
-    </div>
-  );
-});
-
-
-// ─── Floor Header & Selector Bar ──────────────────────────────────────
-const FloorHeader = React.memo(() => {
-  const { dashData, uiState, uiHandlers } = useDashboard();
-  const tabs = [
-    { id: 'roster', icon: '📋', label: 'Team Roster' },
-    { id: 'outliers', icon: '⚠️', label: 'Floor Outliers' },
-    { id: 'apprentice', icon: '🎓', label: 'Apprentice Track' },
-    { id: 'analysis', icon: '🤖', label: 'Floor Analysis' },
-    { id: 'trends', icon: '📈', label: 'Trends' },
-    { id: 'correlation', icon: '🎯', label: 'Integrity Match-ups' },
-    { id: 'burnout', icon: '🧠', label: 'Behavioral Scan' },
-    { id: 'dow', icon: '📅', label: 'DoW Analysis' }
-  ];
-
-
-  const currentTab = tabs.find(t => t.id === uiState.mainTab) || tabs[0];
-
-
-  return (
-    <div className="roster-header relative z-20">
-      <div className="flex items-center justify-between gap-4 w-full">
-        <div className="flex items-center gap-2">
-          <h2 className="text-xl text-slate-900 m-0 font-bold flex items-center gap-2">
-            Floor Details
-            {uiState.searchQuery && <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded font-bold uppercase tracking-wide border border-blue-200">Filtered</span>}
-          </h2>
-        </div>
-
-        <div className="flex items-center gap-3" style={{ marginLeft: 'auto' }}>
-          <div className="flex items-center gap-1">
-            <button onClick={() => dashData.handleDateChange(-1)} className="p-2 bg-transparent border-none cursor-pointer text-xl text-slate-500 rounded-full transition-all flex items-center justify-center w-9 h-9 hover:bg-slate-100 hover:text-slate-900" title="Previous Day">◀</button>
-            <button onClick={() => dashData.handleDateChange(1)} className="p-2 bg-transparent border-none cursor-pointer text-xl text-slate-500 rounded-full transition-all flex items-center justify-center w-9 h-9 hover:bg-slate-100 hover:text-slate-900" title="Next Day">▶</button>
-          </div>
-
-          <input
-            type="text"
-            className="search-input"
-            placeholder="Search multiple (comma separated)..."
-            value={uiState.inputValue}
-            onChange={(e) => uiHandlers.setInputValue(e.target.value)}
-            style={{ width: 'min(360px, 100%)', maxWidth: '360px' }}
-          />
-        </div>
-      </div>
-
-      <div className="mt-3">
-        <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-100 p-1 shadow-sm w-full overflow-x-auto">
-          {tabs.map(tab => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => uiHandlers.setMainTab(tab.id)}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap border ${uiState.mainTab === tab.id ? 'bg-white text-slate-900 border-slate-200 shadow-sm' : 'text-slate-500 border-transparent hover:bg-slate-50 hover:text-slate-900'}`}
-              title={tab.label}
-            >
-              <span className="text-base leading-none">{tab.icon}</span>
-              <span>{tab.label}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-});
-
 
 // ==== App state + reducer defaults ==== 
 // NOTE: keep reducer state kept here so modal and UI state changes are easy to trace during future refactors.

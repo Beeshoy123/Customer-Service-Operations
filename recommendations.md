@@ -612,6 +612,38 @@ Verified: `npx tsc -b` exit 0, 181/181 tests, preview HTTP 200 with clean HMR, a
 
 Remaining phases: 2) `DASHBOARD_STYLES` → real CSS, 5) chrome (TopNavbar/MainStatsRow/FloorHeader), 6) uiReducer → pure module + tests.
 
+---
+
+## App.tsx Restructure — Phase 5 (chrome)
+
+> Status: **✅ Completed (2026-09-29)** — Phases 2 and 6 pending
+> Approach: **move-only extraction** — same guardrails as Phases 3/4 (count-checked script, independent import recount, tsc, 181 tests, lint, preview, Vite transforms, origin diff).
+
+Extracted the dashboard chrome (App.tsx lines 79–384, 306 lines) into three files under **`src/features/dashboard/views/chrome/`**:
+
+| File | Region | Final lines |
+|---|---|---|
+| `TopNavbar.tsx` | 144L | 149 |
+| `MainStatsRow.tsx` | 96L | 102 |
+| `FloorHeader.tsx` | 66L | 69 |
+
+**`App.tsx: 695 → 386 lines (−309)`.** Per-file imports auto-generated (TopNavbar: React/useDashboard/useRef/useEffect/TimeframeMenu/SettingsMenu; MainStatsRow: React/useDashboard/DonutChart/getDynamicTarget/METRIC_CONFIG/getDynamicMax; FloorHeader: React/useDashboard), with a guard that aborts if a region uses any import not on its list. Banner updated.
+
+**Type fixes:**
+
+- 14 × TS7053 — `METRIC_CONFIG[key]` sites in MainStatsRow wrapped as `(METRIC_CONFIG as Record<string, any>)[…]` (8 lines; lines 31/74 had 4 sites each — wrap-all-per-line, not per-error)
+- 6 × TS7006 — TopNavbar callbacks; paren-aware (5 wrapped `(q: any) =>`, 1 annotated `(event: any)`)
+- 8 × TS2322 — `style.opacity = 1` / `= 0.7` assignments quoted to `'1'`/`'0.7'` (CSSOM coerces identically at runtime); the 2 `style={{ opacity: ternary }}` object properties were left numeric (valid, not flagged)
+- 2 × TS2339 — `useRef(null)` → `useRef<any>(null)` so `.contains()` type-checks in the click-outside handler
+- 1 × TS6133 — removed dead `currentTab` local in FloorHeader (proved unused by both tsc and oxlint)
+- 6 imports became unused when the chrome left App.tsx (`SettingsMenu`, `TimeframeMenu`, `DonutChart`, `getDynamicTarget`, `METRIC_CONFIG`, `getDynamicMax`) — removed; lint warnings returned to the 123 baseline
+
+**Parity audit: PASS** — diffed each new file against its origin region in HEAD (`0833dcf`): every changed hunk is one of the fixes above; zero unexplained deletions.
+
+Verified: `npx tsc -b` exit 0, 181/181 tests, lint **0 errors / 123 warnings**, preview HTTP 200 with clean HMR, all 3 chrome modules + App transform with HTTP 200.
+
+Remaining phases: 2) `DASHBOARD_STYLES` → real CSS, 6) uiReducer → pure module + tests.
+
 > Comparison basis: `ImportLanding.tsx` / `ImportLanding.css` (the loading page) vs `App.tsx` / `App.css` (the main dashboard).
 > No code changes have been made yet. These are ideas only, ordered by impact vs effort.
 
