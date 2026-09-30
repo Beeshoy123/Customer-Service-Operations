@@ -1,6 +1,6 @@
 # Customer Service Operations Dashboard — Import Recommendations & Plan
 
-> **Status: active backlog.** This file lists *open* work only. Completed recommendations, resolved bugs and finished refactor phases were removed on 2026-09-29 and live in commit history (`git log`, and the pre-purge revision of this file). Current open work: `## Critical` (4 P0/P1 defects), `## Architecture Fixes` (Phase 2, Phase 6, S1–S23), `## UX & Accessibility Findings` (U1–U6), and the open design items in `## Design Gap Analysis`.
+> **Status: active backlog.** This file lists *open* work only. Completed recommendations, resolved bugs and finished refactor phases were removed on 2026-09-29 and live in commit history (`git log`, and the pre-purge revision of this file). Current open work: `## Critical` (4 P0/P1 defects), `## Architecture Fixes` (S1–S23), `## UX & Accessibility Findings` (U1–U6), and the open design items in `## Design Gap Analysis`.
 
 ## Objective
 
@@ -141,13 +141,13 @@ The app consumes **24** `aiTools.*` members across 12 files. **11 are `undefined
 
 | Missing member | Call sites |
 |---|---|
-| `generateExpertReport` | `App.tsx:224`, `App.tsx:235`, `FloorRosterTab.tsx:100`, `FloorOutliersTab.tsx:18` (+1 in a dep array, `App.tsx:239`) |
+| `generateExpertReport` | `App.tsx:210`, `App.tsx:221`, `FloorRosterTab.tsx:100`, `FloorOutliersTab.tsx:18` (+1 in a dep array, `App.tsx:225`) |
 | `generateTeamReport` | `FloorAnalysisTab.tsx:10` |
 | `generateChartActionPlan` | `FloorTrendsTab.tsx:54` |
 | `generateCorrelationReport` | `FloorCorrelationTab.tsx:10` |
 | `generateApprenticeReport` | `FloorApprenticeTab.tsx:45` |
 | `generateDowReport` | `FloorDowTab.tsx:12` |
-| `resetAiStates` | `App.tsx:187`, `App.tsx:212`, `App.tsx:213` |
+| `resetAiStates` | `App.tsx:173`, `App.tsx:198`, `App.tsx:199` |
 | `askAiQuery` / `setAskAiQuery` | `MainModal.tsx:29` / `MainModal.tsx:29` |
 | `handleAskAiSubmit` | `MainModal.tsx:29`, `:31`, `:39` |
 | `askAiLoading` | `MainModal.tsx:29`, `:31`, `:40`, `:48` |
@@ -157,20 +157,20 @@ The app consumes **24** `aiTools.*` members across 12 files. **11 are `undefined
 
 **Concrete failure modes, most user-visible first.**
 
-1. **The whole dashboard blanks when the user clicks "Data Assistant".** `TopNavbar.tsx:66` → `setActiveModal('askAi')` → `MainModal.tsx:402` renders `AskAiContent` → `MainModal.tsx:31` evaluates `!aiTools.askAiQuery.trim()` on `undefined` → **`TypeError: Cannot read properties of undefined (reading 'trim')` during render** → the nearest `<ErrorBoundary>` (`App.tsx:344`) replaces the entire dashboard with its fallback. (`MainModal.tsx:29` also makes the input uncontrolled: `value={undefined}`.)
-2. **Every modal close throws.** The ✕ Close button and the backdrop (`MainModal.tsx:371`, `:377`) both call `uiHandlers.closeModal` → `App.tsx:212` `aiTools.resetAiStates()` → **`TypeError: aiTools.resetAiStates is not a function`**. This affects the supervisor modal too, so it is not confined to the AI feature.
+1. **The whole dashboard blanks when the user clicks "Data Assistant".** `TopNavbar.tsx:66` → `setActiveModal('askAi')` → `MainModal.tsx:402` renders `AskAiContent` → `MainModal.tsx:31` evaluates `!aiTools.askAiQuery.trim()` on `undefined` → **`TypeError: Cannot read properties of undefined (reading 'trim')` during render** → the nearest `<ErrorBoundary>` (`App.tsx:330`) replaces the entire dashboard with its fallback. (`MainModal.tsx:29` also makes the input uncontrolled: `value={undefined}`.)
+2. **Every modal close throws.** The ✕ Close button and the backdrop (`MainModal.tsx:371`, `:377`) both call `uiHandlers.closeModal` → `App.tsx:198` `aiTools.resetAiStates()` → **`TypeError: aiTools.resetAiStates is not a function`**. This affects the supervisor modal too, so it is not confined to the AI feature.
 3. **Three tabs throw on open, after any import.** `FloorAnalysisTab.tsx:10`, `FloorCorrelationTab.tsx:10` and `FloorDowTab.tsx:12` call their `generate*` inside a mount effect, guarded only on `dashData.hasUploadedData` — so once a workbook is imported, opening Analysis, Correlation or DOW throws in the effect and takes the dashboard down via the ErrorBoundary.
-4. **Two silent failures (no crash, wrong behaviour).** `App.tsx:187` assigns `aiResetRef.current = undefined`, so the guard at `App.tsx:111` (`if (aiResetRef.current) aiResetRef.current()`) is permanently false and **stale AI reports are never cleared when a new file is uploaded**. `FloorTrendsTab.tsx:54` passes `onClick={undefined}`, which React silently ignores — a dead button with no error.
+4. **Two silent failures (no crash, wrong behaviour).** `App.tsx:173` assigns `aiResetRef.current = undefined`, so the guard at `App.tsx:97` (`if (aiResetRef.current) aiResetRef.current()`) is permanently false and **stale AI reports are never cleared when a new file is uploaded**. `FloorTrendsTab.tsx:54` passes `onClick={undefined}`, which React silently ignores — a dead button with no error.
 
 **Precisely what to do.** For each of the 11 members choose *implement* or *delete* — do not leave any consumer pointing at a member that does not exist:
 
 - **Implement (9 members, 2 groups).** (a) Ask-AI chat state — `askAiQuery`, `setAskAiQuery`, `askAiResponse`, `askAiLoading`, `handleAskAiSubmit` — is a self-contained 5-member unit: one `useState` pair, one submit handler, one request through whatever C1 ends up building. (b) The six `generate*` functions plus `resetAiStates` — one `useCallback` each over the existing `executeGeminiAction` helper, each with its own system prompt; `resetAiStates` is the single place that nulls the six report states and their loading flags.
 - **Delete (0 members).** Nothing here should be deleted: every one of the 11 has a live UI behind it (7 tabs, the Data Assistant modal, the close handler). If a feature is not wanted, delete the **UI** in the same change — never leave the button.
 - **Then close the class of bug, not just the instance.** Replace `createContext<any>(null)` with `createContext<DashboardContextValue | null>(null)` and export an explicit `DashboardContextValue` interface composed of the three hook return types. Every one of the 12 view files is already checked by `tsc`, so the moment the interface exists, any other missing member becomes a compile error instead of a runtime `TypeError`. Expect this to surface further mismatches — that is the point, and it is the single highest-value change in this document.
-- **Guard it with a test.** Add `src/features/dashboard/aiToolsShape.test.ts` (node:test + tsx, same as the 12 existing suites) asserting that the set of `aiTools.*` members consumed anywhere in `src/` is a subset of the keys `useAiTools` returns. It is a static check over source text, so it needs no React runtime, and it makes this regression impossible to reintroduce silently. **Target: 181 → ~184 tests.**
+- **Guard it with a test.** Add `src/features/dashboard/aiToolsShape.test.ts` (node:test + tsx, same as the 12 existing suites) asserting that the set of `aiTools.*` members consumed anywhere in `src/` is a subset of the keys `useAiTools` returns. It is a static check over source text, so it needs no React runtime, and it makes this regression impossible to reintroduce silently. **Target: 194 → ~197 tests.**
 - **Do not** paper over the crashes with optional chaining (`aiTools.resetAiStates?.()`). That converts a loud failure into a dead button — exactly failure mode 4, which is how this bug stayed invisible.
 
-**Verification.** (1) Reproduce all four failure modes in the browser first, so the fix is provable. (2) After the fix: open the Data Assistant, open and close the supervisor modal, and open Analysis / Correlation / DOW after an import — all must work with no console errors. (3) `npx tsc -b` exit 0, `npm test` 181 → ~184 all green, `npm run lint` 0 errors / ≤123 warnings, preview HTTP 200, Vite transform 200 for `hooks.ts` and all 12 view files.
+**Verification.** (1) Reproduce all four failure modes in the browser first, so the fix is provable. (2) After the fix: open the Data Assistant, open and close the supervisor modal, and open Analysis / Correlation / DOW after an import — all must work with no console errors. (3) `npx tsc -b` exit 0, `npm test` 194 → ~197 all green, `npm run lint` 0 errors / ≤123 warnings, preview HTTP 200, Vite transform 200 for `hooks.ts` and all 12 view files.
 
 ---
 
@@ -189,13 +189,13 @@ Today that request is inert because it 401s. **The moment anyone "fixes" the 401
 1. **Add a server-side proxy that holds the key.** The key must never enter the Vite bundle. In particular: **do not** use an `import.meta.env.VITE_*` variable — every `VITE_`-prefixed value is inlined into the client JavaScript and is readable by anyone who opens the page. The project is currently pure client-side (`react`, `react-dom`, `xlsx` only), so this is a genuinely new layer, not a refactor; pick the smallest thing that can hold a secret.
 2. Move `executeGeminiAction`, `fetchWithRetry`, `delayForRetry` (`:1321`) and `_aiControllers` (`:1319`) to that server layer. The client keeps the `AbortController` cancellation semantics (`:1356–1359`) — a user-initiated request must remain cancellable.
 3. Point the client at the proxy. The client must not know the provider URL or the model id; both belong on the server so a provider change is a server edit.
-4. **Make the expert report user-triggered.** Remove the auto-fire at `hooks.ts:1449` and put it behind the existing explicit entry point (`App.tsx:224`/`:235` `handleAiLinkClick`, and the supervisor-modal action) — or, if an automatic summary is genuinely wanted, gate it behind a visible opt-in. An automatic outbound transfer of employee performance data on page load is not something to ship by default.
+4. **Make the expert report user-triggered.** Remove the auto-fire at `hooks.ts:1449` and put it behind the existing explicit entry point (`App.tsx:210`/`:235` `handleAiLinkClick`, and the supervisor-modal action) — or, if an automatic summary is genuinely wanted, gate it behind a visible opt-in. An automatic outbound transfer of employee performance data on page load is not something to ship by default.
 5. **Minimize the payload.** Send aggregates and the slices the prompt actually needs, not the raw roster and full time series. This is the same data-minimization argument as C3 below, applied to egress.
 6. Handle the failure honestly: today every path ends in a `TypeError` or a silent no-op. A failed AI call should render a visible, non-destructive error state in the component that requested it, not a thrown exception.
 
 **Do not:** add the key to the client; add a `VITE_`-prefixed key variable; "temporarily" bypass CORS with `mode: 'no-cors'`.
 
-**Verification.** `grep -rn "api.anthropic.com" src` → **0 hits** (the provider string lives only on the server). The key exists only in server-side environment config, never in `dist/`. In the browser's Network panel: **no outbound AI request on page load with no user action**, and exactly one per user-initiated action. One real report generates and renders. Then the standard gate: `tsc -b` 0, 181/181, lint 0 errors / ≤123, preview 200.
+**Verification.** `grep -rn "api.anthropic.com" src` → **0 hits** (the provider string lives only on the server). The key exists only in server-side environment config, never in `dist/`. In the browser's Network panel: **no outbound AI request on page load with no user action**, and exactly one per user-initiated action. One real report generates and renders. Then the standard gate: `tsc -b` 0, 194/194, lint 0 errors / ≤123, preview 200.
 
 ---
 
@@ -207,13 +207,13 @@ Today that request is inert because it 401s. **The moment anyone "fixes" the 401
 |---|---|
 | `executeGeminiAction` | `hooks.ts:1353` (definition), called at `hooks.ts:1468` |
 | `GeminiLoader` | `src/components/shared.tsx:17` (default `message = 'Cooking it up...'`), imported by `FloorApprenticeTab`, `FloorCorrelationTab`, `FloorDowTab` |
-| `.gemini-btn` | defined in `src/app/dashboardStyles.ts`, used in **7 files**: `FloorTrendsTab`, `FloorApprenticeTab`, `FloorCorrelationTab`, `FloorDowTab`, `FloorAnalysisTab`, `views/modals/MainModal`, `app/chartActionPlanModal` |
+| `.gemini-btn` | defined in `src/styles/dashboard.css` (was `src/app/dashboardStyles.ts`), used in **7 files**: `FloorTrendsTab`, `FloorApprenticeTab`, `FloorCorrelationTab`, `FloorDowTab`, `FloorAnalysisTab`, `views/modals/MainModal`, `app/chartActionPlanModal` |
 
-**Why it is more than cosmetic.** It is a debugging trap: a maintainer chasing a 401, a 429, a model-id error or a token-limit error will grep `gemini`, find the function that made the call, and conclude the wrong provider is in play. It is also inventory debt — `.gemini-btn` is one of the 189 hand-rolled classes that Phase 2 has to relocate, so renaming it after the CSS move means touching the stylesheet twice.
+**Why it is more than cosmetic.** It is a debugging trap: a maintainer chasing a 401, a 429, a model-id error or a token-limit error will grep `gemini`, find the function that made the call, and conclude the wrong provider is in play. It is also inventory debt — `.gemini-btn` is one of the 189 hand-rolled classes, and Phase 2 has moved it into `src/styles/dashboard.css` (and scoped it under `.analyst-dashboard`), so the rename now touches exactly two places — that definition and the 7 usages — in one pass.
 
-**Precisely what to do.** One mechanical pass, **after C1 and C4 land** so the rename does not sit inside a functional diff: `executeGeminiAction` → `executeAiAction`, `GeminiLoader` → `AiLoader`, `.gemini-btn` → `.ai-btn` (definition in `dashboardStyles.ts` + all 7 usages). Add a one-line comment at each renamed symbol recording the rename and the date, so the next reader does not re-litigate it. Pick one neutral name and apply it everywhere — do not leave `.ai-btn` and `.gemini-btn` side by side.
+**Precisely what to do.** One mechanical pass, **after C1 and C4 land** so the rename does not sit inside a functional diff: `executeGeminiAction` → `executeAiAction`, `GeminiLoader` → `AiLoader`, `.gemini-btn` → `.ai-btn` (definition in `src/styles/dashboard.css` + all 7 usages). Add a one-line comment at each renamed symbol recording the rename and the date, so the next reader does not re-litigate it. Pick one neutral name and apply it everywhere — do not leave `.ai-btn` and `.gemini-btn` side by side.
 
-**Verification.** `grep -rin "gemini" src` → **0 hits**. `tsc -b` 0, 181/181, lint 0 errors / ≤123 (unchanged — a rename cannot add warnings), and a visual pass over the 7 files to confirm the buttons still render (the class rename is the only thing that can break them).
+**Verification.** `grep -rin "gemini" src` → **0 hits**. `tsc -b` 0, 194/194, lint 0 errors / ≤123 (unchanged — a rename cannot add warnings), and a visual pass over the 7 files to confirm the buttons still render (the class rename is the only thing that can break them).
 
 ---
 
@@ -236,7 +236,7 @@ Today that request is inert because it 401s. **The moment anyone "fixes" the 401
 
 **Precisely what to do** (test-first; production code is not expected to change):
 
-1. Add `src/features/dashboard/helpers.test.ts` (node:test + tsx, matching the 12 existing suites) — **target ~20–25 new tests, 181 → ~205**.
+1. Add `src/features/dashboard/helpers.test.ts` (node:test + tsx, matching the 12 existing suites) — **target ~20–25 new tests, 194 → ~219**.
 2. Suggested cases: `calculateBonus` at each tier boundary and with missing/partial inputs; `aggregateRecords` on an empty array, a single row, and rows spanning multiple days/months (day-of-week bucketing is the classic off-by-one); `aggregateTeamMetrics` rollup totals matching the sum of its member agents (a property-style assertion, not a golden value); `calculateWeightedVSF` weighting math and division-by-zero when a denominator is 0; `calculateTrend` for flat, rising, falling and single-point series; `agentMatchesSearch` case-insensitivity and the `linkedEntities` name matching used by `handleAiLinkClick`; `formatName` / `shortenManagerName` on short, long and already-formatted names.
 3. Assert against **values computed by hand from the current implementation**, not against the implementation itself — write the expectation, then confirm the code agrees. If they disagree, stop: that is a live bug, and it belongs in this document, not in a test rewrite.
 4. Only after the tests are green, remove `// @ts-nocheck` from `helpers.ts` and fix what `tsc` reports. Expect the fixes to be type annotations only; treat any behavioral change as a defect to report.
@@ -244,20 +244,20 @@ Today that request is inert because it 401s. **The moment anyone "fixes" the 401
 
 **Do not** change any threshold, formula or rounding rule as part of this work. This item adds a safety net; it is not permission to tune the math.
 
-**Verification.** 181 → ~205 tests, all green, **with zero production-code changes** in step 1–3. After step 4: `tsc -b` exit 0, lint 0 errors / ≤123. Audit note: once `helpers.ts` is type-checked, the `@ts-nocheck` count drops from 3,348 lines to ~2,990 across 7 files.
+**Verification.** 194 → ~219 tests, all green, **with zero production-code changes** in step 1–3. After step 4: `tsc -b` exit 0, lint 0 errors / ≤123. Audit note: once `helpers.ts` is type-checked, the `@ts-nocheck` count drops from 3,348 lines to ~2,990 across 7 files.
 
 ---
 
 ### Critical — verification notes
 
 - All findings above come from **static reading**, not from running the app. The four C4 failure modes are derived from the call graph; reproduce each in the browser before fixing so the fix is provable rather than assumed.
-- No code was changed while producing this section. The audit baseline it was measured against is recorded under **Structural Findings S1–S12** below: `tsc -b` exit 0, 181/181 tests, lint 0 errors / 123 warnings.
+- No code was changed while producing this section. The audit baseline it was measured against is recorded under **Structural Findings S1–S12** below: `tsc -b` exit 0, 194/194 tests, lint 0 errors / 123 warnings.
 - C1 and C4 share a subsystem and a fix session; C1's data-egress decision should be made *after* C4, because C4 is what currently stops the auto-firing effect at `hooks.ts:1449` from reaching a live endpoint.
 - The non-AI findings (S1–S12) are structural and can proceed independently at any point.
 
 ## Architecture Fixes
 
-The two phases left in the 6-phase `App.tsx` split. Four phases of pure move-only extraction were completed first and their write-ups were removed from this file on 2026-09-29 (see commit history); these two are the ones that still carry real architectural change, so each one gets its own plan and its own verification gate. Current state: `App.tsx` is 386 lines (`MODAL_INITIAL`, `UI_INITIAL`, `export default function App()`, and the composition tree), and the two targets still live in the most awkward places possible — CSS inside a TS string in `src/app/`, and the UI reducer inline in a component body.
+The 6-phase `App.tsx` split is **complete**. Four phases of pure move-only extraction (1, 3, 4, 5) were completed first, **Phase 6 landed on 2026-09-29** — `MODAL_INITIAL`, `UI_INITIAL`, `modalReducer` and `uiReducer` now live in `src/features/dashboard/uiReducer.ts`, covered by 13 unit tests — and **Phase 2 landed the same day (both steps)**: step 1 moved the 16,790-byte `DASHBOARD_STYLES` literal verbatim to `src/styles/dashboard.css` (killing the `dangerouslySetInnerHTML` injection and deleting `src/app/dashboardStyles.ts`), step 2 added the provenance banner, deleted the dead `.badge` rule and scoped the three live collision-prone names under `.analyst-dashboard :where(...)`. The Phase 6 write-up was removed from this file (commit history); Phase 2 keeps a short outcome record below because its two decisions govern all future styling work. What is left is the structural backlog (S1–S23). Current state: `App.tsx` is **372 lines** (386 at HEAD before Phases 6 + 2) — local state + `export default function App()` + the composition tree.
 
 ---
 
@@ -269,18 +269,19 @@ This subsection is aimed at whoever (human or model) picks up the next item. Eve
 
 | File | Lines | Notes |
 |---|---|---|
-| `src/App.tsx` | 386 | `@ts-nocheck`; only state + reducers + composition |
+| `src/App.tsx` | 372 | `@ts-nocheck`; local state + composition. Reducer state moved out in Phase 6, stylesheet out in Phase 2 step 1 |
+| `src/features/dashboard/uiReducer.ts` | 57 | **new (Phase 6)** — typed initial state, 2 reducers, 13 tests |
 | `src/features/dashboard/hooks.ts` | 1,486 | `@ts-nocheck`; `useDashboardData` is lines 267–1317, `useAiTools` 1419–1486 |
 | `src/features/dashboard/import/ImportPreviewModal.tsx` | 1,858 | `tsc`-checked; helpers 1–390, `ManageMemoryModal` 397–568, main component 580–1858 |
 | `src/features/dashboard/metrics.ts` | 391 | `@ts-nocheck`; 10 unconditional `useMemo`s |
 | `src/features/dashboard/helpers.ts` | 358 | `@ts-nocheck`; 244 lines of untested business math (see C3) |
-| `src/app/dashboardStyles.ts` | 43 | 16,916 bytes of CSS in a template literal |
+| `src/styles/dashboard.css` | 53 | **new (Phase 2, steps 1+2)** — 17,463 bytes of dashboard CSS: the 16,790-byte verbatim extract of `src/app/dashboardStyles.ts`, plus banner, minus the dead `.badge` rule, plus 6 `:where()`-scoped selectors |
 
 **The gate. A change is not done until all of these are true.**
 
 ```bash
 npx tsc -b            # must exit 0   (note: `npx tsc -b | tail` HIDES the exit code — do not pipe it)
-timeout 180 npm test  # 181/181 at baseline; count may only go UP, and no existing test may be edited
+timeout 180 npm test  # 194/194 at baseline; count may only go UP, and no existing test may be edited
 npm run lint          # 0 errors, and warnings <= 123 (the baseline; never above)
 ```
 
@@ -293,7 +294,7 @@ Then: preview returns HTTP 200 with no HMR errors, and **every touched module re
 3. **The 37-key object returned at `hooks.ts:1308` is a public contract.** It is consumed by 8 tabs, 3 chrome components, the modal and `App`. Do not rename, reorder-with-meaning, or drop a key as part of a refactor. Adding is fine; removing is a breaking change that must be grepped first.
 4. **`str_replace`-style edits fail on the large `src/App.tsx`.** The working method is a **count-checked Node script**: assert the anchor appears exactly N times, compute the replacement, verify all post-conditions, *then* write. Several attempts have aborted with zero partial writes, which is the point of the pattern — keep it.
 5. **The `import/` folder is layered and acyclic, and must stay that way:** `types → (importPolicy | schemaNormalizer | mergeData | columnFingerprinter | granularityDetector | mappingMemory | csvParser | fileTypeDetector | sheetSelector | validation)` → `importService` → `ImportPreviewModal`. Pure functions only below the UI line. The **STANDING RULE** above governs this folder: column-mapping and alias logic belongs in `importPolicy.ts` and nowhere else.
-6. **There is no Tailwind.** `package.json` runtime deps are `react`, `react-dom`, `xlsx` and nothing else. The 189 "utility" classes are hand-rolled and live inside a TS template string. Do not add Tailwind, do not use `clsx`, and do not add a dependency to fix a style problem — Phase 2 is the answer.
+6. **There is no Tailwind.** `package.json` runtime deps are `react`, `react-dom`, `xlsx` and nothing else. The 189 "utility" classes are hand-rolled; Phase 2 moved them into `src/styles/dashboard.css`, where they stay (step 2 weighed replacing them with a real utility layer and rejected it as a visual-diff job). Do not add Tailwind, do not use `clsx`, and do not add a dependency to fix a style problem.
 7. **S3 can produce stale data, not an error.** Memoizing the three hook returns is the highest-value change in this document and the only one whose mistake is invisible: a wrong dependency list simply keeps showing yesterday's numbers. Use a render counter and click through all 8 tabs plus a timeframe change.
 8. **Rules of hooks are not optional.** Two real violations were fixed during the earlier phases (early `return null` above 8 `useMemo`s in `MainModal`; `supName` read from a possibly-undefined supervisor). When you move a component, check that every early return sits *below* every hook.
 9. **The dev server is managed.** Do not start, stop or restart it; edit the files and the platform picks them up. Never `npm run dev` in the background.
@@ -305,15 +306,13 @@ Then: preview returns HTTP 200 with no HMR errors, and **every touched module re
 |---|---|---|
 | 1 | **S5** (delete 6 dead files), **S10** (10 specifiers), **S8** (`asyncUtils`), **S9** (debug logs) | Zero-risk mechanical work; grep proves S5, tests prove the rest |
 | 2 | **S7.1** (duplicate `normalizeHeader`) | 15 minutes, byte-identical, proven by 60 existing tests |
-| 3 | **Phase 6** (`uiReducer` + tests) | Pure module + new tests; no consumer changes at all |
-| 4 | **S2** (`scheduleStatusClear`), **S12** (copy button) | Small, self-contained, both visible in the UI so verify by hand |
-| 5 | **S6** (storage module), **S11** (`buildAccountProfile`) | Touch persisted data; both need a manual round trip |
-| 6 | **S4** (ImportPreviewModal split) | Move-only; collect **S15/S16** inline while the file is open |
-| 7 | **S1** (`useDashboardData`, steps a→b→e→c→d as five commits) | Biggest win, five separately revertible commits |
-| 8 | **S13, S19, S21, S22** (render-path hot spots) | Each is a `useMemo`; land together, measure together |
-| 9 | **S3** (memoize hook returns) | Alone, with a render counter, after batch 7 |
-| 10 | **S14, S17, S18, S20, S23** (cosmetic/dup) | Opportunistic — fold into whatever you are already editing |
-| 11 | **Phase 2** step 1, then step 2 | Last: it is the only item no automated gate can verify |
+| 3 | **S2** (`scheduleStatusClear`), **S12** (copy button) | Small, self-contained, both visible in the UI so verify by hand |
+| 4 | **S6** (storage module), **S11** (`buildAccountProfile`) | Touch persisted data; both need a manual round trip |
+| 5 | **S4** (ImportPreviewModal split) | Move-only; collect **S15/S16** inline while the file is open |
+| 6 | **S1** (`useDashboardData`, steps a→b→e→c→d as five commits) | Biggest win, five separately revertible commits |
+| 7 | **S13, S19, S21, S22** (render-path hot spots) | Each is a `useMemo`; land together, measure together |
+| 8 | **S3** (memoize hook returns) | Alone, with a render counter, after batch 7 |
+| 9 | **S14, S17, S18, S20, S23** (cosmetic/dup) | Opportunistic — fold into whatever you are already editing |
 
 **Definition of done for a single item.** Copy this into your commit message and tick it:
 
@@ -334,110 +333,68 @@ Then: preview returns HTTP 200 with no HMR errors, and **every touched module re
 
 ### Phase 2 — `DASHBOARD_STYLES` → real CSS
 
-> Status: **📋 Open** (the four completed extraction phases were removed from this file on 2026-09-29; this and Phase 6 are the remainder)
+> Status: **✅ Completed (2026-09-29) — both steps landed** (step 1: byte-identical move · step 2: utility block + name scoping)
 > Approach: **byte-for-byte CSS move first, structure second** — no visual change is allowed in the same step as the reorganization.
 
-**Problem.** `src/app/dashboardStyles.ts` (43 lines, 16,916 bytes) is a TypeScript module whose only export is a template literal holding 16,790 bytes of CSS: ~9.6 KB of dashboard component rules (`.analyst-dashboard`, `.top-navbar`, `.glass-panel`, `.roster-table`, `.metric-card`, `.main-modal`, `.chat-*`, `.heatmap-table`, `.range-slider`, …) plus ~7.2 KB of a **hand-rolled Tailwind subset — 189 utility classes** (`.flex`, `.gap-4`, `.text-slate-700`, `.rounded-xl`, `.grid-cols-auto-110`, `.animate-slide-down`, …). It is injected at `App.tsx:347` via `<style dangerouslySetInnerHTML={{ __html: DASHBOARD_STYLES }} />`, so:
+**Problem (resolved by step 1).** `src/app/dashboardStyles.ts` was a TypeScript module whose only export was a template literal holding 16,790 bytes of CSS: ~9.6 KB of dashboard component rules (`.analyst-dashboard`, `.top-navbar`, `.glass-panel`, `.roster-table`, `.metric-card`, `.main-modal`, `.chat-*`, `.heatmap-table`, `.range-slider`, …) plus ~7.2 KB of a **hand-rolled Tailwind subset — 189 utility classes** (`.flex`, `.gap-4`, `.text-slate-700`, `.rounded-xl`, `.grid-cols-auto-110`, `.animate-slide-down`, …). It was injected on every render of `App`, so the stylesheet was re-parsed per keystroke, lived in a `.ts` file (no highlighting, no devtools "edit rule"), and produced a permanent `dangerouslySetInnerHTML` false-positive for security scanners.
 
-- the whole stylesheet is re-parsed by the browser on every render of `App` (a 17 KB style node rebuilt per keystroke-driven state change),
-- CSS lives in a `.ts` file — no syntax highlighting, no PostCSS/autoprefixer, no devtools "edit rule" workflow, and it is invisible to any CSS tooling in the project,
-- `dangerouslySetInnerHTML` on a `<style>` tag is a permanent false-positive for XSS/security scans, and it can only ever be mounted from inside React.
+**✅ Step 1 outcome (mechanical, byte-identical).**
 
-**Goal.** Move the bytes into a real stylesheet that the bundler owns, then (separate step) stop pretending this project ships Tailwind.
-
-**Scope — step 1 (mechanical, no behavior change).**
-
-1. Create `src/styles/dashboard.css` containing the CSS verbatim (component block, then the `/* UTILITIES */` block), keeping the two `@keyframes` (`slideDown`, `spin`).
-2. Import it in `src/main.tsx` next to the existing `import './styles/index.css'` and `import './features/dashboard/import/ImportPreviewModal.css'` — the project's established pattern for global CSS.
-3. Delete `src/app/dashboardStyles.ts` and the `<style dangerouslySetInnerHTML …>` line in `App.tsx`, plus the now-dead import.
-4. Guard: the extracted file must be byte-identical to the current template literal (a Node script that reads the literal, writes the file, and diffs the CSS text before/after is the way to prove it; assert 0 byte delta and 2 `@keyframes` present).
-
-**Scope — step 2 (only after step 1 is green and merged).** Two sub-decisions, both worth an explicit call:
-
-- **Utility block:** 189 custom classes that shadow nothing today but are a maintenance trap. Either keep them verbatim in a clearly labelled `dashboard-utilities.css`, or replace the usages with real utility classes from the project's existing tokens. Sub-replacement is the higher-value, higher-risk option — it is a visual-diff job, not a move.
-- **Name collisions:** `.badge`, `.close-btn`, `.gemini-btn`, `.card-daily` are generic enough to be at risk from other stylesheets. Scope them under `.analyst-dashboard` (or rename with a `ds-` prefix) as part of the move so the utilities can never bleed onto the landing page.
-
-**Risks / parity checks.** Cascade order changes (a `<style>` in the body currently wins over `index.css` loaded in `<head>` in some cases and loses in others — moving to a bundled stylesheet flips that), so verify: navbar sticky/z-index (`z-40` navbar vs `z-50` roster header vs `z-90` modal backdrop), the `::-webkit-scrollbar` rules, `min-width:800px` on `.roster-table` inside `.table-scroll-area` horizontal scroll, and the `850px` `.stats-row` breakpoint. A visual screenshot pass at desktop + mobile widths is required, not optional — this is the one phase where "tsc + tests" proves nothing.
-
-**Expected file outcomes.**
-
-| File | Change |
+| File | Actual result |
 |---|---|
-| `src/styles/dashboard.css` | **new** — 41 lines, ~16.8 KB, CSS extracted verbatim |
-| `src/main.tsx` | +1 import |
-| `src/app/dashboardStyles.ts` | **deleted** |
-| `src/App.tsx` | −1 import, −1 `<style>` element (386 → 384 lines) |
+| `src/styles/dashboard.css` | **new** — 40 lines, **16,790 bytes**, extracted verbatim (component block then `/* UTILITIES */`), both `@keyframes` (`slideDown`, `spin`) preserved |
+| `src/main.tsx` | +1 import placed **after** `index.css` and `ImportPreviewModal.css` so it wins same-specificity ties, matching the cascade the `<style>` in `<body>` had |
+| `src/app/dashboardStyles.ts` | **deleted** (43 lines) |
+| `src/App.tsx` | −1 import, −1 `<style>` element, +2 banner lines → **372 lines** (unchanged net; 386 at HEAD before Phases 6 + 2) |
 
-**Gate.** `npx tsc -b` exit 0, `npm test` 181/181, lint at or below the 123-warning baseline, preview 200 with clean HMR, Vite transform 200 for `main.tsx` and `App.tsx`, plus a visual comparison of every rule group listed above.
+**Proof of the byte-identity guard.** A count-checked Node script asserted the open marker was unique, the closing `` `; `` was the last thing in the file, the literal had **zero** `${}` interpolations, and both `@keyframes` were present — *before* writing; after writing it re-read `dashboard.css` and compared string-for-string: **16,790 = 16,790, `cmp` clean**. Served raw through the dev server (`?direct`) it is byte-identical to disk.
 
----
+**Cascade — measured, not assumed.** The risk noted below predicted a flip in specificity order. Running the selector-set comparison showed **zero overlap** between `index.css` (11 selectors) and `dashboard.css` (275), and no real overlap with `ImportPreviewModal.css` either (the single hit is the `to` keyword inside a `@keyframes` block, a regex false positive). Order is therefore not load-bearing today, but the import is still deliberately last so it stays correct if the two sheets ever grow into each other.
 
-### Phase 6 — `uiReducer` → pure module + tests
+**Verification.** `npx tsc -b` exit 0 · `npm test` **194/194** · `npm run lint` **0 errors / 123 warnings** (baseline) · preview HTTP 200 · Vite transforms 200 for `/`, `/src/main.tsx`, `/src/App.tsx`, `/src/styles/dashboard.css` · `main.tsx` transform shows the three CSS imports in the intended order · `App.tsx` transform shows **0** `dangerouslySetInnerHTML` and **0** `dashboardStyles` references · `cmp` on the served CSS: byte-identical.
 
-> Status: **📋 Planned** — lowest risk of the two, and the one that pays off immediately for correctness.
+⚠ **Dev-server staleness lesson.** After the edit, Vite kept serving the *pre-edit* `main.tsx` transform (the entry was pinned in `index.html` as `?src/main.tsx?t=<stamp>` and its module node was never invalidated), while `App.tsx` had already HMR'd — so a visitor would have got an **unstyled dashboard**: no CSS import, no `<style>` injection. `freebuff-preview restart` cleared it; after the restart `index.html` serves the plain `src="/src/main.tsx"` entry. **If you ever remove a style source from an entry module, re-fetch the entry transform through the dev server afterwards, not just the file you edited.**
 
-**Problem.** `App.tsx` still holds the whole UI state machine inline in the component body:
+**✅ Step 2 outcome (2026-09-29) — two decisions, both explicit.**
 
-- `MODAL_INITIAL` (`App.tsx:78`) — 5 modal fields (`activeModal`, `selectedSupervisorObj`, `expandedBurnoutAgentId`, `highlightedAgentId`, `supTab`),
-- `UI_INITIAL` (`App.tsx:83`) — 12 display fields (`mainTab`, `activeMainAiTool`, `activeSupAiTool`, `showColMenu`, `showModalColMenu`, `showTimeframeMenu`, `runChartMetric`, `isCumulative`, `heatmapViewType`, `outlierMode`, `outlierLevel`, `apprenticeViewMode`),
-- the reducers themselves, written as anonymous merge lambdas: `React.useReducer((s, a) => ({ ...s, ...a }), MODAL_INITIAL)` (`:125`) and the same shape for `UI_INITIAL` (`:137`),
-- 17 setter shims (`setMainTab`, `setShowColMenu`, …) that exist only to call `dispatchUi({ key: v })`.
-
-Because the state, the reducer, and the setters are all declared inside `App()`, and `App.tsx` is `@ts-nocheck`, none of the 17 UI transitions are typed, none are tested, and a typo in a key (`showCollMenu`) is a silent no-op at runtime instead of a type error. The merge-reducer shape also has no place to grow: any future transition logic (e.g. "switching `mainTab` must close `showColMenu` and reset `activeMainAiTool`") has nowhere to live except inside an inline lambda that no test can reach.
-
-**Goal.** Make the UI state a first-class, typed, testable module — the same move that made `importPolicy.ts` the single home for mapping fixes.
-
-**Scope.**
-
-1. New module `src/features/dashboard/uiReducer.ts` (checked, no `@ts-nocheck`) exporting:
-   - `MODAL_INITIAL`, `UI_INITIAL` (moved verbatim),
-   - `ModalState`, `UiState` interfaces plus an `UiPatch`/`ModalPatch` partial type so a dispatch is `{ mainTab?: TabId }` rather than `any`,
-   - `modalReducer(state, patch)` and `uiReducer(state, patch)` as named exported functions (same `{ ...s, ...a }` semantics — a move, not a redesign), and
-   - `resetAll` / `resetUi` constants so `dispatchModal(MODAL_INITIAL)` at `App.tsx:210` reads as a named reset.
-2. `App.tsx`: import them, drop the two `const … INITIAL` blocks, pass the named reducers to `useReducer`, and delete the `import React, { … }` dependency on `React.useReducer` in favor of the already-imported `useReducer` (or keep `React.useReducer` — either is fine, but only one form should survive).
-3. Keep the 17 setter shims where they are for now: they are part of the context contract consumed by `views/tabs/*`, `views/modals/*`, and `views/chrome/*`, and removing them would be a Phase-7-sized change.
-4. Remove the now-stale `// NOTE: keep reducer state kept here so …` comment and refresh the `FILE STRUCTURE` banner at the top of `App.tsx`.
-
-**New tests** — `src/features/dashboard/uiReducer.test.ts`, `node:test` + `tsx` (matches the 10 existing `*.test.ts` suites and the `npm test` glob), covering:
-
-- `UI_INITIAL` / `MODAL_INITIAL` key sets are exactly the documented 12 / 5 fields (guards against silent drift),
-- patching one key leaves the other 11 / 4 untouched (the regression that the inline spread is supposed to guarantee),
-- patching to a value equal to the current value returns a new state object but identical field values (documents the re-render semantics the `uiState` `useMemo` depends on),
-- resetting via `UI_INITIAL` returns every field to its default,
-- an unknown key is rejected (once the patch type is typed) rather than silently added,
-- the reducer never mutates its input state object.
-
-Target: **+10 to 12 tests**, taking the suite from 181 to ~193. No existing test may change.
-
-**Expected file outcomes.**
-
-| File | Change |
+| File | Actual result |
 |---|---|
-| `src/features/dashboard/uiReducer.ts` | **new** — ~60 lines (initial state, types, 2 reducers, reset constants) |
-| `src/features/dashboard/uiReducer.test.ts` | **new** — ~110 lines, 10–12 tests |
-| `src/App.tsx` | −14 lines of state defaults/reducer defs, +1 import, banner refresh (386 → ~372) |
+| `src/styles/dashboard.css` | **40 → 53 lines, 16,790 → 17,463 bytes** — +14-line provenance/section/scope banner, −1 dead rule (`.badge`, 307 bytes), 6 selectors scoped; rule count 281 → 280 |
 
-**Gate.** `npx tsc -b` exit 0, `npm test` at the new count with 0 failures, lint 0 errors and no new warnings, preview 200, Vite transform 200 for `uiReducer.ts` + `App.tsx`, and an **origin-diff parity audit** of the moved lines against `26c5661` — every hunk must be either a name change or the documented removal, nothing else.
+**Decision 1 — the 189-class utility block stays, verbatim.** Replacing it with a real utility layer (or migrating the usages onto `index.css` tokens) is a visual-diff job with no automated gate to catch a regression, so it was explicitly rejected for this phase. The block now sits under its `/* UTILITIES */` banner, with the file header recording that the project does **not** ship Tailwind; the maintenance trap is unchanged, only its address.
 
----
+**Decision 2 — generic names are scoped under `.analyst-dashboard`, not renamed.** All four candidates were audited against `src/`:
 
-**Phase order.** Phase 6 first: it is pure, testable, and independent of the visual work. Phase 2 last: it is the only phase where correctness cannot be established by `tsc`/tests, and it is far easier to review once `App.tsx` is down to state + composition.
+| Class | Verdict | Action |
+|---|---|---|
+| `.badge` | **dead CSS** — `grep -x badge` over every className token, plus a JSX-wide search, both return 0 | **deleted** (−307 bytes) |
+| `.close-btn` | live, 1 site (`MainModal.tsx:379`) | scoped — 2 selectors |
+| `.gemini-btn` | live, 7 sites (the five `Floor*` tabs, `MainModal.tsx:31`, `chartActionPlanModal.tsx:33`); **C2** renames it later | scoped — 3 selectors |
+| `.card-daily` | live, 1 site (`MainStatsRow.tsx:58`) | scoped — 1 selector |
+
+The scope is `.analyst-dashboard :where(.name)` — `:where()` contributes **zero** specificity, so the cascade is provably unchanged: a specificity audit (a parser that strips `:where()` before comparing) found all 6 before/after pairs identical (`0,1,0` · `0,2,0` · `0,1,1`). The `ds-`-prefix rename was the alternative and was rejected: it edits 8 JSX sites for the same guarantee, and C2 touches `.gemini-btn` anyway.
+
+**Why the flagged risks are now measured, not open.** Every one of the 8 usage sites renders inside the `.analyst-dashboard` div (`App.tsx:333`); the app has **zero** `createPortal` calls, so nothing can mount outside the container; and the landing page (`ImportLanding`, all `import-*`) shares **zero** class names with `dashboard.css` (class-level intersection with `index.css` and with `ImportPreviewModal.css` are both empty). The stacking/breakpoint risks that were listed for this step — `z-40` navbar / `z-50` roster header / `z-90` modal backdrop, the `::-webkit-scrollbar` rules, `min-width:800px` on `.roster-table`, the `850px` `.stats-row` breakpoint — were left untouched: no value in those rules changed. The only rendered-CSS delta is one proven-dead rule removed and 6 selectors gaining an ancestor requirement that every current usage site already satisfies. Residual check if the container ever shrinks: re-run the 8-site grep.
+
+**Gate.** `npx tsc -b` exit 0 · `npm test` **194/194** · `npm run lint` **0 errors / 123 warnings** · preview HTTP 200 · served `dashboard.css` byte-identical to disk (**17,463 bytes**, 53 lines) · HMR log shows `hmr update /src/styles/dashboard.css` with no errors.
+
+**Left behind (optional, not a Phase 2 item).** 48 classes are defined but never referenced — `.glass-panel`, `.tab-dropdown-*`, `.btn-dark`, `.btn-red-dark`, `.chat-container`, `.message-bubble`, `.bubble-*`, `.range-slider`, and utilities such as `justify-end`, `gap-5`, `py-10`, `z-50`, `grid-cols-5`. Deleting them is grep-provable and slots into the opportunistic batch.
 
 ---
 
 ### Structural Findings S1–S12 — whole-codebase audit (2026-09-29, no code changes)
 
-Read-only sweep of all 64 files in `src/`. Baseline at time of audit: `npx tsc -b` exit 0 · `npm test` 181/181 · `npm run lint` **0 errors / 123 warnings** (53 `no-unused-vars`, 38 `react-hooks/exhaustive-deps`, 13 `no-useless-escape`, 9 `set-state-in-effect`, 4 `only-export-components`, 2 `no-this-alias`, 2 `react(refs)`, 1 `no-constant-condition`, 1 `no-constant-binary-expression`). 17,489 lines total, **3,348 of them (21%) under `@ts-nocheck`** across 8 files: `hooks.ts` 1,486 · `metrics.ts` 391 · `App.tsx` 386 · `helpers.ts` 358 · `shared.tsx` 274 · `config.ts` 234 · `menus.tsx` 123 · `emptyColumns.ts` 96.
+Read-only sweep of all 64 files in `src/`. Baseline at time of audit: `npx tsc -b` exit 0 · `npm test` 181/181 (194/194 after Phase 6) · `npm run lint` **0 errors / 123 warnings** (53 `no-unused-vars`, 38 `react-hooks/exhaustive-deps`, 13 `no-useless-escape`, 9 `set-state-in-effect`, 4 `only-export-components`, 2 `no-this-alias`, 2 `react(refs)`, 1 `no-constant-condition`, 1 `no-constant-binary-expression`). 17,489 lines total, **3,348 of them (21%) under `@ts-nocheck`** across 8 files: `hooks.ts` 1,486 · `metrics.ts` 391 · `App.tsx` 386 · `helpers.ts` 358 · `shared.tsx` 274 · `config.ts` 234 · `menus.tsx` 123 · `emptyColumns.ts` 96.
 
 These are **in addition to** Phases 2 and 6 above, and they are independent of them — S1–S12 can be executed in any order relative to the two phases.
 
 #### S1 — `useDashboardData` is a 1,051-line hook · **HIGH (structure)**
 
-**Evidence.** `src/features/dashboard/hooks.ts:267–1317` — a single function body containing 16 `useState`, 3 `useEffect`, 15 `useCallback`, 2 `useMemo`, 18 `setTimeout`, and a 37-key return object (`:1308–1317`). Splitting `App.tsx` to 386 lines moved the real monolith one level down.
+**Evidence.** `src/features/dashboard/hooks.ts:267–1317` — a single function body containing 16 `useState`, 3 `useEffect`, 15 `useCallback`, 2 `useMemo`, 18 `setTimeout`, and a 37-key return object (`:1308–1317`). Splitting `App.tsx` down to 372 lines (386 when this audit ran) moved the real monolith one level down.
 
 **Problem.** One hook owns upload, drag-drop, multi-file, automatic import, batch import, mapping review, import preview, account profile, rate-merge style, and all four time selectors. There is no seam to test any of it, and every unrelated feature shares one failure domain (a throw in the auto-import path unmounts the dashboard).
 
-**Precisely what to do** — extract in this order, each a move-only step verified by the standard gate (`tsc -b` 0, 181/181, lint ≤123, preview 200, origin-diff parity audit):
+**Precisely what to do** — extract in this order, each a move-only step verified by the standard gate (`tsc -b` 0, 194/194, lint ≤123, preview 200, origin-diff parity audit):
 
 | # | Region (current lines) | Extract to | Notes |
 |---|---|---|---|
@@ -451,7 +408,7 @@ These are **in addition to** Phases 2 and 6 above, and they are independent of t
 
 **Do not** change the return key names, add new context layers, or move keys into `App.tsx` — that would re-inflate the file this program just shrank.
 
-**Verification.** Existing 181 tests unchanged; add ~12 tests for (e) covering `getAgentDataForTimeframe` across the four timeframes × `selectedDow`/`selectedWeek`/`selectedMonth` boundaries. Origin-diff audit must show zero logic changes.
+**Verification.** Existing 194 tests unchanged; add ~12 tests for (e) covering `getAgentDataForTimeframe` across the four timeframes × `selectedDow`/`selectedWeek`/`selectedMonth` boundaries. Origin-diff audit must show zero logic changes.
 
 #### S2 — 16 hand-rolled toast timers, none cleared on unmount · **MEDIUM (correctness + duplication)**
 
@@ -475,7 +432,7 @@ Then replace all 16 sites with `scheduleStatusClear(2000 | 4000 | 5000 | 6000)` 
 
 #### S3 — The context memo can never hit; all 12 view components re-render per keystroke · **HIGH (performance)**
 
-**Evidence.** `App.tsx:254–257` wraps `ctxValue` in `useMemo` with deps `[dashData, metrics, aiTools, uiState, uiHandlers, normalizedAccountName, resetToLanding]`. But all three hook returns are **fresh object literals**: `hooks.ts:1308` (`useDashboardData`), `hooks.ts:1471` (`useAiTools`), `metrics.ts:380` (`useDashboardMetrics`). None is wrapped in `useMemo`, so three of the seven deps change identity on every render and **the memo never hits**. Amplifiers: the 300 ms debounced search input (`App.tsx:175–181`) and 10 unconditional `useMemo`s in `metrics.ts` that compute roster, pareto, burnout, DOW and chart data for the seven tabs that are *not* mounted (`App.tsx:369–376` mounts exactly one).
+**Evidence.** `App.tsx:240–243` wraps `ctxValue` in `useMemo` with deps `[dashData, metrics, aiTools, uiState, uiHandlers, normalizedAccountName, resetToLanding]`. But all three hook returns are **fresh object literals**: `hooks.ts:1308` (`useDashboardData`), `hooks.ts:1471` (`useAiTools`), `metrics.ts:380` (`useDashboardMetrics`). None is wrapped in `useMemo`, so three of the seven deps change identity on every render and **the memo never hits**. Amplifiers: the 300 ms debounced search input (`App.tsx:140–146`) and 10 unconditional `useMemo`s in `metrics.ts` that compute roster, pareto, burnout, DOW and chart data for the seven tabs that are *not* mounted (`App.tsx:355–362` mounts exactly one).
 
 **Precisely what to do** (three small, independent edits — do them in this order and measure after each):
 
@@ -483,7 +440,7 @@ Then replace all 16 sites with `scheduleStatusClear(2000 | 4000 | 5000 | 6000)` 
 2. **Stabilize `metrics` and `aiTools`.** Same treatment at `metrics.ts:380` and `hooks.ts:1471`. `useAiTools`'s value is the easiest win: most of its 30+ keys are `useState` primitives, so the memo deps are the state list, and the functions it returns are already `useCallback`-stable — verify that before memoizing, otherwise the memo will still miss.
 3. **Do not add `mainTab` gating to `metrics.ts` in this change.** Gating the 10 memos on the active tab is a real follow-up win, but it changes what is computed and can surface latent ordering bugs; land 1–2, measure, then decide.
 
-**Verification.** Add a temporary render counter to one extracted tab (e.g. `FloorRosterTab`) and confirm the count no longer increments on a search keystroke. Then: `tsc -b` 0, 181/181, lint ≤123, preview 200. **Risk: MEDIUM** — this is the one item in S1–S12 where a wrong dependency list causes *stale* data rather than a crash, so the render-counter check and a manual pass over all 8 tabs (each must still show live data after a timeframe/month change) are mandatory.
+**Verification.** Add a temporary render counter to one extracted tab (e.g. `FloorRosterTab`) and confirm the count no longer increments on a search keystroke. Then: `tsc -b` 0, 194/194, lint ≤123, preview 200. **Risk: MEDIUM** — this is the one item in S1–S12 where a wrong dependency list causes *stale* data rather than a crash, so the render-counter check and a manual pass over all 8 tabs (each must still show live data after a timeframe/month change) are mandatory.
 
 #### S4 — `ImportPreviewModal.tsx`: 1,858 lines, ~1,278 of them one component · **HIGH (structure)**
 
@@ -499,7 +456,7 @@ Then replace all 16 sites with `scheduleStatusClear(2000 | 4000 | 5000 | 6000)` 
 
 **Do not** "fix" the 4 `setState`-in-effect warnings while moving them — moving first, then addressing the effects as a separate change, keeps the diff reviewable. Two of the six effects derive config from `sheetStates` and should ultimately become derived values (computed during render) rather than effects.
 
-**Verification.** `tsc -b` 0, 181/181 (14 of them re-pointed, none rewritten), lint ≤123 with **fewer** warnings (expect −1 `only-export-components`), preview 200, Vite transform 200 for all 4 touched modules, origin-diff parity audit against `26c5661`.
+**Verification.** `tsc -b` 0, 194/194 (14 of them re-pointed, none rewritten), lint ≤123 with **fewer** warnings (expect −1 `only-export-components`), preview 200, Vite transform 200 for all 4 touched modules, origin-diff parity audit against `26c5661`.
 
 #### S5 — Dead modules and unused barrels · **LOW (pure deletion)**
 
@@ -531,7 +488,7 @@ Then replace all 16 sites with `scheduleStatusClear(2000 | 4000 | 5000 | 6000)` 
 
 Then `grep -rn "from './import'" src` must return **zero** hits before the file is deleted, and the six deletions follow. Use the module-boundary convention already in the folder: no new import edges, no new exports, no re-exports to keep the barrel alive.
 
-**Verification.** `tsc -b` 0, 181/181 (the import pipeline is covered by 10 of the 12 test suites), lint ≤123, preview 200, and `/src/features/dashboard/hooks.ts` returns 200 through the dev server — it is `@ts-nocheck`, so that request is the only thing that proves the de-barrelling resolves.
+**Verification.** `tsc -b` 0, 194/194 (the import pipeline is covered by 10 of the 12 test suites), lint ≤123, preview 200, and `/src/features/dashboard/hooks.ts` returns 200 through the dev server — it is `@ts-nocheck`, so that request is the only thing that proves the de-barrelling resolves.
 
 #### S6 — Four incompatible `localStorage` namespaces, no migration path · **MEDIUM (data risk)**
 
@@ -561,7 +518,7 @@ Then `grep -rn "from './import'" src` must return **zero** hits before the file 
 2. Leave `ImportPreviewModal.tsx:336` alone (it normalizes already-normalized field names — different input, different contract). Add a comment saying so, so the next reader does not "fix" it.
 3. For the thresholds: **do not unify them in this step.** Instead, cross-reference the two constants in comments and record the known divergence window in this file. Unifying is a *behavioral* change to date detection and needs its own test pass (importPolicy has 42 tests; add cases for serials 1, 10000, 34999, 35000, 45383, 60000, 60001 to `importPolicy.test.ts` **before** touching either constant).
 
-**Verification.** `tsc -b` 0, 181/181 — all 42 `importPolicy` tests and 18 `columnFingerprinter` tests must pass unchanged, which is what proves step 1 was byte-identical.
+**Verification.** `tsc -b` 0, 194/194 — all 42 `importPolicy` tests and 18 `columnFingerprinter` tests must pass unchanged, which is what proves step 1 was byte-identical.
 
 #### S8 — `createAbortError` ×3, `yieldToEventLoop` ×2 · **LOW (duplication)**
 
@@ -569,7 +526,7 @@ Then `grep -rn "from './import'" src` must return **zero** hits before the file 
 
 **Precisely what to do.** Extract both into `src/features/dashboard/import/asyncUtils.ts`. The `workbookWorker.ts` copy **must stay inline** — the worker is instantiated from a blob/URL and must not gain an import edge; leave a comment there saying so. Net result: 1 shared module, 2 call sites converted, 1 deliberate inline copy.
 
-**Verification.** 181/181 (16 `workbookLoader` tests exercise the worker bridge and will catch a broken edge), `tsc -b` 0.
+**Verification.** 194/194 (16 `workbookLoader` tests exercise the worker bridge and will catch a broken edge), `tsc -b` 0.
 
 #### S9 — 13 leftover debug logs in the production import path · **LOW (hygiene)**
 
@@ -577,7 +534,7 @@ Then `grep -rn "from './import'" src` must return **zero** hits before the file 
 
 **Precisely what to do.** Delete the 13 debug logs. For the three that carry operational value (`workbookLoader.ts:437` timing, `:520` worker error, `:531` `onerror`) keep them as `console.warn` with the `[import]` prefix; for the `[DEBUG 3*]` trace lines delete outright. Do not add a logging framework in this step — the goal is that a user reporting a failed import sees warnings, not a 13-line trace.
 
-**Verification.** `grep -c "DEBUG 3" src/features/dashboard/import/workbookLoader.ts` → `0`. 181/181, preview 200, and one real workbook import exercised in the browser to confirm no diagnostics were lost.
+**Verification.** `grep -c "DEBUG 3" src/features/dashboard/import/workbookLoader.ts` → `0`. 194/194, preview 200, and one real workbook import exercised in the browser to confirm no diagnostics were lost.
 
 #### S10 — Mixed module specifier conventions · **LOW (consistency)**
 
@@ -585,7 +542,7 @@ Then `grep -rn "from './import'" src` must return **zero** hits before the file 
 
 **Precisely what to do.** Drop the 10 extensions (Vite and `tsc` both resolve extensionless, and it matches the other 159). **Exception:** if any of those 10 are dynamic `import()` calls for the worker, leave them and comment why. Purely mechanical — no behavior change.
 
-**Verification.** `tsc -b` 0, 181/181 (the 10 sites are all in tested modules), lint unchanged.
+**Verification.** `tsc -b` 0, 194/194 (the 10 sites are all in tested modules), lint unchanged.
 
 #### S11 — `AccountProfile` shape defined twice · **MEDIUM (data contract)**
 
@@ -593,7 +550,7 @@ Then `grep -rn "from './import'" src` must return **zero** hits before the file 
 
 **Precisely what to do.** Move `buildAccountProfile` into `account-profile-schema.ts` as a pure builder next to the type it produces, and export it. This keeps the STANDING RULE intact (no mapping/alias logic is involved — it is object assembly from already-resolved fields). If any of its 74 lines turn out to be *policy* decisions (defaults, inferences), those lines belong in `importPolicy.ts` per the standing rule — audit the body before moving and split accordingly. Re-point the single import site; `ImportPreviewModal.test.ts` must pass untouched.
 
-**Verification.** `tsc -b` 0, 181/181, preview 200, and a full import → account-profile save → reload round trip in the browser (this object is persisted, so a silent shape change is the risk).
+**Verification.** `tsc -b` 0, 194/194, preview 200, and a full import → account-profile save → reload round trip in the browser (this object is persisted, so a silent shape change is the risk).
 
 #### S12 — Copy-to-clipboard button duplicated in 4 tabs · **LOW (duplication)**
 
@@ -601,7 +558,7 @@ Then `grep -rn "from './import'" src` must return **zero** hits before the file 
 
 **Precisely what to do.** Add `<CopyReportButton text={aiTools.correlationReport} label="Copy" />` to `src/components/shared.tsx` (where `FormattedText` and `GeminiLoader` already live) with a `useState` "Copied ✓" confirmation that resets after ~1.5 s, plus a `catch` that surfaces "Copy failed — select the text manually". Replace the 4 sites. Note `shared.tsx` is `@ts-nocheck` — the new component should be typed explicitly anyway, and that file is already a candidate for having the suppression removed.
 
-**Verification.** `tsc -b` 0, 181/181, lint ≤123, and a manual click in each of the 4 tabs including a denied-permission case.
+**Verification.** `tsc -b` 0, 194/194, lint ≤123, and a manual click in each of the 4 tabs including a denied-permission case.
 
 ---
 
@@ -687,7 +644,7 @@ Sources: `agentDataCache` `:1217–1253`, `getAgentDataForTimeframe` `:1254–13
 
 #### S3 — Memoizing the three hook returns: how not to ship stale data
 
-The whole point is that the `useMemo` at `App.tsx:254` currently never hits. The three returns to wrap are `hooks.ts:1308`, `hooks.ts:1471`, `metrics.ts:380`.
+The whole point is that the `useMemo` at `App.tsx:240` currently never hits. The three returns to wrap are `hooks.ts:1308`, `hooks.ts:1471`, `metrics.ts:380`.
 
 **Order matters — do them one at a time, measuring after each.**
 
@@ -771,7 +728,7 @@ Then convert `account-profile-storage.ts` (raw `localStorage` today) and `hooks.
 | Rank | Item | Effort | Risk | Why this position |
 |---|---|---|---|---|
 | 1 | S5 dead files | minutes | none | pure deletion, zero importers, shrinks the audit surface for everything after |
-| 2 | S10 specifiers, S8 asyncUtils, S9 debug logs | ~1 h | none | mechanical; each verified by the existing 181 tests |
+| 2 | S10 specifiers, S8 asyncUtils, S9 debug logs | ~1 h | none | mechanical; each verified by the existing 194 tests |
 | 3 | S7.1 (remove duplicate `normalizeHeader`) | ~15 min | none | byte-identical, proven by 60 existing tests |
 | 4 | S2 `scheduleStatusClear` | ~1 h | low | removes 16 sites and a real unmount leak; visible in the UI, so verify by hand |
 | 5 | S12 copy button | ~1 h | low | small, self-contained |
@@ -782,7 +739,7 @@ Then convert `account-profile-storage.ts` (raw `localStorage` today) and `hooks.
 | 10 | S11 `buildAccountProfile` | ~2 h | medium | persisted shape; needs a manual round trip |
 | 11 | S7.3 (unify Excel serial thresholds) | ~2 h | medium | **behavioral** — write the 7 new boundary tests first, then decide |
 
-**Explicitly out of scope for S1–S12** (already known, unchanged, and each needs its own decision): the `if (false && !hasAccountName)` dead gate at `App.tsx:259` that makes the ~70-line account-setup screen unreachable; the ref-write-during-render at `App.tsx:187` and `hooks.ts:1447`; 53 `no-unused-vars`; and the `window.tailwind` shim at `App.tsx:56–59` — a global set for a Tailwind that is not installed, whose 189 hand-rolled substitute classes are precisely what Phase 2 above resolves.
+**Explicitly out of scope for S1–S12** (already known, unchanged, and each needs its own decision): the `if (false && !hasAccountName)` dead gate at `App.tsx:245` that makes the ~70-line account-setup screen unreachable; the ref-write-during-render at `App.tsx:173` and `hooks.ts:1447`; 53 `no-unused-vars`; and the `window.tailwind` shim at `App.tsx:57–60` — a global set for a Tailwind that is not installed, whose 189 hand-rolled substitute classes now live in `src/styles/dashboard.css` (Phase 2 above relocated them — they remain hand-rolled by design, per the step 2 decision).
 
 ---
 
@@ -812,7 +769,7 @@ Then convert `account-profile-storage.ts` (raw `localStorage` today) and `hooks.
 - **S14 / S17** — S14 becomes a `useMemo` next to the existing `supAgentsList` one. S17 becomes a single `<MetricCard>` in `MainStatsRow` parameterised by the two datasets, replacing ~40 duplicated lines.
 - **S15 / S16 / S18 / S20 / S23** — treat as **opportunistic**: fix the ones in code you are already editing for S1/S3/S4, and do not open a dedicated pass for the rest. S15 and S16 are heavily concentrated in the two files S4 rewrites (`ImportPreviewModal.tsx`, `MainModal.tsx`), so **do S4 first and collect them there**. S20 and S23 improve automatically if S3's memoization lands, because both recompute on the render path S3 stabilizes.
 
-**Verification.** `tsc -b` 0, 181/181 (S13/S22 in particular are pure refactors — `helpers.test.ts` from C3 and the existing `monthSelection` suite are the proof), lint 0 errors / ≤123, preview 200, and a roster-search + modal-open + timeframe-switch pass in the browser with the roster results compared before/after.
+**Verification.** `tsc -b` 0, 194/194 (S13/S22 in particular are pure refactors — `helpers.test.ts` from C3 and the existing `monthSelection` suite are the proof), lint 0 errors / ≤123, preview 200, and a roster-search + modal-open + timeframe-switch pass in the browser with the roster results compared before/after.
 
 ---
 
@@ -833,7 +790,7 @@ Then convert `account-profile-storage.ts` (raw `localStorage` today) and `hooks.
 
 **Precisely what to do.**
 
-- **U2 first** — it is the only one that makes a control genuinely hard to use. Replace the inline `opacity` + `onMouseOut` pattern with a real CSS `:hover`/`:focus-visible` rule in the stylesheet Phase 2 creates, and keep the visible state at `opacity: 1` (the current `0.7` is the resting state, which is why it reads as disabled). Do it **after Phase 2** so the rule lands in `dashboard.css` instead of the TS string.
+- **U2 first** — it is the only one that makes a control genuinely hard to use. Replace the inline `opacity` + `onMouseOut` pattern with a real CSS `:hover`/`:focus-visible` rule in `src/styles/dashboard.css`, and keep the visible state at `opacity: 1` (the current `0.7` is the resting state, which is why it reads as disabled). Phase 2 is complete, so the ordering constraint is gone — the rule goes straight into the stylesheet.
 - **U1** — do not rip out emoji. Introduce one `<Icon name="…" />` in `components/shared.tsx` with an inline SVG map, and migrate the **9 highest-traffic glyphs** (the tab-bar and navbar set) first; leave decorative in-card emoji until later. Pair it with C2, which already renames `GeminiLoader` → `AiLoader` in the same file.
 - **U4** — render the parsed queries as removable chips under the input (`uiState.inputValue` is already comma-split by `helpers.ts`), so the syntax is visible rather than documented. This also makes the 300 ms debounce in S3 legible to the user.
 - **U5** — add an explicit `isResolving` flag to the dashboard state rather than a fake skeleton timer; show a neutral placeholder card until the first `historicalData` lands. Only worth doing alongside S1(a), where the state module is created.
@@ -869,7 +826,7 @@ Applied to this document: `## Critical` and the S/U series are the active backlo
 | No backend — all logic and storage client-side | **C1** (and the egress severity is worse than the backlog recorded) |
 | No environment/config separation | **C1** step 1 |
 | Business logic tightly coupled to React hooks | **S1** — quantified at 1,051 lines |
-| `DASHBOARD_STYLES` re-injected every render | **Phase 2** |
+| `DASHBOARD_STYLES` re-injected every render | **Phase 2** ✅ (completed 2026-09-29) |
 | 2 leaked `setTimeout`s on upload status | **S2** — re-verified at **16**, not 2 |
 
 **Retired as stale — no longer matches the code (4):**
@@ -878,15 +835,15 @@ Applied to this document: `## Critical` and the S/U series are the active backlo
 |---|---|
 | Hardcoded OAM names for phase detection | No OAM name list exists anywhere in `src/`; `config.ts` contains none. Either fixed before the file was written or never real. |
 | 8 navigation destinations hidden behind one unlabeled icon button | False. `FloorHeader.tsx:52–61` renders a visible, labelled 8-tab bar. |
-| `DASHBOARD_STYLES` defined inside the App render tree | False since Phase 1 — it is a module export in `src/app/dashboardStyles.ts`. Only the per-render *injection* remains, and that is Phase 2. |
-| No visible upload/empty-state guidance for first-time users | Largely false. `App.tsx:323` routes the no-data state to `ImportLanding` (566 lines) with a drop zone, account selector and mapping review. The genuine gap — the missing *loading* state after import — is carried as U5. |
+| `DASHBOARD_STYLES` defined inside the App render tree | False since Phase 1 — it was a module export. The remaining part (per-render *injection*) was removed in Phase 2 step 1 and step 2's restructure landed the same day; the CSS now lives in `src/styles/dashboard.css` (53 lines / 17,463 bytes). Nothing open. |
+| No visible upload/empty-state guidance for first-time users | Largely false. `App.tsx:309` routes the no-data state to `ImportLanding` (566 lines) with a drop zone, account selector and mapping review. The genuine gap — the missing *loading* state after import — is carried as U5. |
 
-**Archived as completed — 17 of 19 verified against current code:** memoize `getAgentDataForTimeframe` (⚠ see correction below); extract `agentMatchesSearch` to top level ✓ `helpers.ts:28`; fix the double `calculateTrend` call ✓ one call site, `metrics.ts:63`; remove dead `LEADERSHIP_DATA` and `apiKey` ✓ zero hits repo-wide; `React.memo` on always-mounted components ✓ `FloorHeader`, `MainStatsRow`, `TopNavbar`, `MainModal`; stable `uiState`/`uiHandlers` references ✓ `App.tsx:171`, `:242`; `searchQuery` parsed 12× per render ✓ `parsedQueries` memoized, `metrics.ts:37`; `agents.filter(agentMatchesSearch)` 6× per render ✓ memoized, `metrics.ts:43`; `closeModal` fired 14 sequential `setState` calls ✓ single dispatch, `App.tsx:210`; 12 UI states → one `useReducer` ✓ 13 `dispatchUi` sites, one reducer; `SupervisorModalContent` filter/sort in render ✓ 7 `useMemo`s; `FloorApprenticeTab` filtering in render ✓ memoized at `:24`, `:28`, `:33`; `days` array defined twice ✓ single `DAYS_OF_WEEK` import from `config.ts`; `colors` array inside the `runChartData` memo ✓ uses `CHART_COLORS` from config; prop drilling of 5 prop bundles ✓ every view file now reads `useDashboard()`; add drag-to-upload zone ✓ `src/components/dropZone.tsx`; `new Date()` per date per agent in `agentDataCache` ✓ zero occurrences in `hooks.ts:1217–1254`; **AI resilience layer** ✓ `fetchWithRetry` with 2 retries / 30 s timeout / exponential backoff (`hooks.ts:1323`) plus `importAbortControllerRef` (`:304`, aborted at `:335`, `:406`).
+**Archived as completed — 17 of 19 verified against current code:** memoize `getAgentDataForTimeframe` (⚠ see correction below); extract `agentMatchesSearch` to top level ✓ `helpers.ts:28`; fix the double `calculateTrend` call ✓ one call site, `metrics.ts:63`; remove dead `LEADERSHIP_DATA` and `apiKey` ✓ zero hits repo-wide; `React.memo` on always-mounted components ✓ `FloorHeader`, `MainStatsRow`, `TopNavbar`, `MainModal`; stable `uiState`/`uiHandlers` references ✓ `App.tsx:157`, `:242`; `searchQuery` parsed 12× per render ✓ `parsedQueries` memoized, `metrics.ts:37`; `agents.filter(agentMatchesSearch)` 6× per render ✓ memoized, `metrics.ts:43`; `closeModal` fired 14 sequential `setState` calls ✓ single dispatch, `App.tsx:196`; 12 UI states → one `useReducer` ✓ 13 `dispatchUi` sites, one reducer; `SupervisorModalContent` filter/sort in render ✓ 7 `useMemo`s; `FloorApprenticeTab` filtering in render ✓ memoized at `:24`, `:28`, `:33`; `days` array defined twice ✓ single `DAYS_OF_WEEK` import from `config.ts`; `colors` array inside the `runChartData` memo ✓ uses `CHART_COLORS` from config; prop drilling of 5 prop bundles ✓ every view file now reads `useDashboard()`; add drag-to-upload zone ✓ `src/components/dropZone.tsx`; `new Date()` per date per agent in `agentDataCache` ✓ zero occurrences in `hooks.ts:1217–1254`; **AI resilience layer** ✓ `fetchWithRetry` with 2 retries / 30 s timeout / exponential backoff (`hooks.ts:1323`) plus `importAbortControllerRef` (`:304`, aborted at `:335`, `:406`).
 
 **⚠ Two of the 19 `[x]` claims did not survive verification and are re-opened rather than archived:**
 
 1. **"Memoize `getAgentDataForTimeframe`" — done by other means, not as described.** `hooks.ts:1254` is a plain function, not a `useCallback`; the memoization lives one level down in the `agentDataCache` `useMemo` (`:1217`). Effective intent achieved, claim imprecise. No new work item — but it is the reason S3's dependency work must not assume this function is referentially stable.
-2. **"Guard AI auto-triggers + reset on re-upload" — NOT done; re-opened under C4.** The only guard on the auto-firing effect (`hooks.ts:1449`) is `if (!agents.length) return;`; it still fires on all 15 of its dependencies with no opt-in, and the reset half is inert because `aiTools.resetAiStates` is `undefined` (`App.tsx:187`, `:212`). This item is therefore **not** archived — it is part of C4's failure mode 4 and C1's data-egress finding.
+2. **"Guard AI auto-triggers + reset on re-upload" — NOT done; re-opened under C4.** The only guard on the auto-firing effect (`hooks.ts:1449`) is `if (!agents.length) return;`; it still fires on all 15 of its dependencies with no opt-in, and the reset half is inert because `aiTools.resetAiStates` is `undefined` (`App.tsx:173`, `:212`). This item is therefore **not** archived — it is part of C4's failure mode 4 and C1's data-egress finding.
 
 **One side observation from the verification:** `App.tsx:12` still imports `agentMatchesSearch` and never uses it — a dead import left behind by the L20 extraction, part of the 53 `no-unused-vars` already noted as out of scope above.
 

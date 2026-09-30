@@ -39,7 +39,6 @@ import { ErrorBoundary } from './app/errorBoundary';
 import { UploadStatus } from './app/uploadStatus';
 import { ChartActionPlanModal } from './app/chartActionPlanModal';
 import { DropZone } from './components/dropZone';
-import { DASHBOARD_STYLES } from './app/dashboardStyles';
 import { FloorRosterTab } from './features/dashboard/views/tabs/FloorRosterTab';
 import { FloorOutliersTab } from './features/dashboard/views/tabs/FloorOutliersTab';
 import { FloorApprenticeTab } from './features/dashboard/views/tabs/FloorApprenticeTab';
@@ -52,6 +51,7 @@ import { MainModal } from './features/dashboard/views/modals/MainModal';
 import { TopNavbar } from './features/dashboard/views/chrome/TopNavbar';
 import { MainStatsRow } from './features/dashboard/views/chrome/MainStatsRow';
 import { FloorHeader } from './features/dashboard/views/chrome/FloorHeader';
+import { MODAL_INITIAL, UI_INITIAL, modalReducer, uiReducer } from './features/dashboard/uiReducer';
 
 if (typeof window !== 'undefined') {
   window.tailwind = window.tailwind || { config: {} };
@@ -61,39 +61,26 @@ var tailwind = typeof window !== 'undefined' ? window.tailwind : { config: {} };
 // ============================================================================
 // FILE STRUCTURE:
 // NOTE: Extracted so far (see recommendations.md):
-//   Phase 1 → src/app/* (ErrorBoundary, UploadStatus, ChartActionPlanModal,
-//             DASHBOARD_STYLES) + src/components/dropZone.tsx
+//   Phase 1 → src/app/* (ErrorBoundary, UploadStatus, ChartActionPlanModal)
+//             + src/components/dropZone.tsx
+//   Phase 2 → src/styles/dashboard.css (DASHBOARD_STYLES moved out of TS into
+//             a real stylesheet, loaded once by main.tsx)
 //   Phase 3 → src/features/dashboard/views/tabs/* (8 floor tabs)
 //   Phase 4 → src/features/dashboard/views/modals/MainModal.tsx
 //             (Ask AI content, Supervisor modal content, Main modal shell)
 //   Phase 5 → src/features/dashboard/views/chrome/* (TopNavbar,
 //             MainStatsRow, FloorHeader)
+//   Phase 6 → src/features/dashboard/uiReducer.ts (MODAL_INITIAL, UI_INITIAL,
+//             modalReducer, uiReducer)
 // What remains in this file:
-// ├── App State & Reducer Defaults
+// ├── App local state (accountName, visibleCols, search, sort)
 // └── Main App Composition
 // ============================================================================
 
 // ==== App state + reducer defaults ==== 
-// NOTE: keep reducer state kept here so modal and UI state changes are easy to trace during future refactors.
-const MODAL_INITIAL = {
-  activeModal: null, selectedSupervisorObj: null,
-  expandedBurnoutAgentId: null, highlightedAgentId: null, supTab: 'roster',
-};
-
-const UI_INITIAL = {
-  mainTab: 'roster',
-  activeMainAiTool: null,
-  activeSupAiTool: null,
-  showColMenu: false,
-  showModalColMenu: false,
-  showTimeframeMenu: false,
-  runChartMetric: 'bonus',
-  isCumulative: false,
-  heatmapViewType: 'weekly',
-  outlierMode: 'offenders',
-  outlierLevel: 'agent',
-  apprenticeViewMode: 'coding',
-};
+// NOTE: reducer state lives in src/features/dashboard/uiReducer.ts (Phase 6):
+// MODAL_INITIAL, UI_INITIAL and the two named reducers are imported above, so
+// modal and UI state changes are traced there instead of inline in this file.
 
 // ==== Main app composition ==== 
 // TODO: split this file into smaller component modules once feature logic stabilizes.
@@ -122,7 +109,7 @@ export default function App() {
     setAccountName('');
     setAccountNameInput('');
   }, [dashData.resetDashboard]);
-  const [modalState, dispatchModal] = React.useReducer((s, a) => ({ ...s, ...a }), MODAL_INITIAL);
+  const [modalState, dispatchModal] = React.useReducer(modalReducer, MODAL_INITIAL);
   const { activeModal, selectedSupervisorObj, expandedBurnoutAgentId, highlightedAgentId, supTab } = modalState;
   const setActiveModal = (v) => dispatchModal({ activeModal: v });
   const setSelectedSupervisorObj = (v) => dispatchModal({ selectedSupervisorObj: v });
@@ -134,7 +121,7 @@ export default function App() {
   const [sortConfig, setSortConfig] = useState({ key: 'outlier', direction: 'asc' }); 
   const [agentSortConfig, setAgentSortConfig] = useState({ key: 'name', direction: 'asc' });
   // 12 UI display states → single reducer: one subscription, one render per change
-  const [uiDisplay, dispatchUi] = React.useReducer((s, a) => ({ ...s, ...a }), UI_INITIAL);
+  const [uiDisplay, dispatchUi] = React.useReducer(uiReducer, UI_INITIAL);
   const { mainTab, activeMainAiTool, activeSupAiTool, showColMenu, showModalColMenu,
           showTimeframeMenu, runChartMetric, isCumulative, heatmapViewType,
           outlierMode, outlierLevel, apprenticeViewMode } = uiDisplay;
@@ -344,7 +331,6 @@ export default function App() {
     <ErrorBoundary>
       <DashboardContext.Provider value={ctxValue}>
         <div className="analyst-dashboard" style={{ width: '100%', minWidth: 0, overflowX: 'hidden' }}>
-          <style dangerouslySetInnerHTML={{ __html: DASHBOARD_STYLES }} />
 
           {/* ==== Overlay + modal layer ==== */}
           <UploadStatus uploadStatus={dashData.uploadStatus} />
