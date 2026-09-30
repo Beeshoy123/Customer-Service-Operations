@@ -5,12 +5,11 @@
 // applyBatchImport is correct and generic. See recommendations.md §"STANDING
 // RULE" and the top-of-file banner in importPolicy.ts for the full checklist.
 
-import React, { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState, useCallback } from 'react';
 import {
   CHART_COLORS,
   DAYS_OF_WEEK,
   DEFAULT_DATE,
-  DEFAULT_MANAGER_NAME,
   METRIC_CONFIG,
   PERSONA,
   TARGETS,
@@ -18,6 +17,7 @@ import {
   DEFAULT_ACCOUNT_PROFILE,
 } from './config';
 import { getResolveWindowField, RESOLVE_WINDOW_FIELDS } from './import/importPolicy';
+import { useDashboardDataState } from './state';
 import {
   agentMatchesSearch,
   aggregateRecords,
@@ -25,7 +25,6 @@ import {
   ALL_MONTHS,
   calculateTrend,
   calculateWeightedVSF,
-  collectLoadedMonths,
   dowFromDateStr,
   monthLabel,
   normalizeDate,
@@ -33,7 +32,6 @@ import {
 import {
   convertWorkbookToSheets,
   convertWorkbookToSheetsViaWorker,
-  selectSheets,
   selectSheetsWithDetails,
   parseCsvFileText,
   aggregateTransactions,
@@ -43,9 +41,9 @@ import {
   normalizeCellValue,
   normalizeHeaderToField,
 } from './import';
-import type { SheetTable, SheetGranularity, ImportResult, MappingDiagnostic, SkippedSheetInfo } from './import/types';
+import type { SheetTable, SheetGranularity, ImportResult, SkippedSheetInfo } from './import/types';
 import { detectFileType } from './import/fileTypeDetector';
-import { loadAccountProfile, saveAccountProfile, loadRateMergeStyle, saveRateMergeStyle } from '../accountSetup/account-profile-storage';
+import { loadAccountProfile, saveAccountProfile } from '../accountSetup/account-profile-storage';
 import { collectFieldsWithData } from './emptyColumns';
 
 // ============================================================================
@@ -267,45 +265,35 @@ export const useDashboard = () => useContext(DashboardContext);
 export const useDashboardData = (onDataReset = null, accountName = '', onImportColumnsScan = null) => {
   const persistedState = useMemo(() => readPersistedDashboardState(), []);
 
-  const accountProfile = useMemo(() => {
-    const profile = accountName ? loadAccountProfile(accountName) : null;
-    return applyAccountProfile(profile);
-  }, [accountName]);
-  const hasSavedAccountProfile = useMemo(
-    () => Boolean(accountName && loadAccountProfile(accountName)),
-    [accountName]
-  );
-
-  const [activeTimeframe, setActiveTimeframe] = useState(() => persistedState?.activeTimeframe || 'monthly');
-  const [selectedWeek, setSelectedWeek] = useState(() => persistedState?.selectedWeek || 'Week 1');
-  const [selectedDate, setSelectedDate] = useState(() => persistedState?.selectedDate || DEFAULT_DATE);
-  const [selectedDow, setSelectedDow] = useState(() => persistedState?.selectedDow || 'Monday');
-  const [selectedMonth, setSelectedMonthRaw] = useState(() => persistedState?.selectedMonth || ALL_MONTHS);
-  const [selectedMonthChosen, setSelectedMonthChosen] = useState(() => Boolean(persistedState?.selectedMonthChosen));
-  // User-driven month picks (from the Timeframe menu) are remembered; before
-  // any explicit choice the dashboard defaults to the latest loaded month.
-  const setSelectedMonth = useCallback((value) => {
-    setSelectedMonthChosen(true);
-    setSelectedMonthRaw(value);
-  }, []);
-
-  const [agents, setAgents] = useState(() => persistedState?.agents || []);
-  const [supervisors, setSupervisors] = useState(() => persistedState?.supervisors || []);
-  const [oamName, setOamName] = useState(() => persistedState?.oamName || DEFAULT_MANAGER_NAME);
-  const [historicalData, setHistoricalData] = useState(() => persistedState?.historicalData || {});
-  const [hasUploadedData, setHasUploadedData] = useState(() => !!persistedState?.hasUploadedData);
-  const [uploadStatus, setUploadStatus] = useState(null);
-  const [batchImportSummary, setBatchImportSummary] = useState(null);
-  const [importPreview, setImportPreview] = useState(null);
-  const [mappingReview, setMappingReview] = useState<MappingDiagnostic[]>([]);
-  const [pendingAutomaticImport, setPendingAutomaticImport] = useState(null);
-  const [pendingAutomaticFiles, setPendingAutomaticFiles] = useState<File[]>([]);
-  const [rateMergeStyle, setRateMergeStyleState] = useState(() => loadRateMergeStyle(accountName));
-  const importAbortControllerRef = useRef(null);
-  const onImportColumnsScanRef = useRef(onImportColumnsScan);
-  onImportColumnsScanRef.current = onImportColumnsScan; // keep ref in sync (same pattern as aiResetRef in App.tsx)
-
-  const loadedMonths = useMemo(() => collectLoadedMonths(historicalData), [historicalData]);
+  // S1(a): the accountProfile memos, the 16 useState declarations, the
+  // setSelectedMonth wrapper, the two refs and the loadedMonths memo now
+  // live in ./state.ts (move-only extraction, recommendations.md).
+  const state = useDashboardDataState(persistedState, accountName, onImportColumnsScan);
+  const {
+    accountProfile, hasSavedAccountProfile,
+    activeTimeframe, setActiveTimeframe,
+    selectedWeek, setSelectedWeek,
+    selectedDate, setSelectedDate,
+    selectedDow, setSelectedDow,
+    selectedMonth, setSelectedMonth, setSelectedMonthRaw,
+    selectedMonthChosen, setSelectedMonthChosen,
+    agents, setAgents,
+    supervisors, setSupervisors,
+    oamName, setOamName,
+    historicalData, setHistoricalData,
+    hasUploadedData, setHasUploadedData,
+    uploadStatus, setUploadStatus,
+    batchImportSummary, setBatchImportSummary,
+    importPreview, setImportPreview,
+    mappingReview, setMappingReview,
+    pendingAutomaticImport, setPendingAutomaticImport,
+    pendingAutomaticFiles, setPendingAutomaticFiles,
+    rateMergeStyle, setRateMergeStyle,
+    openImportPreview, closeImportPreview,
+    importAbortControllerRef,
+    onImportColumnsScanRef,
+    loadedMonths,
+  } = state;
 
   // Keep the selection valid as data changes: default to the latest loaded
   // month until the user picks one explicitly, and fall back to the latest
@@ -316,20 +304,7 @@ export const useDashboardData = (onDataReset = null, accountName = '', onImportC
       if (selectedMonthChosen && (current === ALL_MONTHS || loadedMonths.includes(current))) return current;
       return loadedMonths[0];
     });
-  }, [loadedMonths, selectedMonthChosen]);
-
-  const openImportPreview = useCallback((config) => {
-    setImportPreview({
-      isOpen: true,
-      fileName: config.fileName,
-      sheets: config.sheets,
-      skippedSheets: config.skippedSheets || [],
-    });
-  }, []);
-
-  const closeImportPreview = useCallback(() => {
-    setImportPreview(null);
-  }, []);
+  }, [loadedMonths, selectedMonthChosen]); // oxlint-disable-line react-hooks/exhaustive-deps -- setSelectedMonthRaw comes from ./state (S1a), untraceable to its useState here
 
   const resetDashboard = useCallback(() => {
     importAbortControllerRef.current?.abort();
@@ -568,6 +543,7 @@ export const useDashboardData = (onDataReset = null, accountName = '', onImportC
       });
       setUploadStatus(null);
     },
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- importAbortControllerRef/setUploadStatus arrive destructured from ./state (S1a)
     [openImportPreview, setUploadStatus]
   );
 
@@ -732,7 +708,7 @@ export const useDashboardData = (onDataReset = null, accountName = '', onImportC
     setActiveTimeframe('monthly');
     setUploadStatus({ type: 'success', message: `Applied ${rowsToApply.length} imported rows from the selected sheets.` });
     setTimeout(() => setUploadStatus(null), 5000);
-  }, [agents, batchImportSummary, historicalData, setActiveTimeframe, setAgents, setHasUploadedData, setHistoricalData, setSelectedDate, setSupervisors, setUploadStatus, supervisors]);
+  }, [agents, batchImportSummary, historicalData, setActiveTimeframe, setAgents, setHasUploadedData, setHistoricalData, setSelectedDate, setSupervisors, setUploadStatus, supervisors]); // oxlint-disable-line react-hooks/exhaustive-deps -- setters destructured from ./state (S1a), untraceable to useState here
 
   const handleAutomaticImport = useCallback(
     async (files, mappingOverrides = {}, customMetricAnswers = {}) => {
@@ -852,13 +828,9 @@ export const useDashboardData = (onDataReset = null, accountName = '', onImportC
         }
       }
     },
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- setters/refs arrive destructured from ./state (S1a); see note at handleAutomaticFileUpload
     [accountName, accountProfile, applyBatchImport, hasSavedAccountProfile, rateMergeStyle, setBatchImportSummary, setUploadStatus]
   );
-
-  const setRateMergeStyle = useCallback((style) => {
-    setRateMergeStyleState(style);
-    saveRateMergeStyle(accountName, style);
-  }, [accountName]);
 
   const continueAutomaticImport = useCallback(
     async (mappingOverrides = {}, customMetricAnswers = {}) => {
@@ -1174,6 +1146,7 @@ export const useDashboardData = (onDataReset = null, accountName = '', onImportC
       });
       setTimeout(() => setUploadStatus(null), 5000);
     },
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- setters/refs arrive destructured from ./state (S1a); oxlint cannot trace them to their useState origin, so deps are listed where stable and the rest is intentional
     [accountName, handleAutomaticImport, openImportPreview, setUploadStatus]
   );
 

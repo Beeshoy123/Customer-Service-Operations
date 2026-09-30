@@ -271,7 +271,8 @@ This subsection is aimed at whoever (human or model) picks up the next item. Eve
 |---|---|---|
 | `src/App.tsx` | 372 | `@ts-nocheck`; local state + composition. Reducer state moved out in Phase 6, stylesheet out in Phase 2 step 1 |
 | `src/features/dashboard/uiReducer.ts` | 57 | **new (Phase 6)** — typed initial state, 2 reducers, 13 tests |
-| `src/features/dashboard/hooks.ts` | 1,486 | `@ts-nocheck`; `useDashboardData` is lines 267–1317, `useAiTools` 1419–1486 |
+| `src/features/dashboard/hooks.ts` | 1,459 | `@ts-nocheck`; S1(a) landed — state block extracted to `src/features/dashboard/state.ts` (113 lines, typed params). `useAiTools` now ~1388–1459. Re-verify inner line numbers before use: this split shifts them per step |
+| `src/features/dashboard/state.ts` | 113 | **new (S1(a))** — `useDashboardDataState(persistedState, accountName, onImportColumnsScan)`: the 16 `useState`, accountProfile memos, `setSelectedMonth`, both refs, `loadedMonths`, plus the import-preview and rate-merge wrapper callbacks. Origin-diff: 34/34 region lines verbatim |
 | `src/features/dashboard/import/ImportPreviewModal.tsx` | 1,858 | `tsc`-checked; helpers 1–390, `ManageMemoryModal` 397–568, main component 580–1858 |
 | `src/features/dashboard/metrics.ts` | 391 | `@ts-nocheck`; 10 unconditional `useMemo`s |
 | `src/features/dashboard/helpers.ts` | 358 | `@ts-nocheck`; 244 lines of untested business math (see C3) |
@@ -398,7 +399,7 @@ These are **in addition to** Phases 2 and 6 above, and they are independent of t
 
 | # | Region (current lines) | Extract to | Notes |
 |---|---|---|---|
-| a | 268–309 (16 `useState`, `accountProfile`, `loadedMonths`) | `src/features/dashboard/state.ts` → `useDashboardDataState()` | Pure state + initializers; takes `persistedState` as an argument. No behavior change. |
+| a | 268–309 (16 `useState`, `accountProfile`, `loadedMonths`) | `src/features/dashboard/state.ts` → `useDashboardDataState()` | ✅ **Landed 2026-09-30** — hooks.ts 1,486 → 1,459 lines. Also absorbed the three wrapper callbacks (`openImportPreview`/`closeImportPreview`/`setRateMergeStyle`) because oxlint can no longer trace destructured setters to their `useState` origin once they cross a file boundary — it flags them as *missing* when omitted and *unnecessary* when listed, so the wrappers live where the setters are traceable. Five code-unchanged dep-arrays carry justified `oxlint-disable` comments (setters/refs destructured from `./state` are untraceable in hooks.ts); these come back out in (c)/(d) when the callbacks move next to the state module. Lint **122** warnings (below the 123 baseline), `tsc` 0, 194/194, all Vite transforms 200 |
 | b | 370–402 (both `localStorage` write effects + `resetDashboard` at 334) | `src/features/dashboard/persistence.ts` → `useDashboardPersistence(state)` | Must also absorb S6 (single storage module). |
 | c | 403–574 `handleMultipleFiles` (172 lines) + 737–857 `handleAutomaticImport` (121) + 863–921 `continueAutomaticImport` / `handleAutomaticFileUpload` | `src/features/dashboard/import/uploadFlow.ts` → `useUploadFlow(deps)` | Largest pair; the automatic-import state machine lives here. |
 | d | 575–736 `applyBatchImport` (162) + 922–1049 `confirmImportPreview` (128) + 1050–1179 `processFile` (130) | `src/features/dashboard/import/batchImport.ts` → `useBatchImport(deps)` | `processFile` owns steps 1–5 of the pipeline (comments at 940/1001/1016/1034) — keep those comments with the code. |
