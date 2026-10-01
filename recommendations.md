@@ -271,8 +271,13 @@ This subsection is aimed at whoever (human or model) picks up the next item. Eve
 |---|---|---|
 | `src/App.tsx` | 372 | `@ts-nocheck`; local state + composition. Reducer state moved out in Phase 6, stylesheet out in Phase 2 step 1 |
 | `src/features/dashboard/uiReducer.ts` | 57 | **new (Phase 6)** — typed initial state, 2 reducers, 13 tests |
-| `src/features/dashboard/hooks.ts` | 1,459 | `@ts-nocheck`; S1(a) landed — state block extracted to `src/features/dashboard/state.ts` (113 lines, typed params). `useAiTools` now ~1388–1459. Re-verify inner line numbers before use: this split shifts them per step |
+| `src/features/dashboard/hooks.ts` | 326 | `@ts-nocheck`; S1(a)–(d) all landed — state → `state.ts`, persistence → `persistence.ts`, selectors → `timeframe.ts`, upload flow → `uploadFlow.ts`, batch import → `batchImport.ts`. `useDashboardData` at `:50` is now a composition hook: `useBatchImport` wired at `:113`, `useUploadFlow` at `:131`, its return at `:148`; `useAiTools` at `:259`. Re-verify inner line numbers before use: this split shifts them per step |
 | `src/features/dashboard/state.ts` | 113 | **new (S1(a))** — `useDashboardDataState(persistedState, accountName, onImportColumnsScan)`: the 16 `useState`, accountProfile memos, `setSelectedMonth`, both refs, `loadedMonths`, plus the import-preview and rate-merge wrapper callbacks. Origin-diff: 34/34 region lines verbatim |
+| `src/features/dashboard/persistence.ts` | 180 | **new (S1(b))** — `useDashboardPersistence(state, onDataReset)` → `{ resetDashboard }` + both write effects, plus `readPersistedDashboardState()` and the two storage-key constants. Origin-diff vs `54ace0a`: **94/94** region lines present, 1 documented deviation (the `resetDashboard` dep array) |
+| `src/features/dashboard/timeframe.ts` | 133 | **new (S1(e))** — `useTimeframeSelectors(deps)` → `{ agentDataCache, getAgentDataForTimeframe, getTopHeadlineMonth, monthLabel, handleDateChange }`. Origin-diff: **75/75** non-blank region lines present (type annotations stripped); the only code deltas are `: any` annotations tsc demanded now that the file is checked |
+| `src/features/dashboard/timeframe.test.ts` | 108 | **new (S1(e))** — 6 tests. The repo has no DOM harness, so the hook is driven through `react-dom/server.renderToString` (existing dep, none added) and the result is collected via a `sink` array, which is the shape `react/globals` does not flag |
+| `src/features/dashboard/uploadFlow.ts` | 626 | **new (S1(c))** — `useUploadFlow(deps)` → `{ handleMultipleFiles, handleAutomaticImport, continueAutomaticImport, handleAutomaticFileUpload, handleFileUpload, handleFileDrop }` plus the 8 private mapping-review/profile helpers and `MULTI_FILE_CONCURRENCY`. No `@ts-nocheck`; 0 lint suppressions. Contains the (c)↔(d) cycle break (`routeSingleFile` + injected `applyBatchImport`/`processFile`) — see the S1 plan table |
+| `src/features/dashboard/batchImport.ts` | 489 | **new (S1(d))** — `useBatchImport(deps)` → `{ applyBatchImport, confirmImportPreview, processFile }`. No `@ts-nocheck`; **0 lint suppressions** (complete dep arrays). Placed beside `uploadFlow.ts` in `dashboard/`, not the planned `import/` — a stateful hook is not one of trap 5's pure layered functions. Owns the row-storage code named by the STANDING RULE banner |
 | `src/features/dashboard/import/ImportPreviewModal.tsx` | 1,858 | `tsc`-checked; helpers 1–390, `ManageMemoryModal` 397–568, main component 580–1858 |
 | `src/features/dashboard/metrics.ts` | 391 | `@ts-nocheck`; 10 unconditional `useMemo`s |
 | `src/features/dashboard/helpers.ts` | 358 | `@ts-nocheck`; 244 lines of untested business math (see C3) |
@@ -282,7 +287,7 @@ This subsection is aimed at whoever (human or model) picks up the next item. Eve
 
 ```bash
 npx tsc -b            # must exit 0   (note: `npx tsc -b | tail` HIDES the exit code — do not pipe it)
-timeout 180 npm test  # 194/194 at baseline; count may only go UP, and no existing test may be edited
+timeout 180 npm test  # 200/200 at baseline (194 before S1(e) added 6); count may only go UP, and no existing test may be edited
 npm run lint          # 0 errors, and warnings <= 123 (the baseline; never above)
 ```
 
@@ -395,17 +400,19 @@ These are **in addition to** Phases 2 and 6 above, and they are independent of t
 
 **Problem.** One hook owns upload, drag-drop, multi-file, automatic import, batch import, mapping review, import preview, account profile, rate-merge style, and all four time selectors. There is no seam to test any of it, and every unrelated feature shares one failure domain (a throw in the auto-import path unmounts the dashboard).
 
-**Precisely what to do** — extract in this order, each a move-only step verified by the standard gate (`tsc -b` 0, 194/194, lint ≤123, preview 200, origin-diff parity audit):
+**Precisely what to do** — extract in this order, each a move-only step verified by the standard gate (`tsc -b` 0, **200/200**, lint ≤123, preview 200, origin-diff parity audit):
 
 | # | Region (current lines) | Extract to | Notes |
 |---|---|---|---|
 | a | 268–309 (16 `useState`, `accountProfile`, `loadedMonths`) | `src/features/dashboard/state.ts` → `useDashboardDataState()` | ✅ **Landed 2026-09-30** — hooks.ts 1,486 → 1,459 lines. Also absorbed the three wrapper callbacks (`openImportPreview`/`closeImportPreview`/`setRateMergeStyle`) because oxlint can no longer trace destructured setters to their `useState` origin once they cross a file boundary — it flags them as *missing* when omitted and *unnecessary* when listed, so the wrappers live where the setters are traceable. Five code-unchanged dep-arrays carry justified `oxlint-disable` comments (setters/refs destructured from `./state` are untraceable in hooks.ts); these come back out in (c)/(d) when the callbacks move next to the state module. Lint **122** warnings (below the 123 baseline), `tsc` 0, 194/194, all Vite transforms 200 |
-| b | 370–402 (both `localStorage` write effects + `resetDashboard` at 334) | `src/features/dashboard/persistence.ts` → `useDashboardPersistence(state)` | Must also absorb S6 (single storage module). |
-| c | 403–574 `handleMultipleFiles` (172 lines) + 737–857 `handleAutomaticImport` (121) + 863–921 `continueAutomaticImport` / `handleAutomaticFileUpload` | `src/features/dashboard/import/uploadFlow.ts` → `useUploadFlow(deps)` | Largest pair; the automatic-import state machine lives here. |
-| d | 575–736 `applyBatchImport` (162) + 922–1049 `confirmImportPreview` (128) + 1050–1179 `processFile` (130) | `src/features/dashboard/import/batchImport.ts` → `useBatchImport(deps)` | `processFile` owns steps 1–5 of the pipeline (comments at 940/1001/1016/1034) — keep those comments with the code. |
-| e | 1217–1306 `agentDataCache` + `getAgentDataForTimeframe` + `getTopHeadlineMonth` (1302) | `src/features/dashboard/timeframe.ts` → `useTimeframeSelectors(state)` | Pure derivation over `historicalData`; the most testable slice — add tests in the same step. |
+| b | 370–402 (both `localStorage` write effects + `resetDashboard` at 334) | `src/features/dashboard/persistence.ts` → `useDashboardPersistence(state)` | ✅ **Landed 2026-09-30** — hooks.ts 1,459 → 1,368, `persistence.ts` 180 lines, no `@ts-nocheck`. Moved verbatim: the two key constants, `readPersistedDashboardState`, `resetDashboard` and both write effects. **One deliberate code change**: `resetDashboard`'s deps went from `[onDataReset]` to `[onDataReset, …17 setters, importAbortControllerRef]`. oxlint cannot trace a setter destructured from a *plain function parameter* (it can when the source is a hook call), so it reported all 17 as missing — listing them silenced it, and since `useState` setters and the ref are stable the behaviour is identical. **No new `oxlint-disable` was added**; lint went 122 → **121** warnings / 0 errors, `tsc` 0, 194/194, all Vite transforms 200.
 
-`useDashboardData` then becomes a ~60-line composition of (a)–(e) that keeps the identical 37-key return object, so **no consumer changes**. Order matters: do (a) and (b) first (they unblock everything), then (e) (pure, testable), then (c) and (d).
+**S6 was deliberately *not* absorbed into (b).** The row above asked for it, but S6 is its own line in batch 4 ("one commit per line, each independently revertible") and its spec has an internal inconsistency: it says to back `safeStorage` with the `inMemoryStore` moved out of `mappingMemory.ts:18–21`, but that store is a `MappingMemoryStore` (`{version, entries}`), not a `string → string` backing store, so it cannot satisfy `Pick<Storage, …>`. That needs its own design decision (a generic `Map<string,string>` fallback) plus a manual round trip. What (b) *did* change for S6: **hooks.ts no longer touches `localStorage` at all**, so the conversion surface is now exactly three files — `persistence.ts` (read + write + remove), `account-profile-storage.ts` (raw), `mappingMemory.ts` (shim). |
+| c | pre-(c) actual: `handleMultipleFiles` `:284–456`, `handleAutomaticImport` `:619–740`, `continueAutomaticImport` `:741–790`, `handleAutomaticFileUpload` `:791–799`, `handleFileUpload` `:1059–1075`, `handleFileDrop` `:1076–1104` — ~400 lines across 6 non-contiguous blocks (the row's old "Largest pair" claim was wrong: (d) ≈ 421 lines across 3 blocks is marginally larger) | `src/features/dashboard/uploadFlow.ts` → `useUploadFlow(deps)` (kept **out** of `import/`, as the contract section's own fallback prescribed) | ✅ **Landed 2026-10-01** — hooks.ts 1,283 → 745, `uploadFlow.ts` 626 lines, no `@ts-nocheck`. Moved with the six callbacks: the 8 private helpers (`resolveWindowReviewItems` … `saveCustomerExperienceChoice`, formerly `:60–213`) and `MULTI_FILE_CONCURRENCY`. **Harder than stated — there is a genuine (c)↔(d) cycle the plan never mentions:** `processFile` (d) early-outed into `handleAutomaticImport` (c) whenever an account profile existed, while (c)'s callbacks depend on `applyBatchImport`/`processFile` (d) — extracting either alone leaves an unresolvable module↔module import. Broke it by moving that early-out into a new `routeSingleFile` inside `uploadFlow.ts` and injecting `applyBatchImport` + `processFile` as parameters from the hooks.ts orchestrator, so neither extracted module imports the other and (d) can now land without touching `uploadFlow.ts`. Also **removed 2 of the 5 S1(a) suppressions** (the two moved callbacks now carry complete dep arrays — setters arriving via a param object are untraceable, so listing them satisfies oxlint without a disable); 3 remain for callbacks still in hooks.ts. Contract-sketch correction: the section below listed `setStatus`/`scheduleStatusClear`/`setRateMergeStyle`/`setImportPreview`/`onImportColumnsScan` — none exist in this hook. Gates: `tsc` 0, **200/200**, lint **114**/0 errors (was 121), all Vite transforms 200; origin-diff audit vs `54ace0a` shows every delta is a type annotation, a dep array, or the cycle break |
+| d | pre-(d) actual: `applyBatchImport` `:124–284`, `confirmImportPreview` `:286–412`, `processFile` `:414–538` | `src/features/dashboard/batchImport.ts` → `useBatchImport(deps)` (kept in `dashboard/`, **not** `import/` — a stateful hook is not one of trap 5's pure layered functions) | ✅ **Landed 2026-10-01** — hooks.ts 745 → **326**, `batchImport.ts` 489 lines, no `@ts-nocheck`. **Easier than stated**: (c)'s cycle break had already removed the only cross-edge, so this was a straight move. Complete dep arrays (`onImportColumnsScanRef` added to `applyBatchImport`, `importAbortControllerRef` added to `processFile`) let **2 more suppressions go** — repo-wide is now **1** (the month-effect line in hooks.ts, down from 5). Type-only `: any` annotations (`mappedRow` demanded by tsc, the rest preemptive). The numbered pipeline comments moved with `confirmImportPreview` at old `:304`/`:365`/`:380`/`:398` — the old note attributing them to `processFile` was wrong. hooks.ts now imports **zero** runtime `./import/*` symbols. Gates: `tsc` 0, **200/200**, lint **114**/0 errors, all 8 Vite transforms 200, return object byte-identical, origin-diff shows only dep lines + annotations |
+| e | 1217–1306 `agentDataCache` + `getAgentDataForTimeframe` + `getTopHeadlineMonth` (1302) | `src/features/dashboard/timeframe.ts` → `useTimeframeSelectors(state)` | ✅ **Landed 2026-09-30** — hooks.ts 1,368 → 1,283, `timeframe.ts` 133 lines. Moved verbatim (75/75 non-blank region lines): `agentDataCache`, `getAgentDataForTimeframe`, `handleDateChange`, `getCurrentMonthName`, `getTopHeadlineMonth`. tsc demanded `: any` on `cache`, `daysMap` and 9 callback params once the file left `@ts-nocheck` — **type-only, zero runtime change**. Four imports (`DAYS_OF_WEEK`, `aggregateRecords`, `dowFromDateStr`, `monthLabel`) went with it; `monthLabel` is now re-exported from the hook so the public 38-key contract is unchanged. **The contract above was wrong and has been corrected by the implementation**: the real deps are `historicalData, hasUploadedData, activeTimeframe, selectedWeek, selectedDow, selectedDate, selectedMonth` + the three setters `handleDateChange` drives — it listed an unused `agents` and omitted `selectedDate` and all three setters. Added **6 tests** (194 → **200**), lint **121** / 0 errors, `tsc` 0, all Vite transforms 200 |
+
+`useDashboardData` is now a ~110-line composition of (a)–(e) that keeps the identical return object, so **no consumer changes**. Order mattered: (a) and (b) first (they unblock everything), then (e) (pure, testable), then (c) — which broke the one cycle — and finally (d). **All five landed 2026-09-30/10-01.**
 
 **Do not** change the return key names, add new context layers, or move keys into `App.tsx` — that would re-inflate the file this program just shrank.
 
@@ -606,27 +613,34 @@ export const useDashboardPersistence = (state: {
 
 Move the two write effects verbatim. Keep the two key names **unchanged** — existing users have data under them and there is no migration code (S6).
 
-**Step (c) → `src/features/dashboard/import/uploadFlow.ts`**
+**Step (c) → `src/features/dashboard/uploadFlow.ts`** ✅ *Landed 2026-10-01, kept out of `import/` exactly as the fallback below prescribed. The sketch was a guess: the real contract is the 14-field `UploadFlowDeps` — `setStatus`/`scheduleStatusClear`/`setImportPreview`/`onImportColumnsScan` do not exist in this hook, and `applyBatchImport`/`processFile` had to be injected to break the (c)↔(d) cycle (see the plan table).*
 
 ```ts
 export const useUploadFlow = (deps: {
-  accountName, setStatus, scheduleStatusClear, setPendingAutomaticImport,
-  setPendingAutomaticFiles, setBatchImportSummary, setMappingReview,
-  setRateMergeStyle, setImportPreview, onImportColumnsScan, importAbortControllerRef,
-}) => ({ handleFileUpload, handleFileDrop, handleMultipleFiles,
-         handleAutomaticImport, handleAutomaticFileUpload, continueAutomaticImport });
+  accountName, accountProfile, hasSavedAccountProfile, rateMergeStyle,
+  pendingAutomaticImport, importAbortControllerRef, openImportPreview,
+  setUploadStatus, setBatchImportSummary, setPendingAutomaticImport,
+  setPendingAutomaticFiles, setMappingReview,
+  applyBatchImport, processFile,   // injected from the orchestrator — the cycle break
+}) => ({ handleMultipleFiles, handleAutomaticImport, continueAutomaticImport,
+         handleAutomaticFileUpload, handleFileUpload, handleFileDrop });
 ```
 
-Sources: `handleMultipleFiles` `:403–574`, `handleAutomaticImport` `:737–857`, `handleAutomaticFileUpload` `:913–921`, `continueAutomaticImport` `:863–912`, `handleFileUpload` `:1180–1196`, `handleFileDrop` `:1197–1216`. Create the file in `import/` **only if** it imports nothing from `../hooks`; otherwise keep it at `src/features/dashboard/uploadFlow.ts` to avoid a cycle (trap 5). **It will** import `./import/*` — that is allowed and already the pattern.
+Sources (pre-(c) line numbers): `handleMultipleFiles` `:284–456`, `handleAutomaticImport` `:619–740`, `continueAutomaticImport` `:741–790`, `handleAutomaticFileUpload` `:791–799`, `handleFileUpload` `:1059–1075`, `handleFileDrop` `:1076–1104`, plus the 8 module helpers at `:60–213`. It imports `./import/*`, `./config`, `./import/importPolicy` and `../accountSetup/account-profile-storage` — and **never `../hooks`** (trap 5).
 
-**Step (d) → `src/features/dashboard/import/batchImport.ts`**
+**Step (d) → `src/features/dashboard/batchImport.ts`** ✅ *Landed 2026-10-01, in `dashboard/` rather than `import/` — see the plan-table row for why. The sketch's `setImportPreview` guess was wrong; the real contract is the 17-field `BatchImportDeps` below.*
 
 ```ts
-export const useBatchImport = (deps: { /* same shape as (c) plus setImportPreview, importPreview */ }) =>
-  ({ applyBatchImport, confirmImportPreview, processFile });
+export const useBatchImport = (deps: {
+  agents, supervisors, historicalData, batchImportSummary, importPreview,
+  importAbortControllerRef, onImportColumnsScanRef,
+  setAgents, setSupervisors, setHistoricalData, setHasUploadedData,
+  setSelectedDate, setActiveTimeframe, setUploadStatus, setBatchImportSummary,
+  openImportPreview, closeImportPreview,
+}) => ({ applyBatchImport, confirmImportPreview, processFile });
 ```
 
-Sources: `applyBatchImport` `:575–736`, `confirmImportPreview` `:922–1049`, `processFile` `:1050–1179`. **Carry the numbered pipeline comments with the code** — the comments at `:940`, `:1001`, `:1016`, `:1034` mark steps 1–5 of the import pipeline and are the only documentation of that ordering.
+Sources (pre-(d) line numbers): `applyBatchImport` `:124–284`, `confirmImportPreview` `:286–412`, `processFile` `:414–538` in `hooks.ts`. **Carry the numbered pipeline comments with the code** — the `// 1.` … `// 5.` comments at old `:304`, `:365`, `:380`, `:398` (inside `confirmImportPreview`, not `processFile` as this note used to say) mark steps 1–5 of the import pipeline and are the only documentation of that ordering. No cycle risk: `uploadFlow.ts` has no edge into this set since the (c) cycle break.
 
 **Step (e) → `src/features/dashboard/timeframe.ts`** *(do this one second — it is pure, so it is testable)*
 
