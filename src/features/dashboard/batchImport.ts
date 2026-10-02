@@ -19,7 +19,7 @@ import { applyAccountProfile, DEFAULT_DATE } from './config';
 import { normalizeDate } from './helpers';
 import { collectFieldsWithData } from './emptyColumns';
 import {
-  convertWorkbookToSheets,
+  convertWorkbookToSheetsViaWorker,
   selectSheetsWithDetails,
   parseCsvFileText,
   aggregateTransactions,
@@ -273,7 +273,7 @@ export const useBatchImport = (deps: BatchImportDeps) => {
                 .slice(0, 50)
                 .map((r: any) => r?.[colIdx])
                 .filter((v: any) => v !== undefined && v !== null && String(v).trim() !== '');
-              mappedField = normalizeHeaderToField(headerStr, sampleVals);
+              mappedField = normalizeHeaderToField(headerStr, sampleVals, headers);
             }
 
             if (mappedField) {
@@ -388,8 +388,13 @@ export const useBatchImport = (deps: BatchImportDeps) => {
         });
 
         try {
-          const { sheets, skippedSheets: rawSkipped } = await convertWorkbookToSheets(file, {
+          // Parse in the worker (same contract as the multi-file path):
+          // XLSX.read + row materialization used to run on the renderer's main
+          // thread and could OOM the tab (crashed preview) on phones. Raw rows
+          // are still returned so the import preview can map them on confirm.
+          const { sheets, skippedSheets: rawSkipped } = await convertWorkbookToSheetsViaWorker(file, {
             signal: controller.signal,
+            includeRawRowsForPreview: true,
             onProgress: (progress: any) => {
               setUploadStatus({
                 type: 'info',

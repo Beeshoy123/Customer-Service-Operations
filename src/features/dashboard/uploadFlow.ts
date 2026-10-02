@@ -415,6 +415,12 @@ export const useUploadFlow = (deps: UploadFlowDeps) => {
           signal: controller.signal,
           detectDuplicateFiles: true,
           mappingOverrides: effectiveMappingOverrides,
+          // Force the workbook worker for EVERY Excel upload, not just files
+          // >= 10 MB: XLSX.read + mapping used to run on the renderer's main
+          // thread for small files, which can freeze or OOM the tab (crashed
+          // preview) on phones. The worker returns already mapped/validated/
+          // merged rows, so the renderer only receives the final result.
+          forceWorker: true,
           rateMergeStyle: loadAccountProfile(accountName)?.calculationStyles?.rateMergeStyle || rateMergeStyle,
           onProgress: (progress: any) => {
             setUploadStatus({

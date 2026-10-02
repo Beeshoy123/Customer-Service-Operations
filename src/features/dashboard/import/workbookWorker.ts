@@ -222,11 +222,14 @@ export const handleWorkerMessage = async (
       const totalDuration = (performance.now() - workerStartTime).toFixed(1);
       console.log(`[WORKER] Pipeline complete in ${totalDuration}ms. Merged rows: ${finalMergedRows.length}. Posting success to main thread.`);
 
-      // Post final processed result to main thread
+      // Post final processed result to main thread. When the caller only needs
+      // raw sheets (preview mode), skip the merged `rows` clone entirely: the
+      // main thread discards it, and cloning it into the renderer is wasted
+      // memory on large workbooks — memory the renderer can least afford.
       postMessage({
         type: 'success',
         result: {
-          rows: finalMergedRows,
+          rows: options.includeRawRowsForPreview ? [] : finalMergedRows,
           sourceSummary,
           warnings,
           skippedSheets: workbookResult.skippedSheets,

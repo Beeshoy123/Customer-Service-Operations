@@ -10,6 +10,8 @@ import {
   getSheetRowCountFromRef,
   isSheetOverThreshold,
   iterateSheetRowsBatched,
+  clampRangeToColumnBudget,
+  MAX_COLUMNS_PER_SHEET,
   DEFAULT_LARGE_SHEET_ROW_THRESHOLD,
   DEFAULT_BATCH_ROW_SIZE,
 } from './workbookLoader';
@@ -681,4 +683,70 @@ describe('workbookLoader', () => {
       }
     }
   );
+
+  it('clampRangeToColumnBudget caps the end column at the column budget', () => {
+    // Full-width Excel ref (16,384 columns) starting at A.
+    assert.deepEqual(clampRangeToColumnBudget({ s: { r: 0, c: 0 }, e: { r: 99, c: 16383 } }), {
+      s: { r: 0, c: 0 },
+      e: { r: 99, c: MAX_COLUMNS_PER_SHEET - 1 },
+    });
+    // Data starting at column C: the budget counts from range.s.c.
+    assert.deepEqual(clampRangeToColumnBudget({ s: { r: 4, c: 2 }, e: { r: 99, c: 16383 } }), {
+      s: { r: 4, c: 2 },
+      e: { r: 99, c: 2 + MAX_COLUMNS_PER_SHEET - 1 },
+    });
+    // Already-narrow ranges are left untouched.
+    assert.deepEqual(clampRangeToColumnBudget({ s: { r: 0, c: 0 }, e: { r: 9, c: 5 } }), {
+      s: { r: 0, c: 0 },
+      e: { r: 9, c: 5 },
+    });
+  });
+
+  it('caps materialized columns when the sheet ref claims the full Excel column width', async () => {
+    const data = [
+      ['Agent', 'Date', 'Calls', 'AHT', 'VXS', 'Resolve2hr', 'Resolve3d', 'Surveys', 'Promoters', 'Handoffs'],
+      ['Alice Smith', '2026-01-01', 10, 120, 90, 80, 70, 5, 4, 3],
+      ['Bob Jones', '2026-01-01', 15, 130, 91, 81, 71, 6, 5, 4],
+    ];
+    const worksheet = XLSX.utils.aoa_to_sheet(data);
+    // Simulate Excel's bloated used range: formatting applied across all
+    // 16,384 columns while the data stops at column J.
+    worksheet['!ref'] = 'A1:XFD3';
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Bloat');
+
+    const direct = await parseWorkbookSheets(workbook);
+    const sheet = direct.sheets[0];
+
+    // Output stays within the column budget…
+    assert.equal(sheet.headerRow.length, MAX_COLUMNS_PER_SHEET);
+    assert.equal(sheet.rows[0].length, MAX_COLUMNS_PER_SHEET);
+    // …while the real data in the first 10 columns is preserved.
+    assert.deepEqual(
+      sheet.headerRow,
+      [...data[0], ...Array(MAX_COLUMNS_PER_SHEET - data[0].length).fill('')]
+    );
+    assert.deepEqual(
+      sheet.rows[0],
+      ['Alice Smith', '2026-01-01', '10', '120', '90', '80', '70', '5', '4', '3',
+        ...Array(MAX_COLUMNS_PER_SHEET - 10).fill('')]
+    );
+    assert.equal(sheet.rowCount, 2);
+
+    // The batched path (large-sheet threshold) produces identical output.
+    const batched = await parseWorkbookSheets(workbook, { largeSheetRowThreshold: 1 });
+    assert.deepEqual(batched.sheets[0].headerRow, sheet.headerRow);
+    assert.deepEqual(batched.sheets[0].rows, sheet.rows);
+
+    // Round-trip through XLSX.read (dense mode) keeps the same guarantees:
+    // the bloat ref survives write→read and the output stays capped/data-safe.
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+    const fromBuffer = await parseWorkbookBuffer(
+      buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer
+    );
+    const buffered = fromBuffer.sheets[0];
+    assert.equal(buffered.headerRow.length, MAX_COLUMNS_PER_SHEET);
+    assert.equal(buffered.rowCount, 2);
+    assert.deepEqual(buffered.rows[0], sheet.rows[0]);
+  });
 });
