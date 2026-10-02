@@ -609,4 +609,58 @@ describe('importPolicy extensions', () => {
   });
 });
 
+describe('findPairedCountField sheet-context guard (unpaired count columns)', () => {
+  it('does not tag Resolve_2Hr_Count / Resolve_3Day_Count as pass when the sheet has no cnt partner', () => {
+    assert.equal(
+      findPairedCountField('Resolve_2Hr_Count', ['Agent', 'Date', 'Resolve_2Hr_Count']),
+      null
+    );
+    assert.equal(
+      findPairedCountField('Resolve_3Day_Count', ['Agent', 'Date', 'Resolve_3Day_Count']),
+      null
+    );
+  });
+
+  it('still tags Resolve_2Hr_Count as pass when a cnt partner exists in the sheet', () => {
+    const sheetHeaders = ['Agent', 'Date', 'Resolve_2Hr_Count', 'Resolve_2Hr_Cnt'];
+    const tag = findPairedCountField('Resolve_2Hr_Count', sheetHeaders);
+    assert.equal(tag?.side, 'pass');
+    assert.equal(tag?.taggedField, 'resolve2hr_Pass');
+  });
+
+  it('routes an unpaired count column into the plain resolveTotalContacts2hr / 3d fields', () => {
+    assert.equal(
+      normalizeHeaderToField('Resolve_2Hr_Count', [], ['Agent', 'Date', 'Resolve_2Hr_Count']),
+      'resolveTotalContacts2hr'
+    );
+    assert.equal(
+      normalizeHeaderToField('Resolve_3Day_Count', [], ['Agent', 'Date', 'Resolve_3Day_Count']),
+      'resolveTotalContacts3d'
+    );
+  });
+
+  it('classifies an unpaired count column as resolveTotalContacts2hr in diagnostics too', () => {
+    const mapping = detectColumnMappingWithConfidence(
+      'Resolve_2Hr_Count',
+      0,
+      ['145', '167', '98'],
+      undefined,
+      ['Agent', 'Date', 'Resolve_2Hr_Count']
+    );
+    assert.equal(mapping.mappedField, 'resolveTotalContacts2hr');
+  });
+
+  it('still pairs VXS_Overall_Rep_Pass + VXS_Overall_Rep_Cnt when both are present', () => {
+    const sheetHeaders = ['VXS_Overall_Rep_Pass', 'VXS_Overall_Rep_Cnt'];
+    assert.equal(normalizeHeaderToField('VXS_Overall_Rep_Pass', [], sheetHeaders), 'vxs_Pass');
+    assert.equal(normalizeHeaderToField('VXS_Overall_Rep_Cnt', [], sheetHeaders), 'vxs_Cnt');
+    assert.equal(findPairedCountField('VXS_Overall_Rep_Pass', sheetHeaders)?.taggedField, 'vxs_Pass');
+  });
+
+  it('keeps legacy single-header behavior when no sheet context is supplied', () => {
+    assert.equal(findPairedCountField('VXS_Overall_Rep_Pass')?.taggedField, 'vxs_Pass');
+    assert.equal(normalizeHeaderToField('VXS_Overall_Rep_Cnt'), 'vxs_Cnt');
+  });
+});
+
 

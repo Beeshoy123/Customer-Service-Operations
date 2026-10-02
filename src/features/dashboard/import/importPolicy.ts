@@ -295,6 +295,8 @@ export const FIELD_ALIASES: Record<string, ImportFieldPolicy> = {
       'resolve 2hr contacts',
       'resolve_2hr_contacts',
       'resolve2hr_contacts',
+      'resolve2hrcount',
+      'resolve 2hr count',
     ],
     kind: 'number',
   },
@@ -309,6 +311,8 @@ export const FIELD_ALIASES: Record<string, ImportFieldPolicy> = {
       'resolve 3d contacts',
       'resolve_3d_contacts',
       'resolve3d_contacts',
+      'resolve3daycount',
+      'resolve 3day count',
     ],
     kind: 'number',
   },
@@ -752,7 +756,35 @@ const findCanonicalBaseField = (base: string): string | null => {
   return null;
 };
 
-export const findPairedCountField = (header: string): PairedCountFieldTag | null => {
+// A <field>_Pass column is only meaningful as HALF OF A PAIR: it exists so
+// pass and cnt columns of the same metric can be combined downstream. When the
+// sheet does not actually contain the cnt side, tagging the pass column
+// strands it — the paired value never reaches any canonical field and silently
+// vanishes from the dashboard. This verifies a cnt-side counterpart of the
+// SAME canonical field exists elsewhere in the sheet's real headers before
+// tagging (see the guard inside findPairedCountField).
+const hasCntPartnerInSheet = (
+  allHeaders: readonly unknown[],
+  ownHeader: string,
+  config: PairedCountConfig,
+): boolean => {
+  const ownNormalized = normalizeHeader(ownHeader);
+  const ownCompact = compactHeader(ownHeader);
+  return allHeaders.some((other) => {
+    const norm = normalizeHeader(String(other ?? ''));
+    const comp = compactHeader(String(other ?? ''));
+    if (!norm && !comp) return false;
+    if (norm === ownNormalized && comp === ownCompact) return false; // the header itself
+    return config.cntAliases.some(
+      (alias) => normalizeHeader(alias) === norm || compactHeader(alias) === comp
+    );
+  });
+};
+
+export const findPairedCountField = (
+  header: string,
+  allHeaders?: readonly unknown[] | null,
+): PairedCountFieldTag | null => {
   const normalized = normalizeHeader(header);
   const compact = compactHeader(header);
   if (!normalized && !compact) return null;
@@ -760,6 +792,16 @@ export const findPairedCountField = (header: string): PairedCountFieldTag | null
   // 1. Check explicit aliases in PAIRED_COUNT_FIELDS
   for (const [canonicalField, config] of Object.entries(PAIRED_COUNT_FIELDS)) {
     if (config.passAliases.some((alias) => normalizeHeader(alias) === normalized || compactHeader(alias) === compact)) {
+      // Pass-side tags require PROOF the cnt side exists in this sheet. Without
+      // sheet context (allHeaders omitted — e.g. aggregateTransactions
+      // re-deriving tags from already-tagged row fields) the legacy
+      // assumed-pair behavior is kept. When no partner is found, fall through
+      // to the FIELD_ALIASES escape hatch below so count-style headers such as
+      // Resolve_2Hr_Count land in their plain canonical field instead of
+      // being stranded as <field>_Pass.
+      if (allHeaders && !hasCntPartnerInSheet(allHeaders, header, config)) {
+        continue;
+      }
       return {
         canonicalField,
         side: 'pass',
@@ -819,12 +861,13 @@ export const findPairedCountField = (header: string): PairedCountFieldTag | null
 
 export const findCanonicalFieldWithTag = (
   header: string,
+  allHeaders?: readonly unknown[] | null,
 ): { canonicalField: string; side?: PairedCountSide; taggedField: string } | null => {
-  const paired = findPairedCountField(header);
+  const paired = findPairedCountField(header, allHeaders);
   if (paired) {
     return paired;
   }
-  const canonical = findCanonicalField(header);
+  const canonical = findCanonicalField(header, [], allHeaders);
   if (canonical) {
     return { canonicalField: canonical, taggedField: canonical };
   }
@@ -1020,7 +1063,8 @@ export const scoreColumnMapping = (
   header: string,
   index = 0,
   sampleValues: (string | number | null | undefined)[] = [],
-  scope?: string
+  scope?: string,
+  allHeaders?: readonly unknown[] | null
 ): DetectedColumnMapping => {
   const normalized = normalizeHeader(header);
   const sampleStrings = sampleValues
@@ -1074,7 +1118,7 @@ export const scoreColumnMapping = (
   }
 
   // 1. Paired count exact structural match
-  const paired = findPairedCountField(header);
+  const paired = findPairedCountField(header, allHeaders);
   if (paired && fingerprint !== 'call-id-like' && fingerprint !== 'hour-of-day') {
     const candidate: MappingCandidate = {
       field: paired.taggedField,
@@ -1218,14 +1262,16 @@ export const detectColumnMappingWithConfidence = (
   header: string,
   index = 0,
   sampleValues: (string | number | null | undefined)[] = [],
-  scope?: string
+  scope?: string,
+  allHeaders?: readonly unknown[] | null
 ): DetectedColumnMapping => {
-  return scoreColumnMapping(header, index, sampleValues, scope);
+  return scoreColumnMapping(header, index, sampleValues, scope, allHeaders);
 };
 
 export const findCanonicalField = (
   header: string,
-  sampleValues: (string | number | null | undefined)[] = []
+  sampleValues: (string | number | null | undefined)[] = [],
+  allHeaders?: readonly unknown[] | null
 ): string | null => {
   const normalized = normalizeHeader(header);
   if (!normalized) return null;
@@ -1235,7 +1281,7 @@ export const findCanonicalField = (
   )?.[0];
   if (directComponent) return directComponent;
 
-  const paired = findPairedCountField(header);
+  const paired = findPairedCountField(header, allHeaders);
   if (paired) {
     return paired.taggedField;
   }
@@ -1249,7 +1295,7 @@ export const findCanonicalField = (
     if (directMatch) return field;
   }
 
-  const scored = scoreColumnMapping(header, 0, sampleValues);
+  const scored = scoreColumnMapping(header, 0, sampleValues, undefined, allHeaders);
   return scored.mappedField;
 };
 

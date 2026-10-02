@@ -33,7 +33,8 @@ for (const [field, aliases] of Object.entries(CANONICAL_FIELDS)) {
 
 export const normalizeHeaderToField = (
   header: string,
-  sampleValues: (string | number | null | undefined)[] = []
+  sampleValues: (string | number | null | undefined)[] = [],
+  allHeaders?: readonly unknown[] | null
 ): string | null => {
   const normalized = normalizeHeader(header);
   const directComponent = Object.entries(FIELD_ALIASES).find(([field, policy]) =>
@@ -41,7 +42,7 @@ export const normalizeHeaderToField = (
   )?.[0];
   if (directComponent) return directComponent;
 
-  const paired = findPairedCountField(header);
+  const paired = findPairedCountField(header, allHeaders);
   if (paired) {
     return paired.taggedField;
   }
@@ -51,7 +52,7 @@ export const normalizeHeaderToField = (
     return directMatch;
   }
 
-  return findCanonicalField(header, sampleValues);
+  return findCanonicalField(header, sampleValues, allHeaders);
 };
 
 export const normalizeSheetHeaders = (
@@ -69,7 +70,7 @@ export const normalizeSheetHeaders = (
     return {
       original: header,
       normalized: normalizeHeader(header),
-      mappedField: normalizeHeaderToField(header, sampleVals),
+      mappedField: normalizeHeaderToField(header, sampleVals, headers),
       index,
     };
   });
@@ -107,7 +108,7 @@ export const mapTableToNormalizedRows = (
 
     const mappedField = Object.prototype.hasOwnProperty.call(mappingOverrides, header)
       ? mappingOverrides[header]
-      : normalizeHeaderToField(header, sampleVals);
+      : normalizeHeaderToField(header, sampleVals, headers);
     if (mappedField) {
       mappedHeaders.push({ index: i, mappedField });
     }
@@ -161,7 +162,7 @@ export const mapTableToNormalizedRowsAsync = async (
       .filter((v) => v !== undefined && v !== null && String(v).trim() !== '');
     const mappedField = Object.prototype.hasOwnProperty.call(mappingOverrides, header)
       ? mappingOverrides[header]
-      : normalizeHeaderToField(header, sampleVals);
+      : normalizeHeaderToField(header, sampleVals, headers);
     if (mappedField) mappedHeaders.push({ index: i, mappedField });
   }
 

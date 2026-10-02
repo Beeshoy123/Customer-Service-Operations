@@ -124,3 +124,35 @@ describe('schemaNormalizer (Layer 6 — Auto-Import Pattern Fingerprinting & Mem
     });
   });
 });
+
+describe('unpaired count-style columns land in real fields (not stranded)', () => {
+  it('Resolve_2Hr_Count with no cnt column writes values into resolveTotalContacts2hr', () => {
+    const table: SheetTable = {
+      workbookName: 'export.xlsx',
+      sheetName: 'Export',
+      index: 0,
+      headerRow: ['Agent', 'Date', 'Resolve_2Hr_Count'],
+      rows: [
+        ['Alice Smith', '2026-09-01', '5'],
+        ['Bob Jones', '2026-09-01', '7'],
+      ],
+      rowCount: 2,
+    };
+
+    const rows = mapTableToNormalizedRows(table, 'export.xlsx');
+
+    assert.equal(rows.length, 2);
+    assert.equal(Number(rows[0].resolveTotalContacts2hr), 5);
+    assert.equal(Number(rows[1].resolveTotalContacts2hr), 7);
+    assert.ok(
+      !('resolve2hr_Pass' in rows[0]),
+      'value must not be stranded on the resolve2hr_Pass tag'
+    );
+  });
+
+  it('still pairs VXS pass/cnt columns when both are present in the sheet', () => {
+    const mapped = normalizeSheetHeaders(['VXS_Overall_Rep_Pass', 'VXS_Overall_Rep_Cnt']);
+    assert.equal(mapped[0].mappedField, 'vxs_Pass');
+    assert.equal(mapped[1].mappedField, 'vxs_Cnt');
+  });
+});
