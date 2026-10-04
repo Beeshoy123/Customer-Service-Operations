@@ -106,7 +106,7 @@ export const TimeframeMenu = ({
 );
 
 // ─── Column Visibility Settings Menu ──────────────────────────────────────
-export const SettingsMenu = ({ visibleCols, toggleCol, closeMenu }) => (
+export const SettingsMenu = ({ visibleCols, toggleCol, repeatOffenderMetrics = [], toggleRepeatOffenderMetric, closeMenu }) => (
   <>
     <span className="block text-xs font-extrabold text-slate-300 uppercase mb-3 tracking-wide">Toggle Metrics</span>
     <div className="grid grid-cols-2 gap-x-4 gap-y-3 mb-4">
@@ -119,5 +119,15 @@ export const SettingsMenu = ({ visibleCols, toggleCol, closeMenu }) => (
     <label className="flex items-center gap-2 text-sm font-semibold text-slate-200 cursor-pointer border-t border-slate-700 pt-4 mt-2 hover:text-white transition-colors" onClick={(e) => e.stopPropagation()}>
       <input type="checkbox" checked={visibleCols.trajectory} onChange={(e) => { e.stopPropagation(); toggleCol('trajectory'); }} className="accent-blue-600 w-4 h-4 cursor-pointer" /> Show Trend Text
     </label>
+
+    <span className="block text-xs font-extrabold text-slate-300 uppercase mb-1 mt-4 border-t border-slate-700 pt-4 tracking-wide">🔁 Repeated Offenders</span>
+    <p className="text-xs text-slate-400 mb-3">Flag agents below target for 2+ consecutive months. Pick the metrics to check — none selected turns the flag off.</p>
+    <div className="grid grid-cols-2 gap-x-4 gap-y-3 mb-4">
+      {COL_DEFINITIONS.map((col) => (
+        <label key={`ro-${col.key}`} className="flex items-center gap-2 text-sm font-semibold text-slate-200 cursor-pointer hover:text-white transition-colors" onClick={(e) => e.stopPropagation()}>
+          <input type="checkbox" checked={repeatOffenderMetrics.includes(col.stateKey)} onChange={(e) => { e.stopPropagation(); toggleRepeatOffenderMetric(col.stateKey); }} className="accent-amber-500 w-4 h-4 cursor-pointer" /> {col.label}
+        </label>
+      ))}
+    </div>
   </>
 );

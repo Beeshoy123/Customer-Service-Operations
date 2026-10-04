@@ -5,7 +5,7 @@
 // ============================================================================
 
 import { useMemo } from 'react';
-import { CHART_COLORS, COL_DEFINITIONS, DAYS_OF_WEEK, TARGETS } from './config';
+import { CHART_COLORS, COL_DEFINITIONS, DAYS_OF_WEEK, METRIC_CONFIG, TARGETS, getDynamicTarget } from './config';
 import {
   agentMatchesSearch,
   aggregateRecords,
@@ -14,6 +14,7 @@ import {
   dowFromDateStr,
   getWeekNumber,
 } from './helpers';
+import { computeRepeatOffenders } from './repeatOffenders';
 
 // ─── Dashboard Metrics Hook ──────────────────────────────────────
 export const useDashboardMetrics = ({
@@ -33,6 +34,7 @@ export const useDashboardMetrics = ({
   runChartMetric,
   isCumulative,
   heatmapViewType,
+  repeatOffenderMetrics = [],
 }) => {
   const parsedQueries = useMemo(
     () => searchQuery.toLowerCase().split(',').map((q) => q.trim()).filter((q) => q),
@@ -377,6 +379,29 @@ export const useDashboardMetrics = ({
     return result;
   }, [supervisorStats, parsedQueries, sortConfig]);
 
+  // Repeated Offenders — agents below target for 2+ CONSECUTIVE calendar
+  // months, for the metrics picked in Settings (empty selection = off).
+  // Deliberately spans ALL loaded months (a streak is multi-month) and reads
+  // real per-month aggregates from repeatOffenders.ts — never the blended
+  // selectedMonth view and never gated on selectedMonth.
+  const repeatOffenders = useMemo(() => {
+    if (!hasUploadedData || !Array.isArray(repeatOffenderMetrics) || repeatOffenderMetrics.length === 0) {
+      return computeRepeatOffenders([], historicalData, {}, []);
+    }
+    const targets: Record<string, { target: number; reverse: boolean; label?: string; format?: string }> = {};
+    for (const key of repeatOffenderMetrics) {
+      const cfg = (METRIC_CONFIG as Record<string, any>)[key];
+      if (!cfg) continue;
+      targets[key] = {
+        target: getDynamicTarget(key, 1),
+        reverse: Boolean(cfg.reverse),
+        label: cfg.label,
+        format: cfg.format ?? '',
+      };
+    }
+    return computeRepeatOffenders(agents, historicalData, targets, repeatOffenderMetrics);
+  }, [agents, historicalData, hasUploadedData, repeatOffenderMetrics]);
+
   return {
     mtdLeaderData,
     activeLeaderData,
@@ -387,5 +412,6 @@ export const useDashboardMetrics = ({
     allActiveDates,
     runChartData,
     sortedSupervisors,
+    repeatOffenders,
   };
 };

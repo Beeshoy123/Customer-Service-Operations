@@ -441,6 +441,13 @@
   font-weight: 500;
 }
 
+.ipm-badge-ignored {
+  background-color: #e2e8f0;
+  color: #475569;
+  border: 1px dashed #94a3b8;
+  font-weight: 500;
+}
+
 /* Sample Value Cell */
 .ipm-sample-val {
   font-family: ui-monospace, monospace;

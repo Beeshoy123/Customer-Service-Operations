@@ -769,7 +769,7 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
       const next = [...prev];
       const target = { ...next[sheetIdx] };
       const updatedMappings = target.columnMappings.map((col) => {
-        if (!col.mappedField) {
+        if (!col.mappedField && col.matchType !== 'ignored_identifier') {
           return {
             ...col,
             mappedField: null,
@@ -860,7 +860,9 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
     return null;
   }
 
-  const unmappedCount = currentSheet ? currentSheet.columnMappings.filter((c) => !c.mappedField).length : 0;
+  const unmappedCount = currentSheet
+    ? currentSheet.columnMappings.filter((c) => !c.mappedField && c.matchType !== 'ignored_identifier').length
+    : 0;
   const vxsColumns = currentSheet ? currentSheet.columnMappings.filter((c) => c.mappedField === 'vxs') : [];
   const additionalColumns = currentSheet
     ? currentSheet.columnMappings.filter((col) => getAdditionalMetricKey(col.mappedField))
@@ -1279,6 +1281,13 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
                                 ) : col.confidence === 'exact' ? (
                                   <span className="ipm-badge ipm-badge-exact">
                                     ✓ Exact Match
+                                  </span>
+                                ) : col.matchType === 'ignored_identifier' ? (
+                                  <span
+                                    className="ipm-badge ipm-badge-ignored"
+                                    title="Identifier-style column (ID/key header or near-unique system IDs) — classified as not-a-metric, excluded from mapping and confirmation"
+                                  >
+                                    🪪 Identifier — ignored
                                   </span>
                                 ) : col.isLowConfidence ? (
                                   <span

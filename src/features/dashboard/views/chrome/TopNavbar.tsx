@@ -133,7 +133,9 @@ export const TopNavbar = React.memo(() => {
               {uiState.showColMenu && (
                 <div className="column-menu-dropdown overflow-y-auto" style={{ maxHeight: '70vh' }}>
                   <SettingsMenu 
-                    visibleCols={uiState.visibleCols} toggleCol={uiHandlers.toggleCol} closeMenu={() => uiHandlers.setShowColMenu(false)} 
+                    visibleCols={uiState.visibleCols} toggleCol={uiHandlers.toggleCol} 
+                    repeatOffenderMetrics={uiState.repeatOffenderMetrics} toggleRepeatOffenderMetric={uiHandlers.toggleRepeatOffenderMetric}
+                    closeMenu={() => uiHandlers.setShowColMenu(false)} 
                   />
                 </div>
               )}

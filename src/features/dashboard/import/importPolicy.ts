@@ -426,7 +426,10 @@ export const FIELD_ALIASES: Record<string, ImportFieldPolicy> = {
       'vtt rate',
       'vtt attach',
       'vtt attach %',
-      'view together',
+      // NOTE: 'view together' deliberately NOT listed here — it is the primary
+      // alias of the viewTogether field (Standing Rule: a normalized alias
+      // must exist in exactly one field's aliases; sharing it made the header
+      // ambiguous between viewTogether and vtt).
       'terms and conditions',
       'broadband facts',
       'disclosure',
@@ -576,6 +579,55 @@ export const normalizeHeader = (value: string): string =>
     .trim();
 
 const compactHeader = (value: string): string => normalizeHeader(value).replace(/\s+/g, '');
+
+// ── Identifier-column classification ─────────────────────────────────────────
+// Identifier columns (Acss_Call_ID, IVR_Call_ID, RECOVERYKEY, record/session
+// ids…) are NOT metrics: they must never be auto-mapped and must never enter
+// the confirmation flow. Identity-domain headers (Employee_ID, Agent ID,
+// Rep_ID, CCMS_ID…) are the deliberate exception — those are known columns
+// already declared in FIELD_ALIASES.employeeId and they keep their normal
+// exact/fuzzy scoring path so employee identifiers keep mapping correctly.
+
+const IDENTITY_HEADER_TOKENS = new Set(['employee', 'emp', 'agent', 'rep', 'associate', 'ccms']);
+
+export const isKnownIdentityHeader = (header: string): boolean => {
+  const normalized = normalizeHeader(header);
+  const compact = compactHeader(header);
+  const employeeIdAliases = FIELD_ALIASES.employeeId?.aliases ?? [];
+  if (
+    employeeIdAliases.some(
+      (alias) => normalizeHeader(alias) === normalized || compactHeader(alias) === compact
+    )
+  ) {
+    return true;
+  }
+  return normalized.split(/\s+/).some((token) => IDENTITY_HEADER_TOKENS.has(token));
+};
+
+// Value-based identifier detection: identifier samples are near-unique (every
+// row a different ID) while metric samples repeat or aggregate, so
+// near-uniqueness + an identifier-shaped fingerprint (employee-id-like /
+// call-id-like from columnFingerprinter) marks an identifier even when the
+// header itself carries no id/key keyword.
+const isNearUniqueSample = (sampleValues: readonly (string | number | null | undefined)[]): boolean => {
+  const nonEmpty = sampleValues
+    .map((v) => (v === null || v === undefined ? '' : String(v).trim()))
+    .filter((v) => v !== '');
+  if (nonEmpty.length < 5) return false;
+  return new Set(nonEmpty).size / nonEmpty.length >= 0.9;
+};
+
+export const isIdentifierColumn = (
+  header: string,
+  fingerprint: ColumnFingerprint,
+  sampleValues: readonly (string | number | null | undefined)[] = []
+): boolean => {
+  if (isKnownIdentityHeader(header)) return false;
+  if (isIdentifierHeader(header)) return true;
+  if (fingerprint === 'call-id-like') return true;
+  if (fingerprint === 'employee-id-like' && isNearUniqueSample(sampleValues)) return true;
+  return false;
+};
 
 const HEADER_TOKEN_HINTS: Record<string, string[]> = {
   agentName: ['agent', 'employee', 'emp', 'rep', 'associate', 'name'],
@@ -1089,6 +1141,45 @@ export const scoreColumnMapping = (
     };
   }
 
+  // Identifier columns are "ignore, not a mappable metric": never mapped,
+  // never low-confidence, never prompted (Acss_Call_ID, IVR_Call_ID,
+  // RECOVERYKEY, near-unique system IDs…). See isIdentifierColumn above.
+  if (isIdentifierColumn(header, fingerprint, sampleValues)) {
+    return {
+      header,
+      normalized,
+      mappedField: null,
+      confidence: 'none',
+      isLowConfidence: false,
+      matchType: 'ignored_identifier',
+      sampleValues: sampleStrings,
+      index,
+      fingerprint,
+      candidates: [],
+      score: 0,
+    };
+  }
+
+  // Exact-alias + numeric values → authoritative. Value fingerprints cannot
+  // distinguish numeric SEMANTICS from samples alone: agent-day call counts
+  // (146, 122, 98…) fingerprint identically to durations, round handle times
+  // (47, 47, 83) to counts, decimal seconds to percent/categorical shapes.
+  // When the normalized header literally IS a canonical alias and the values
+  // are numeric (and carry no % signs), the header wins and the score floors
+  // at 85 so the column auto-maps instead of prompting. Non-numeric values,
+  // percent-signed values and identifier-shaped fingerprints are excluded, so
+  // genuinely contradicting samples keep today's behavior.
+  const hasPercentSigns = sampleStrings.some((value) => value.includes('%'));
+  const numericCount = sampleStrings.filter((value) =>
+    Number.isFinite(Number(value.replace(/[$,\s]/g, '')))
+  ).length;
+  const numericRatio = sampleStrings.length > 0 ? numericCount / sampleStrings.length : 0;
+  const exactAliasWithNumericValues =
+    !hasPercentSigns &&
+    numericRatio >= 0.85 &&
+    fingerprint !== 'call-id-like' &&
+    fingerprint !== 'employee-id-like';
+
   // Component aliases such as OCC_Amt must win over generic _Cnt/_Pass suffix handling.
   const directComponentField = Object.entries(FIELD_ALIASES).find(([field, policy]) =>
     FIELD_COMPONENT_GROUPS[field] && policy.aliases.some((alias) => normalizeHeader(alias) === normalized)
@@ -1175,10 +1266,14 @@ export const scoreColumnMapping = (
       finalFingerprintScore = 0;
     }
 
-    const totalScore = Math.min(100, headerScore + finalFingerprintScore + memoryScore);
+    const totalScoreBase = Math.min(100, headerScore + finalFingerprintScore + memoryScore);
+    const totalScore = isExact && exactAliasWithNumericValues
+      ? Math.max(totalScoreBase, 85)
+      : totalScoreBase;
 
     const signals: string[] = [];
     if (isExact) signals.push('exact_alias');
+    if (isExact && exactAliasWithNumericValues && totalScore >= 85) signals.push('exact_alias+numeric');
     if (headerScore > 0) signals.push(`header:${headerScore}pts`);
     if (finalFingerprintScore > 0) signals.push(`fingerprint:${fingerprint}(${finalFingerprintScore}pts)`);
     if (memoryScore > 0) signals.push(`remembered:${memoryScore}pts`);

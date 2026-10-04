@@ -72,11 +72,11 @@ describe('ImportPreviewModal & UI integration', () => {
       assert.equal(csatCol.mappedField, 'vxs');
       assert.equal(csatCol.fingerprint, 'percent-decimal');
 
-      // IVR_Call_ID -> unmapped (false-positive blocked by call-id-like fingerprint)
+      // IVR_Call_ID -> auto-classified as an ignored identifier (not a metric)
       const callIdCol = sheet.columnMappings[4];
       assert.equal(callIdCol.mappedField, null);
       assert.equal(callIdCol.confidence, 'none');
-      assert.equal(callIdCol.matchType, 'unmapped');
+      assert.equal(callIdCol.matchType, 'ignored_identifier');
     });
 
     it('identifies remembered mappings with "remembered" confidence and matchType', () => {

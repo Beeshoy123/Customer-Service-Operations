@@ -7,6 +7,7 @@ import {
   CHART_COLORS,
   TARGETS,
   PERSONA,
+  DEFAULT_ACCOUNT_PROFILE,
 } from './features/dashboard/config';
 import {
   agentMatchesSearch,
@@ -34,7 +35,7 @@ import {
 } from './features/dashboard/hooks';
 import { useDashboardMetrics } from './features/dashboard/metrics';
 import { ImportLanding } from './features/dashboard/upload/ImportLanding';
-import { listAccountNames } from './features/accountSetup/account-profile-storage';
+import { listAccountNames, loadAccountProfile, saveAccountProfile } from './features/accountSetup/account-profile-storage';
 import { ErrorBoundary } from './app/errorBoundary';
 import { UploadStatus } from './app/uploadStatus';
 import { ChartActionPlanModal } from './app/chartActionPlanModal';
@@ -95,6 +96,17 @@ export default function App() {
     vxs: true, resolve2hr: true, phoneAdds: true, handoffs: true, resolve3d: false, aht: false,
     hold: false, dpc: false, vtt: false, netOcc: false, creditFreq: false, vhi: false, ncw: false, trajectory: true 
   });
+  // Repeated Offenders — which metrics count toward the "below target 2+
+  // consecutive months" check. Default: none selected = feature off. Persisted
+  // per account in the account profile (Settings menu → SettingsMenu).
+  const [repeatOffenderMetrics, setRepeatOffenderMetrics] = useState([]);
+  // Hydrated from the saved profile at each accountName transition. Deliberately
+  // NOT an effect — loading straight into state at the transition avoids a
+  // cascading render (react/set-state-in-effect) and keeps lint at baseline.
+  const hydrateRepeatOffenderMetrics = (name) => {
+    const profile = name ? loadAccountProfile(name) : null;
+    setRepeatOffenderMetrics(Array.isArray(profile?.repeatOffenderMetrics) ? profile.repeatOffenderMetrics : []);
+  };
   const dashData = useDashboardData(() => { if (aiResetRef.current) aiResetRef.current(); }, accountName,
     // Recommendation 3 — auto-hide empty metric columns after import:
     // hide any VISIBLE metric column whose backing fields are all absent from
@@ -108,6 +120,7 @@ export default function App() {
     dashData.resetDashboard();
     setAccountName('');
     setAccountNameInput('');
+    hydrateRepeatOffenderMetrics('');
   }, [dashData.resetDashboard]);
   const [modalState, dispatchModal] = React.useReducer(modalReducer, MODAL_INITIAL);
   const { activeModal, selectedSupervisorObj, expandedBurnoutAgentId, highlightedAgentId, supTab } = modalState;
@@ -159,11 +172,13 @@ export default function App() {
     activeModal, selectedSupervisorObj, expandedBurnoutAgentId, highlightedAgentId, supTab, searchQuery, inputValue, sortConfig,
     agentSortConfig, mainTab, activeMainAiTool, activeSupAiTool, showColMenu, showModalColMenu, showTimeframeMenu,
     runChartMetric, isCumulative, heatmapViewType, outlierMode, outlierLevel, apprenticeViewMode, visibleCols,
+    repeatOffenderMetrics,
     linkedEntities
   }), [
     activeModal, selectedSupervisorObj, expandedBurnoutAgentId, highlightedAgentId, supTab, searchQuery, inputValue, sortConfig,
     agentSortConfig, mainTab, activeMainAiTool, activeSupAiTool, showColMenu, showModalColMenu, showTimeframeMenu,
     runChartMetric, isCumulative, heatmapViewType, outlierMode, outlierLevel, apprenticeViewMode, visibleCols,
+    repeatOffenderMetrics,
     linkedEntities
   ]);
 
@@ -191,6 +206,19 @@ export default function App() {
 
 
   const toggleCol = useCallback((colKey) => { setVisibleCols(prev => ({ ...prev, [colKey]: !prev[colKey] })); }, []);
+
+  const toggleRepeatOffenderMetric = useCallback((metric) => {
+    setRepeatOffenderMetrics(prev => {
+      const next = prev.includes(metric) ? prev.filter(m => m !== metric) : [...prev, metric];
+      if (accountName) {
+        const profile = JSON.parse(JSON.stringify(loadAccountProfile(accountName) || DEFAULT_ACCOUNT_PROFILE));
+        profile.accountName = accountName;
+        profile.repeatOffenderMetrics = next;
+        saveAccountProfile(profile);
+      }
+      return next;
+    });
+  }, [accountName]);
 
 
   const closeModal = useCallback(() => {
@@ -230,8 +258,8 @@ export default function App() {
     setActiveModal, setSelectedSupervisorObj, setExpandedBurnoutAgentId, setHighlightedAgentId, setSupTab, setSearchQuery, setInputValue,
     handleSortChange, handleAgentSortChange, setAgentSortConfig, setMainTab, setActiveMainAiTool, setActiveSupAiTool,
     setShowColMenu, setShowModalColMenu, setShowTimeframeMenu, setRunChartMetric, setIsCumulative, setHeatmapViewType,
-    setOutlierMode, setOutlierLevel, setApprenticeViewMode, toggleCol, closeModal, handleAiLinkClick
-  }), [handleSortChange, handleAgentSortChange, toggleCol, closeModal, handleAiLinkClick]);
+    setOutlierMode, setOutlierLevel, setApprenticeViewMode, toggleCol, toggleRepeatOffenderMetric, closeModal, handleAiLinkClick
+  }), [handleSortChange, handleAgentSortChange, toggleCol, toggleRepeatOffenderMetric, closeModal, handleAiLinkClick]);
 
 
   const normalizedAccountName = accountName.trim();
@@ -260,6 +288,7 @@ export default function App() {
                 const trimmed = accountNameInput.trim();
                 if (trimmed) {
                   setAccountName(trimmed);
+                  hydrateRepeatOffenderMetrics(trimmed);
                 }
               }}
               style={{ display: 'flex', flexDirection: 'column', gap: 16 }}
@@ -314,7 +343,10 @@ export default function App() {
           <ImportLanding
             accountName={normalizedAccountName}
             accountOptions={accountOptions}
-            onAccountNameChange={setAccountName}
+            onAccountNameChange={(name) => {
+              setAccountName(name);
+              hydrateRepeatOffenderMetrics(name);
+            }}
             uploadStatus={dashData.uploadStatus}
             onFiles={(files) => dashData.handleAutomaticImport(files)}
             mappingReview={dashData.mappingReview}

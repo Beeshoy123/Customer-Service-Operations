@@ -3,6 +3,7 @@ import React, { useMemo } from 'react';
 import { METRIC_CONFIG, getDynamicTarget, COL_DEFINITIONS } from '../../config';
 import { GeminiLoader, FormattedText, SubMetricCard, MetricCell } from '../../../../components/shared';
 import { useDashboard } from '../../hooks';
+import { monthLabel } from '../../helpers';
 
 // ==== AI assistant content ==== 
 // Source: src/App.tsx -> AskAiContent
@@ -64,6 +65,8 @@ const AskAiContent = ({ aiTools, uiState, uiHandlers }: any) => {
 const SupervisorModalContent = () => {
   const { dashData, metrics, aiTools, uiState, uiHandlers } = useDashboard();
   const supName = uiState.selectedSupervisorObj?.name;
+  // Repeated Offenders: which agent's month-by-month detail row is open
+  const [expandedRepeatOffenderCcms, setExpandedRepeatOffenderCcms] = React.useState(null);
 
   // ── Memoized: only recomputes when supervisor, timeframe, or sort changes ──
   const supAgentsList = useMemo(() =>
@@ -155,16 +158,55 @@ const SupervisorModalContent = () => {
                 </tr>
               </thead>
               <tbody>
-                 {sortedAgentsList.map(item => (
-                  <tr key={item.agent.ccms} className={`roster-row transition-all duration-300 hover:-translate-y-1 hover:shadow-md relative z-10 ${uiState.highlightedAgentId === item.agent.ccms ? 'bg-blue-100 outline outline-2 outline-blue-500 rounded-md z-20' : ''}`}>
-                     <td className="font-semibold p-3 px-6">{item.agent.name}</td>
+                 {sortedAgentsList.map(item => {
+                  const roHits: any[] = (metrics.repeatOffenders && metrics.repeatOffenders.byAgent.get(item.agent.ccms)) || [];
+                  const roExpanded = expandedRepeatOffenderCcms === item.agent.ccms;
+                  const visibleColCount = COL_DEFINITIONS.filter(col => uiState.visibleCols[col.stateKey]).length;
+                  return (
+                  <React.Fragment key={item.agent.ccms}>
+                  <tr className={`roster-row transition-all duration-300 hover:-translate-y-1 hover:shadow-md relative z-10 ${uiState.highlightedAgentId === item.agent.ccms ? 'bg-blue-100 outline outline-2 outline-blue-500 rounded-md z-20' : ''}`}>
+                     <td className="font-semibold p-3 px-6">
+                       <div className="flex items-center gap-2">
+                         <span>{item.agent.name}</span>
+                         {roHits.length > 0 && (() => {
+                           const maxStreak = Math.max(...roHits.map(h => h.streakLength));
+                           const detail = roHits.map(h => `${h.label}: below target ${h.target} for ${h.streakLength} consecutive months (${h.streakMonths.map(monthLabel).join(' → ')})`).join('\n');
+                           return (
+                             <button
+                               type="button"
+                               onClick={() => setExpandedRepeatOffenderCcms(roExpanded ? null : item.agent.ccms)}
+                               title={`${detail}\nClick for month-by-month details`}
+                               className="text-xs font-extrabold px-1.5 py-0.5 rounded cursor-pointer"
+                               style={{ color: '#b91c1c', background: '#fee2e2', border: '1px solid #fecaca' }}
+                             >
+                               🔁 {maxStreak}mo {roExpanded ? '▴' : '▾'}
+                             </button>
+                           );
+                         })()}
+                       </div>
+                     </td>
                      {COL_DEFINITIONS.map(col => uiState.visibleCols[col.stateKey] && (
                         <td key={col.key} className="p-3 px-6 text-center">
                           <MetricCell value={item.data[col.stateKey]} target={getDynamicTarget(col.stateKey, 1)} reverse={col.reverse} isInteger={col.isInteger} />
                         </td>
                      ))}
                   </tr>
-                 ))}
+                  {roExpanded && roHits.length > 0 && (
+                    <tr>
+                      <td colSpan={visibleColCount + 1} className="px-6 py-3" style={{ background: '#fffbeb', borderBottom: '1px solid #fde68a' }}>
+                        <div className="text-xs font-extrabold uppercase mb-1" style={{ color: '#92400e' }}>🔁 Repeated Offender — consecutive months below target</div>
+                        {roHits.map(hit => (
+                          <div key={hit.metric} className="text-xs" style={{ color: '#334155' }}>
+                            <span className="font-bold">{hit.label}</span>: {hit.streakLength} consecutive months below target {hit.target} —{' '}
+                            {hit.values.map((v: any) => `${monthLabel(v.month)}: ${Number.isInteger(v.value) ? v.value : Number(v.value.toFixed(1))}${hit.format || ''}`).join('  ·  ')}
+                          </div>
+                        ))}
+                      </td>
+                    </tr>
+                  )}
+                  </React.Fragment>
+                  );
+                 })}
               </tbody>
             </table>
           </div>

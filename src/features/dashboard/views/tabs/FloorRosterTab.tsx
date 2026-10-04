@@ -107,6 +107,19 @@ export const FloorRosterTab = () => {
                           {supObj.isHighRisk && !isOffToday && (
                             <span className="text-base cursor-help" title="High Risk Trend">⚠️</span>
                           )}
+                          {(() => {
+                            const roSup = metrics.repeatOffenders?.bySupervisor?.get(supObj.name);
+                            if (!roSup) return null;
+                            return (
+                              <span
+                                className="text-xs font-extrabold px-1.5 py-0.5 rounded cursor-help"
+                                style={{ color: '#b91c1c', background: '#fee2e2', border: '1px solid #fecaca' }}
+                                title={`Repeated Offenders: ${roSup.agentNames.join(', ')}`}
+                              >
+                                🔁 {roSup.agentCount}
+                              </span>
+                            );
+                          })()}
                         </div>
                         <span className="block text-xs text-slate-500 font-normal">
                           {supObj.agentCount} Agents

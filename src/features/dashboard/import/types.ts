@@ -163,6 +163,7 @@ export type ColumnMatchType =
   | 'scored_high'
   | 'remembered'
   | 'token_hint'
+  | 'ignored_identifier'
   | 'unmapped';
 
 export type MappingCandidate = {

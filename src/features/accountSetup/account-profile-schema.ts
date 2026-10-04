@@ -228,6 +228,11 @@ export interface AccountProfile {
   ncw: NcwConfig;
   customMetrics?: CustomMetricConfig[];
   ignoredCustomMetricColumns?: string[];
+  /**
+   * Repeated Offenders: which metric keys count toward the "below target for
+   * 2+ consecutive months" flag. Absent/empty = feature off (the default).
+   */
+  repeatOffenderMetrics?: string[];
   /** Optional account-specific calculation branches; existing defaults remain unchanged. */
   calculationStyles?: {
     rateMergeStyle?: 'arithmetic-average' | 'weighted-by-counts';

@@ -571,18 +571,29 @@ describe('workbookLoader', () => {
       (globalThis as any).Worker = RealWorkerBridge;
 
       try {
-        // Generate a real 100,000-row spreadsheet
-        const data: unknown[][] = [['Agent Name', 'Date', 'Calls']];
-        for (let i = 1; i <= 100000; i += 1) {
-          data.push(['Agent_' + i, '2026-01-01', i]);
-        }
-        const ws = XLSX.utils.aoa_to_sheet(data);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'BigSheet');
-        const buffer = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
-        const file = new File([buffer], 'big_100k.xlsx', {
-          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        });
+        // Generate a real 100,000-row spreadsheet. The source structures
+        // (data/ws/wb, ~200MB of cell objects) are scoped to this IIFE so they
+        // become unreachable once the serialized buffer exists — they are never
+        // read again, and holding them through the worker re-parse inflates this
+        // test's peak RSS on memory-constrained runners. The buffer is
+        // byte-identical and every assertion below is unchanged.
+        const file = (() => {
+          const data: unknown[][] = [['Agent Name', 'Date', 'Calls']];
+          for (let i = 1; i <= 100000; i += 1) {
+            data.push(['Agent_' + i, '2026-01-01', i]);
+          }
+          const ws = XLSX.utils.aoa_to_sheet(data);
+          const wb = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(wb, ws, 'BigSheet');
+          const buffer = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+          return new File([buffer], 'big_100k.xlsx', {
+            type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          });
+        })();
+        // Reclaim the freed generation structures before the worker allocates
+        // its own copy of the parsed workbook (guarded: only when the runtime
+        // exposes --expose-gc; the test passes either way).
+        (globalThis as any).gc?.();
 
         // Track event loop ticks while the real worker runs XLSX.read() + parsing
         let ticks = 0;
