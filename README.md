@@ -28,24 +28,15 @@ The dashboard is designed around the realities of a customer service operation, 
 
 This is not a generic analytics app; it is a floor-performance and operations-monitoring tool for customer service teams.
 
-## Core logic of the app
+## Core flows
 
-The system follows a simple operational flow:
-
-1. Upload operational data from CSV/TXT/TSV files.
-2. Detect the relevant columns and normalize the raw data.
-3. Parse and aggregate records by agent, supervisor, OAM, date, and time period.
-4. Compare results against target thresholds defined in the central metric configuration.
-5. Roll values up to summary views for team and floor reporting.
-6. Highlight outliers, trends, and risk areas.
-7. Surface coaching insights and action-oriented recommendations.
-
-The business logic is split across the dashboard layer so the app remains maintainable:
-
-- config.ts holds the metric definitions and operational targets
-- helpers.ts handles parsing, date normalization, searching, and aggregation
-- hooks.ts manages the uploaded data lifecycle and application state
-- metrics.ts derives the rolled-up KPI and trend summaries shown in the UI
+1. **Import** — upload CSV / TXT / TSV / XLSX files. The import wizard detects the file type and data granularity, lets you pick the correct sheet, fingerprints columns, and maps them to metrics (with validation and a mapping memory that is reused across files).
+2. **Normalize** — standardize column names, date formats, and value shapes, then group records by agent and date.
+3. **Aggregate** — roll data up from agent to supervisor to OAM/manager to floor level, across daily, weekly, monthly, and day-of-week timeframes.
+4. **Compare to targets** — every metric is evaluated against the thresholds defined in the central metric configuration.
+5. **Explore** — eight floor tabs: Roster, Outliers, Apprentice, Analysis, Trends, Correlation (Integrity Match-ups), Burnout (Behavioral Scan), and DoW Analysis.
+6. **Act** — the AI assistant (Gemini) generates team, apprentice-track, and supervisor expert reports plus chart action plans, either automatically per view or on demand via Ask AI.
+7. **Persist** — view state survives reloads via `localStorage` (heavy state and view state are stored under separate keys). There is no backend: all data and business logic stay in the browser.
 
 ## Operational metric model
 
@@ -83,6 +74,92 @@ The app reads raw operational records, standardizes the column names and date fo
 
 That allows the UI to turn raw numbers into operational stories instead of just showing a spreadsheet.
 
+## Architecture
+
+- **Stack** — Vite + React 19 + TypeScript, client-side only. Runtime dependencies are just `react`, `react-dom`, and `xlsx`.
+- **Feature-first layout** — all dashboard domain logic lives under `src/features/dashboard/`; the app shell lives in `src/App.tsx`.
+- **One context** — extracted view components read the dashboard bundle (`dashData`, `metrics`, `aiTools`, `uiState`, `uiHandlers`, …) through a single `DashboardContext`, so no view needs prop drilling.
+- **`App.tsx` is thin** — it holds app state, the UI/modal reducers, and the screen composition. Everything else is extracted into checked files.
+- **Type-checked leaves** — extracted components are covered by `tsc`; only the remaining shell files carry `@ts-nocheck` (they are on the retirement list in the restructure plan).
+
+Key modules:
+
+| Module | Responsibility |
+|---|---|
+| `features/dashboard/config.ts` | metric definitions, labels, targets, column definitions |
+| `features/dashboard/helpers.ts` | parsing, date normalization, search, aggregation |
+| `features/dashboard/hooks.ts` | uploaded-data lifecycle, context, AI tools, persistence |
+| `features/dashboard/metrics.ts` | derived KPI, leader, and trend summaries |
+| `features/dashboard/emptyColumns.ts` | auto-hide of empty metric columns after import |
+| `features/dashboard/import/*` | import pipeline (file-type and granularity detection, sheet selection, column fingerprinting/mapping, validation, merge, worker-based workbook loading) |
+| `features/dashboard/upload/*` | import landing screen |
+| `features/dashboard/views/tabs/*` | the eight floor tabs |
+| `features/dashboard/views/modals/MainModal.tsx` | modal shell + Ask AI content + supervisor modal |
+| `features/dashboard/views/chrome/*` | TopNavbar, MainStatsRow, FloorHeader |
+| `features/accountSetup/*` | account profile storage and metric detection |
+| `app/*` | error boundary, upload status toast, chart action-plan modal, global dashboard styles |
+
+## Project structure
+
+```text
+src/
+  App.tsx                          # app state, reducers, and screen composition
+  main.tsx                         # app entry point
+  app/
+    chartActionPlanModal.tsx       # AI chart action-plan modal
+    dashboardStyles.ts             # injected global dashboard stylesheet
+    errorBoundary.tsx              # top-level error boundary
+    uploadStatus.tsx               # upload progress/status toast
+  components/
+    dropZone.tsx                   # drag-and-drop upload zone
+    menus.tsx                      # timeframe and settings controls
+    shared.tsx                     # reusable charts and cards
+  features/
+    accountSetup/
+      account-profile-schema.ts
+      account-profile-storage.ts
+      metric-detection-engine.ts
+    dashboard/
+      config.ts                    # targets, labels, and metric config
+      helpers.ts                   # parsing, cleanup, aggregation, search
+      hooks.ts                     # state, context, upload pipeline, AI tools
+      metrics.ts                   # derived summaries and trend logic
+      emptyColumns.ts              # auto-hide empty metric columns
+      import/                      # import pipeline + tests
+      upload/                      # import landing screen
+      views/
+        chrome/                    # TopNavbar, MainStatsRow, FloorHeader
+        modals/MainModal.tsx       # modal shell, Ask AI content, supervisor modal
+        tabs/                      # the eight floor tabs
+  styles/
+    index.css                      # global styling and layout rules
+    App.css
+```
+
+## Tooling
+
+| Command | What it does |
+|---|---|
+| `npm run dev` | start the Vite dev server |
+| `npm run build` | type-check (`tsc -b`) and produce a production build in `dist/` |
+| `npm run preview` | serve the production build locally |
+| `npm run lint` | run `oxlint` |
+| `npm test` | run the Node test suite (`tsx --test`) |
+
+Every change is expected to keep these green:
+
+- `npx tsc -b` — zero type errors
+- `npm run lint` — zero lint errors (warnings are tolerated; the baseline is tracked)
+- `npm test` — full suite passing
+- the dev server serves the app without console/transform errors
+
+## Local development
+
+```bash
+npm install
+npm run dev
+```
+
 ## Why this app matters
 
 A customer service operation is judged by a balance of three things:
@@ -92,38 +169,6 @@ A customer service operation is judged by a balance of three things:
 3. efficiency of the operation
 
 This app brings those measures together in one place so managers can identify whether the team is performing well, slipping in quality, or creating operational stress. It is essentially a command-center dashboard for service operations performance management.
-
-## Project structure
-
-```text
-src/
-  App.tsx                          # main shell and screen orchestration
-  main.tsx                         # app entry point
-  components/
-    menus.tsx                      # timeframe and settings controls
-    shared.tsx                     # reusable charts and cards
-  dashboard/
-    config.ts                      # targets, labels, and default metric config
-    helpers.ts                     # parsing, cleanup, aggregation, and search logic
-    hooks.ts                       # state and upload pipeline
-    metrics.ts                     # derived summary calculations and trend logic
-  features/
-    dashboard/
-      index.ts                    # feature re-exports
-      config.ts                   # feature config export layer
-      helpers.ts                  # feature helper export layer
-      hooks.ts                    # feature hook export layer
-      metrics.ts                  # feature metrics export layer
-  styles/
-    index.css                     # global styling and layout rules
-```
-
-## Local development
-
-```bash
-npm install
-npm run dev
-```
 
 ## Summary
 

@@ -13,6 +13,7 @@ import {
   scoreColumnMapping,
   detectColumnMappingWithConfidence,
   isIdentifierHeader,
+  isIdentifierColumn,
   isUnrecognizedPlausibleMetricColumn,
 } from './importPolicy';
 import { rememberMapping, clearMemory } from './mappingMemory';
@@ -307,10 +308,10 @@ describe('importPolicy extensions', () => {
       ];
       const ivrMapping = scoreColumnMapping('IVR_Call_ID', 0, ivrSamples);
 
-      // Must be Unmapped — NOT employeeId and NOT calls!
+      // Must be classified as an ignored identifier — NOT employeeId and NOT calls!
       assert.equal(ivrMapping.mappedField, null);
       assert.equal(ivrMapping.confidence, 'none');
-      assert.equal(ivrMapping.matchType, 'unmapped');
+      assert.equal(ivrMapping.matchType, 'ignored_identifier');
       assert.equal(ivrMapping.isLowConfidence, false);
 
       const acssSamples = [
@@ -322,7 +323,7 @@ describe('importPolicy extensions', () => {
 
       assert.equal(acssMapping.mappedField, null);
       assert.equal(acssMapping.confidence, 'none');
-      assert.equal(acssMapping.matchType, 'unmapped');
+      assert.equal(acssMapping.matchType, 'ignored_identifier');
     });
 
     it('suggests low confidence for fuzzy header + compatible values like Avg Talk Time', () => {
@@ -605,6 +606,220 @@ describe('importPolicy extensions', () => {
           );
         }
       });
+    });
+  });
+});
+
+describe('findPairedCountField sheet-context guard (unpaired count columns)', () => {
+  it('does not tag Resolve_2Hr_Count / Resolve_3Day_Count as pass when the sheet has no cnt partner', () => {
+    assert.equal(
+      findPairedCountField('Resolve_2Hr_Count', ['Agent', 'Date', 'Resolve_2Hr_Count']),
+      null
+    );
+    assert.equal(
+      findPairedCountField('Resolve_3Day_Count', ['Agent', 'Date', 'Resolve_3Day_Count']),
+      null
+    );
+  });
+
+  it('still tags Resolve_2Hr_Count as pass when a cnt partner exists in the sheet', () => {
+    const sheetHeaders = ['Agent', 'Date', 'Resolve_2Hr_Count', 'Resolve_2Hr_Cnt'];
+    const tag = findPairedCountField('Resolve_2Hr_Count', sheetHeaders);
+    assert.equal(tag?.side, 'pass');
+    assert.equal(tag?.taggedField, 'resolve2hr_Pass');
+  });
+
+  it('routes an unpaired count column into the plain resolveTotalContacts2hr / 3d fields', () => {
+    assert.equal(
+      normalizeHeaderToField('Resolve_2Hr_Count', [], ['Agent', 'Date', 'Resolve_2Hr_Count']),
+      'resolveTotalContacts2hr'
+    );
+    assert.equal(
+      normalizeHeaderToField('Resolve_3Day_Count', [], ['Agent', 'Date', 'Resolve_3Day_Count']),
+      'resolveTotalContacts3d'
+    );
+  });
+
+  it('classifies an unpaired count column as resolveTotalContacts2hr in diagnostics too', () => {
+    const mapping = detectColumnMappingWithConfidence(
+      'Resolve_2Hr_Count',
+      0,
+      ['145', '167', '98'],
+      undefined,
+      ['Agent', 'Date', 'Resolve_2Hr_Count']
+    );
+    assert.equal(mapping.mappedField, 'resolveTotalContacts2hr');
+  });
+
+  it('still pairs VXS_Overall_Rep_Pass + VXS_Overall_Rep_Cnt when both are present', () => {
+    const sheetHeaders = ['VXS_Overall_Rep_Pass', 'VXS_Overall_Rep_Cnt'];
+    assert.equal(normalizeHeaderToField('VXS_Overall_Rep_Pass', [], sheetHeaders), 'vxs_Pass');
+    assert.equal(normalizeHeaderToField('VXS_Overall_Rep_Cnt', [], sheetHeaders), 'vxs_Cnt');
+    assert.equal(findPairedCountField('VXS_Overall_Rep_Pass', sheetHeaders)?.taggedField, 'vxs_Pass');
+  });
+
+  it('keeps legacy single-header behavior when no sheet context is supplied', () => {
+    assert.equal(findPairedCountField('VXS_Overall_Rep_Pass')?.taggedField, 'vxs_Pass');
+    assert.equal(normalizeHeaderToField('VXS_Overall_Rep_Cnt'), 'vxs_Cnt');
+  });
+});
+
+// ── Per-column confidence fixes (real reported columns) ──────────────────────
+// 1. Acss_Call_ID  — pure identifier → auto-ignored, excluded from prompts.
+// 2. CallsAnswered — exact alias but numeric samples used to score 55 (low →
+//    prompt); now floors at 85 via exact-alias + numeric values.
+// 3. Handle_Tm_Seconds — same class of bug (shape-dependent score) plus the
+//    AHT sum ÷ call-count aggregation contract for multi-row agent-days.
+describe('column-mapping confidence fixes for reported columns', () => {
+  describe('1. Acss_Call_ID — identifier, not a mappable metric, never prompted', () => {
+    it('auto-classifies realistic numeric call IDs as an ignored identifier', () => {
+      const samples = ['98124001', '98124002', '98124003', '98124004', '98124005', '98124006'];
+      const headers = ['Acss_Call_ID', 'Agent Name', 'Date'];
+      const mapping = detectColumnMappingWithConfidence('Acss_Call_ID', 0, samples, undefined, headers);
+
+      assert.equal(isIdentifierColumn('Acss_Call_ID', mapping.fingerprint ?? 'empty', samples), true);
+      assert.equal(mapping.mappedField, null);
+      assert.equal(mapping.confidence, 'none');
+      assert.equal(mapping.matchType, 'ignored_identifier');
+      assert.equal(mapping.isLowConfidence, false);
+
+      // Excluded from BOTH confirmation flows: Rule 1 needs a mapped
+      // low-confidence column (here: null field + 'none' confidence above),
+      // Rule 3 needs an unmapped but plausible metric (asserted below).
+      assert.equal(
+        isUnrecognizedPlausibleMetricColumn(mapping.header, mapping.fingerprint ?? 'empty'),
+        false
+      );
+    });
+
+    it('does not leak call IDs into employeeId on the cell-mapping path either', () => {
+      const samples = ['98124001', '98124002', '98124003'];
+      assert.equal(normalizeHeaderToField('Acss_Call_ID', samples, ['Acss_Call_ID', 'Date']), null);
+      assert.equal(findCanonicalField('Acss_Call_ID', samples), null);
+    });
+
+    it('ignores near-unique identifier-shaped values even without an id/key header keyword', () => {
+      // Value-based rule: employee-id-shaped AND near-unique → identifier
+      const nearUnique = ['1000001', '1000002', '1000003', '1000004', '1000005', '1000006'];
+      const mapping = scoreColumnMapping('ACSS_Token', 0, nearUnique);
+      assert.equal(mapping.matchType, 'ignored_identifier');
+      assert.equal(mapping.mappedField, null);
+
+      // Repeated values are NOT near-unique → normal (unmapped) path, not ignored
+      const repeated = ['1000001', '1000001', '1000001', '1000002', '1000002', '1000001'];
+      const repeatedMapping = scoreColumnMapping('ACSS_Token', 0, repeated);
+      assert.notEqual(repeatedMapping.matchType, 'ignored_identifier');
+    });
+
+    it('keeps known identity headers (Employee_ID, Agent ID, Rep_ID) mapping instead of ignoring them', () => {
+      assert.equal(isIdentifierColumn('Employee_ID', 'employee-id-like', ['12345678']), false);
+      assert.equal(isIdentifierColumn('Agent ID', 'employee-id-like', ['12345678']), false);
+      assert.equal(isIdentifierColumn('Rep_ID', 'employee-id-like', ['12345678']), false);
+      assert.equal(isIdentifierHeader('Rep_ID'), true); // keyword still matches…
+
+      const emp = scoreColumnMapping('Employee_ID', 0, ['12345678', '87654321', '23456789']);
+      assert.equal(emp.mappedField, 'employeeId');
+      assert.equal(emp.confidence, 'exact');
+    });
+  });
+
+  describe('2. CallsAnswered — exact alias maps to calls at high confidence, no prompt', () => {
+    it('maps numeric agent-day count samples (duration-shaped fingerprint) to calls at exact confidence', () => {
+      const sampleShapes: (string | number)[][] = [
+        [146, 122, 98, 77, 146, 98],   // integers 10–3600 → duration-seconds (was 55 → low → prompt)
+        ['146', '122', '98'],           // string counts → count-integer (already exact)
+        [47, 47, 83, 47, 52],           // low-cardinality counts → count-integer/duration
+      ];
+
+      for (const samples of sampleShapes) {
+        const mapping = detectColumnMappingWithConfidence('CallsAnswered', 0, samples, undefined, [
+          'CallsAnswered',
+          'Date',
+        ]);
+        assert.equal(mapping.mappedField, 'calls', `samples ${JSON.stringify(samples)}`);
+        assert.equal(mapping.confidence, 'exact', `samples ${JSON.stringify(samples)}`);
+        assert.equal(mapping.isLowConfidence, false, `samples ${JSON.stringify(samples)}`);
+        assert.ok((mapping.score ?? 0) >= 85, `samples ${JSON.stringify(samples)} → ${mapping.score}`);
+        // Not in the custom-metric flow: that only fires for UNMAPPED columns
+        // with a plausible metric fingerprint (importService's
+        // `!mapping.mappedField && isUnrecognizedPlausibleMetricColumn(...)`).
+        const wouldEnterCustomMetricFlow =
+          !mapping.mappedField &&
+          isUnrecognizedPlausibleMetricColumn(mapping.header, mapping.fingerprint ?? 'empty');
+        assert.equal(wouldEnterCustomMetricFlow, false, `samples ${JSON.stringify(samples)}`);
+      }
+    });
+
+    it('the alias exists for the spaced/camel header variants', () => {
+      assert.equal(findCanonicalField('CallsAnswered'), 'calls');
+      assert.equal(findCanonicalField('Calls Answered'), 'calls');
+      assert.equal(normalizeHeaderToField('CallsAnswered', [146, 122], ['CallsAnswered']), 'calls');
+    });
+  });
+
+  describe('3. Handle_Tm_Seconds — maps to aht and aggregates as sum / call count', () => {
+    it('maps every numeric sample shape to aht at exact confidence', () => {
+      const sampleShapes: (string | number)[][] = [
+        [320, 450, 185, 600],                  // duration-seconds (already exact)
+        [47, 47, 83, 47],                      // round/low-cardinality seconds → count-integer (was 65 → low → prompt)
+        ['322.5', '245.1', '180.9', '412.3'],   // decimal seconds (was categorical/percent → 35 → unmapped)
+      ];
+
+      for (const samples of sampleShapes) {
+        const mapping = detectColumnMappingWithConfidence('Handle_Tm_Seconds', 0, samples, undefined, [
+          'Handle_Tm_Seconds',
+          'Date',
+        ]);
+        assert.equal(mapping.mappedField, 'aht', `samples ${JSON.stringify(samples)}`);
+        assert.equal(mapping.confidence, 'exact', `samples ${JSON.stringify(samples)}`);
+        assert.ok((mapping.score ?? 0) >= 85, `samples ${JSON.stringify(samples)} → ${mapping.score}`);
+      }
+
+      assert.equal(
+        normalizeHeaderToField('Handle_Tm_Seconds', [322.5, 245.1], ['Handle_Tm_Seconds', 'Date']),
+        'aht'
+      );
+    });
+
+    it('computes AHT as sum(handle seconds) / call count across multi-row agent-days (no passthrough, no naive mean)', () => {
+      // The header maps to aht…
+      const mapping = detectColumnMappingWithConfidence('Handle_Tm_Seconds', 0, [120, 240, 360]);
+      assert.equal(mapping.mappedField, 'aht');
+
+      // …and normalized rows for a sheet with multiple call rows per agent-day
+      // route through aggregateTransactions' computePerCallAverage (sum ÷ rowCount).
+      const rows: NormalizedRow[] = [
+        { agentName: 'Alice', date: '2026-01-01', aht: 120 },
+        { agentName: 'Alice', date: '2026-01-01', aht: 240 },
+        { agentName: 'Alice', date: '2026-01-01', aht: 360 },
+        { agentName: 'Alice', date: '2026-01-02', aht: 100 },
+        { agentName: 'Alice', date: '2026-01-02', aht: 200 },
+        { agentName: 'Alice', date: '2026-01-02', aht: null }, // dropped call: counts toward call count
+        { agentName: 'Bob', date: '2026-01-01', aht: 500 },
+      ];
+
+      const result = aggregateTransactions(rows);
+      assert.equal(result.length, 3);
+
+      const aliceDay1 = result.find((r) => r.agentName === 'Alice' && r.date === '2026-01-01');
+      assert.ok(aliceDay1);
+      // sum(120+240+360) ÷ 3 calls = 240 — not the raw sum (720), not a passthrough
+      assert.equal(aliceDay1.aht, 240);
+      assert.equal(aliceDay1.calls, 3);
+      assert.notEqual(aliceDay1.aht, 720);
+
+      const aliceDay2 = result.find((r) => r.agentName === 'Alice' && r.date === '2026-01-02');
+      assert.ok(aliceDay2);
+      // sum(100+200) ÷ 3 call rows = 100 → divides by CALL COUNT (a naive
+      // non-null mean would give 150)
+      assert.equal(aliceDay2.aht, 100);
+      assert.equal(aliceDay2.calls, 3);
+      assert.notEqual(aliceDay2.aht, 150);
+
+      const bobDay1 = result.find((r) => r.agentName === 'Bob');
+      assert.ok(bobDay1);
+      assert.equal(bobDay1.aht, 500);
+      assert.equal(bobDay1.calls, 1);
     });
   });
 });

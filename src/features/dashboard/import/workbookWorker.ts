@@ -1,10 +1,13 @@
+// Explicit .ts extension required: Node's native ESM loader (used by real
+// worker_threads in tests) does not resolve extensionless relative imports.
+// Vite handles explicit .ts extensions fine.
 import { parseWorkbookBuffer } from './workbookLoader.ts';
-import { selectSheets } from './sheetSelector';
-import { mapTableToNormalizedRowsAsync } from './schemaNormalizer';
-import { validateNormalizedRows } from './validation';
-import { mergeNormalizedRows } from './mergeData';
-import { aggregateTransactions } from './aggregateTransactions';
-import { detectGranularity } from './granularityDetector';
+import { selectSheets } from './sheetSelector.ts';
+import { mapTableToNormalizedRowsAsync } from './schemaNormalizer.ts';
+import { validateNormalizedRows } from './validation.ts';
+import { mergeNormalizedRows } from './mergeData.ts';
+import { aggregateTransactions } from './aggregateTransactions.ts';
+import { detectGranularity } from './granularityDetector.ts';
 import type {
   ImportOptions,
   ImportProgress,
@@ -219,11 +222,14 @@ export const handleWorkerMessage = async (
       const totalDuration = (performance.now() - workerStartTime).toFixed(1);
       console.log(`[WORKER] Pipeline complete in ${totalDuration}ms. Merged rows: ${finalMergedRows.length}. Posting success to main thread.`);
 
-      // Post final processed result to main thread
+      // Post final processed result to main thread. When the caller only needs
+      // raw sheets (preview mode), skip the merged `rows` clone entirely: the
+      // main thread discards it, and cloning it into the renderer is wasted
+      // memory on large workbooks — memory the renderer can least afford.
       postMessage({
         type: 'success',
         result: {
-          rows: finalMergedRows,
+          rows: options.includeRawRowsForPreview ? [] : finalMergedRows,
           sourceSummary,
           warnings,
           skippedSheets: workbookResult.skippedSheets,

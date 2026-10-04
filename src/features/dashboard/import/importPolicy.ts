@@ -49,8 +49,8 @@ import type {
   ColumnMappingConfidence,
   ColumnMatchType,
 } from './types';
-import { analyzeColumnValues, type ColumnFingerprint } from './columnFingerprinter';
-import { recallMapping } from './mappingMemory';
+import { analyzeColumnValues, type ColumnFingerprint } from './columnFingerprinter.ts';
+import { recallMapping } from './mappingMemory.ts';
 
 export type ImportFieldKind = 'text' | 'number' | 'percent' | 'date';
 
@@ -295,6 +295,8 @@ export const FIELD_ALIASES: Record<string, ImportFieldPolicy> = {
       'resolve 2hr contacts',
       'resolve_2hr_contacts',
       'resolve2hr_contacts',
+      'resolve2hrcount',
+      'resolve 2hr count',
     ],
     kind: 'number',
   },
@@ -309,6 +311,8 @@ export const FIELD_ALIASES: Record<string, ImportFieldPolicy> = {
       'resolve 3d contacts',
       'resolve_3d_contacts',
       'resolve3d_contacts',
+      'resolve3daycount',
+      'resolve 3day count',
     ],
     kind: 'number',
   },
@@ -422,7 +426,10 @@ export const FIELD_ALIASES: Record<string, ImportFieldPolicy> = {
       'vtt rate',
       'vtt attach',
       'vtt attach %',
-      'view together',
+      // NOTE: 'view together' deliberately NOT listed here — it is the primary
+      // alias of the viewTogether field (Standing Rule: a normalized alias
+      // must exist in exactly one field's aliases; sharing it made the header
+      // ambiguous between viewTogether and vtt).
       'terms and conditions',
       'broadband facts',
       'disclosure',
@@ -572,6 +579,55 @@ export const normalizeHeader = (value: string): string =>
     .trim();
 
 const compactHeader = (value: string): string => normalizeHeader(value).replace(/\s+/g, '');
+
+// ── Identifier-column classification ─────────────────────────────────────────
+// Identifier columns (Acss_Call_ID, IVR_Call_ID, RECOVERYKEY, record/session
+// ids…) are NOT metrics: they must never be auto-mapped and must never enter
+// the confirmation flow. Identity-domain headers (Employee_ID, Agent ID,
+// Rep_ID, CCMS_ID…) are the deliberate exception — those are known columns
+// already declared in FIELD_ALIASES.employeeId and they keep their normal
+// exact/fuzzy scoring path so employee identifiers keep mapping correctly.
+
+const IDENTITY_HEADER_TOKENS = new Set(['employee', 'emp', 'agent', 'rep', 'associate', 'ccms']);
+
+export const isKnownIdentityHeader = (header: string): boolean => {
+  const normalized = normalizeHeader(header);
+  const compact = compactHeader(header);
+  const employeeIdAliases = FIELD_ALIASES.employeeId?.aliases ?? [];
+  if (
+    employeeIdAliases.some(
+      (alias) => normalizeHeader(alias) === normalized || compactHeader(alias) === compact
+    )
+  ) {
+    return true;
+  }
+  return normalized.split(/\s+/).some((token) => IDENTITY_HEADER_TOKENS.has(token));
+};
+
+// Value-based identifier detection: identifier samples are near-unique (every
+// row a different ID) while metric samples repeat or aggregate, so
+// near-uniqueness + an identifier-shaped fingerprint (employee-id-like /
+// call-id-like from columnFingerprinter) marks an identifier even when the
+// header itself carries no id/key keyword.
+const isNearUniqueSample = (sampleValues: readonly (string | number | null | undefined)[]): boolean => {
+  const nonEmpty = sampleValues
+    .map((v) => (v === null || v === undefined ? '' : String(v).trim()))
+    .filter((v) => v !== '');
+  if (nonEmpty.length < 5) return false;
+  return new Set(nonEmpty).size / nonEmpty.length >= 0.9;
+};
+
+export const isIdentifierColumn = (
+  header: string,
+  fingerprint: ColumnFingerprint,
+  sampleValues: readonly (string | number | null | undefined)[] = []
+): boolean => {
+  if (isKnownIdentityHeader(header)) return false;
+  if (isIdentifierHeader(header)) return true;
+  if (fingerprint === 'call-id-like') return true;
+  if (fingerprint === 'employee-id-like' && isNearUniqueSample(sampleValues)) return true;
+  return false;
+};
 
 const HEADER_TOKEN_HINTS: Record<string, string[]> = {
   agentName: ['agent', 'employee', 'emp', 'rep', 'associate', 'name'],
@@ -752,7 +808,35 @@ const findCanonicalBaseField = (base: string): string | null => {
   return null;
 };
 
-export const findPairedCountField = (header: string): PairedCountFieldTag | null => {
+// A <field>_Pass column is only meaningful as HALF OF A PAIR: it exists so
+// pass and cnt columns of the same metric can be combined downstream. When the
+// sheet does not actually contain the cnt side, tagging the pass column
+// strands it — the paired value never reaches any canonical field and silently
+// vanishes from the dashboard. This verifies a cnt-side counterpart of the
+// SAME canonical field exists elsewhere in the sheet's real headers before
+// tagging (see the guard inside findPairedCountField).
+const hasCntPartnerInSheet = (
+  allHeaders: readonly unknown[],
+  ownHeader: string,
+  config: PairedCountConfig,
+): boolean => {
+  const ownNormalized = normalizeHeader(ownHeader);
+  const ownCompact = compactHeader(ownHeader);
+  return allHeaders.some((other) => {
+    const norm = normalizeHeader(String(other ?? ''));
+    const comp = compactHeader(String(other ?? ''));
+    if (!norm && !comp) return false;
+    if (norm === ownNormalized && comp === ownCompact) return false; // the header itself
+    return config.cntAliases.some(
+      (alias) => normalizeHeader(alias) === norm || compactHeader(alias) === comp
+    );
+  });
+};
+
+export const findPairedCountField = (
+  header: string,
+  allHeaders?: readonly unknown[] | null,
+): PairedCountFieldTag | null => {
   const normalized = normalizeHeader(header);
   const compact = compactHeader(header);
   if (!normalized && !compact) return null;
@@ -760,6 +844,16 @@ export const findPairedCountField = (header: string): PairedCountFieldTag | null
   // 1. Check explicit aliases in PAIRED_COUNT_FIELDS
   for (const [canonicalField, config] of Object.entries(PAIRED_COUNT_FIELDS)) {
     if (config.passAliases.some((alias) => normalizeHeader(alias) === normalized || compactHeader(alias) === compact)) {
+      // Pass-side tags require PROOF the cnt side exists in this sheet. Without
+      // sheet context (allHeaders omitted — e.g. aggregateTransactions
+      // re-deriving tags from already-tagged row fields) the legacy
+      // assumed-pair behavior is kept. When no partner is found, fall through
+      // to the FIELD_ALIASES escape hatch below so count-style headers such as
+      // Resolve_2Hr_Count land in their plain canonical field instead of
+      // being stranded as <field>_Pass.
+      if (allHeaders && !hasCntPartnerInSheet(allHeaders, header, config)) {
+        continue;
+      }
       return {
         canonicalField,
         side: 'pass',
@@ -819,12 +913,13 @@ export const findPairedCountField = (header: string): PairedCountFieldTag | null
 
 export const findCanonicalFieldWithTag = (
   header: string,
+  allHeaders?: readonly unknown[] | null,
 ): { canonicalField: string; side?: PairedCountSide; taggedField: string } | null => {
-  const paired = findPairedCountField(header);
+  const paired = findPairedCountField(header, allHeaders);
   if (paired) {
     return paired;
   }
-  const canonical = findCanonicalField(header);
+  const canonical = findCanonicalField(header, [], allHeaders);
   if (canonical) {
     return { canonicalField: canonical, taggedField: canonical };
   }
@@ -1020,7 +1115,8 @@ export const scoreColumnMapping = (
   header: string,
   index = 0,
   sampleValues: (string | number | null | undefined)[] = [],
-  scope?: string
+  scope?: string,
+  allHeaders?: readonly unknown[] | null
 ): DetectedColumnMapping => {
   const normalized = normalizeHeader(header);
   const sampleStrings = sampleValues
@@ -1044,6 +1140,45 @@ export const scoreColumnMapping = (
       score: 0,
     };
   }
+
+  // Identifier columns are "ignore, not a mappable metric": never mapped,
+  // never low-confidence, never prompted (Acss_Call_ID, IVR_Call_ID,
+  // RECOVERYKEY, near-unique system IDs…). See isIdentifierColumn above.
+  if (isIdentifierColumn(header, fingerprint, sampleValues)) {
+    return {
+      header,
+      normalized,
+      mappedField: null,
+      confidence: 'none',
+      isLowConfidence: false,
+      matchType: 'ignored_identifier',
+      sampleValues: sampleStrings,
+      index,
+      fingerprint,
+      candidates: [],
+      score: 0,
+    };
+  }
+
+  // Exact-alias + numeric values → authoritative. Value fingerprints cannot
+  // distinguish numeric SEMANTICS from samples alone: agent-day call counts
+  // (146, 122, 98…) fingerprint identically to durations, round handle times
+  // (47, 47, 83) to counts, decimal seconds to percent/categorical shapes.
+  // When the normalized header literally IS a canonical alias and the values
+  // are numeric (and carry no % signs), the header wins and the score floors
+  // at 85 so the column auto-maps instead of prompting. Non-numeric values,
+  // percent-signed values and identifier-shaped fingerprints are excluded, so
+  // genuinely contradicting samples keep today's behavior.
+  const hasPercentSigns = sampleStrings.some((value) => value.includes('%'));
+  const numericCount = sampleStrings.filter((value) =>
+    Number.isFinite(Number(value.replace(/[$,\s]/g, '')))
+  ).length;
+  const numericRatio = sampleStrings.length > 0 ? numericCount / sampleStrings.length : 0;
+  const exactAliasWithNumericValues =
+    !hasPercentSigns &&
+    numericRatio >= 0.85 &&
+    fingerprint !== 'call-id-like' &&
+    fingerprint !== 'employee-id-like';
 
   // Component aliases such as OCC_Amt must win over generic _Cnt/_Pass suffix handling.
   const directComponentField = Object.entries(FIELD_ALIASES).find(([field, policy]) =>
@@ -1074,7 +1209,7 @@ export const scoreColumnMapping = (
   }
 
   // 1. Paired count exact structural match
-  const paired = findPairedCountField(header);
+  const paired = findPairedCountField(header, allHeaders);
   if (paired && fingerprint !== 'call-id-like' && fingerprint !== 'hour-of-day') {
     const candidate: MappingCandidate = {
       field: paired.taggedField,
@@ -1131,10 +1266,14 @@ export const scoreColumnMapping = (
       finalFingerprintScore = 0;
     }
 
-    const totalScore = Math.min(100, headerScore + finalFingerprintScore + memoryScore);
+    const totalScoreBase = Math.min(100, headerScore + finalFingerprintScore + memoryScore);
+    const totalScore = isExact && exactAliasWithNumericValues
+      ? Math.max(totalScoreBase, 85)
+      : totalScoreBase;
 
     const signals: string[] = [];
     if (isExact) signals.push('exact_alias');
+    if (isExact && exactAliasWithNumericValues && totalScore >= 85) signals.push('exact_alias+numeric');
     if (headerScore > 0) signals.push(`header:${headerScore}pts`);
     if (finalFingerprintScore > 0) signals.push(`fingerprint:${fingerprint}(${finalFingerprintScore}pts)`);
     if (memoryScore > 0) signals.push(`remembered:${memoryScore}pts`);
@@ -1218,14 +1357,16 @@ export const detectColumnMappingWithConfidence = (
   header: string,
   index = 0,
   sampleValues: (string | number | null | undefined)[] = [],
-  scope?: string
+  scope?: string,
+  allHeaders?: readonly unknown[] | null
 ): DetectedColumnMapping => {
-  return scoreColumnMapping(header, index, sampleValues, scope);
+  return scoreColumnMapping(header, index, sampleValues, scope, allHeaders);
 };
 
 export const findCanonicalField = (
   header: string,
-  sampleValues: (string | number | null | undefined)[] = []
+  sampleValues: (string | number | null | undefined)[] = [],
+  allHeaders?: readonly unknown[] | null
 ): string | null => {
   const normalized = normalizeHeader(header);
   if (!normalized) return null;
@@ -1235,7 +1376,7 @@ export const findCanonicalField = (
   )?.[0];
   if (directComponent) return directComponent;
 
-  const paired = findPairedCountField(header);
+  const paired = findPairedCountField(header, allHeaders);
   if (paired) {
     return paired.taggedField;
   }
@@ -1249,7 +1390,7 @@ export const findCanonicalField = (
     if (directMatch) return field;
   }
 
-  const scored = scoreColumnMapping(header, 0, sampleValues);
+  const scored = scoreColumnMapping(header, 0, sampleValues, undefined, allHeaders);
   return scored.mappedField;
 };
 

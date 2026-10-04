@@ -10,6 +10,8 @@ import {
   getSheetRowCountFromRef,
   isSheetOverThreshold,
   iterateSheetRowsBatched,
+  clampRangeToColumnBudget,
+  MAX_COLUMNS_PER_SHEET,
   DEFAULT_LARGE_SHEET_ROW_THRESHOLD,
   DEFAULT_BATCH_ROW_SIZE,
 } from './workbookLoader';
@@ -545,7 +547,7 @@ describe('workbookLoader', () => {
   });
 
   it(
-    'convertWorkbookToSheetsViaWorker: real worker thread parses 100,000-row workbook without blocking event loop',
+    'convertWorkbookToSheetsViaWorker: real worker thread runs full pipeline (parse, map, validate, merge) without blocking the event loop',
     { timeout: 60000 },
     async () => {
       class RealWorkerBridge {
@@ -587,7 +589,14 @@ describe('workbookLoader', () => {
           });
           this.thread.on('error', (err) => {
             console.error('RealWorkerBridge thread error:', err);
-            this.terminate();
+            // Terminate the thread on error so a failing worker can never keep the
+            // test process alive (the production path in workbookLoader.ts already
+            // terminates via cleanup(); this mirrors it in the test bridge).
+            try {
+              this.thread.terminate();
+            } catch {
+              // ignore — thread may already be dead
+            }
             this.onerror?.({ message: err.message, error: err } as unknown as ErrorEvent);
           });
           this.thread.on('exit', (code) => {
@@ -611,18 +620,29 @@ describe('workbookLoader', () => {
       (globalThis as any).Worker = RealWorkerBridge;
 
       try {
-        // Generate a real 100,000-row spreadsheet
-        const data: unknown[][] = [['Agent Name', 'Date', 'Calls']];
-        for (let i = 1; i <= 100000; i += 1) {
-          data.push(['Agent_' + i, '2026-01-01', i]);
-        }
-        const ws = XLSX.utils.aoa_to_sheet(data);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'BigSheet');
-        const buffer = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
-        const file = new File([buffer], 'big_100k.xlsx', {
-          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        });
+        // Generate a real 100,000-row spreadsheet. The source structures
+        // (data/ws/wb, ~200MB of cell objects) are scoped to this IIFE so they
+        // become unreachable once the serialized buffer exists — they are never
+        // read again, and holding them through the worker re-parse inflates this
+        // test's peak RSS on memory-constrained runners. The buffer is
+        // byte-identical and every assertion below is unchanged.
+        const file = (() => {
+          const data: unknown[][] = [['Agent Name', 'Date', 'Calls']];
+          for (let i = 1; i <= 100000; i += 1) {
+            data.push(['Agent_' + i, '2026-01-01', i]);
+          }
+          const ws = XLSX.utils.aoa_to_sheet(data);
+          const wb = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(wb, ws, 'BigSheet');
+          const buffer = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+          return new File([buffer], 'big_100k.xlsx', {
+            type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          });
+        })();
+        // Reclaim the freed generation structures before the worker allocates
+        // its own copy of the parsed workbook (guarded: only when the runtime
+        // exposes --expose-gc; the test passes either way).
+        (globalThis as any).gc?.();
 
         // Track event loop ticks while the real worker runs XLSX.read() + parsing
         let ticks = 0;
@@ -631,12 +651,23 @@ describe('workbookLoader', () => {
         }, 10);
 
         const progressUpdates: ImportProgress[] = [];
-        const result = await convertWorkbookToSheetsViaWorker(file, {
-          largeFileSizeThreshold: 1024 * 1024,
-          onProgress: (p) => progressUpdates.push(p),
-        });
-
-        clearInterval(interval);
+        let ticksAtFirstValidating: number | null = null;
+        let result;
+        try {
+          result = await convertWorkbookToSheetsViaWorker(file, {
+            largeFileSizeThreshold: 1024 * 1024,
+            onProgress: (p) => {
+              progressUpdates.push(p);
+              if (p.phase === 'validating' && ticksAtFirstValidating === null) {
+                ticksAtFirstValidating = ticks;
+              }
+            },
+          });
+        } finally {
+          // ALWAYS clear the ticker — if the import rejects, a leaked 10ms interval
+          // keeps the Node event loop alive forever and the whole test run hangs.
+          clearInterval(interval);
+        }
 
         // Prove the main thread stayed responsive: ticks must have advanced repeatedly
         assert.ok(ticks >= 10, 'Expected at least 10 event loop ticks during 100k parse, got ' + ticks);
@@ -651,9 +682,131 @@ describe('workbookLoader', () => {
         assert.equal(result.rows[99999].agentName, 'Agent_100000');
         assert.ok(progressUpdates.length > 0, 'Expected progress updates from real worker');
         assert.ok(progressUpdates.some((p) => p.phase === 'validating'), 'Expected validating phase progress update');
+
+        // Responsiveness must hold THROUGHOUT the pipeline, not only while
+        // XLSX.read() ran. The worker emits 'parsing' progress while mapping
+        // rows and 'validating' progress while validating/merging — all inside
+        // the worker. The main-thread ticker must have kept advancing after
+        // validation began (>= 5 ticks = 50ms of liveness during that window).
+        assert.ok(
+          ticksAtFirstValidating !== null && ticks - ticksAtFirstValidating >= 5,
+          `Event loop should keep ticking during worker validate/merge (ticks=${ticks}, atValidating=${ticksAtFirstValidating})`
+        );
+
+        // ── Phase 2: transaction-granularity workbook — granularity detection +
+        // aggregateTransactions must also run INSIDE the worker (4 transactions
+        // per agent-date collapse to 1 merged row before crossing the boundary).
+        const txnData: unknown[][] = [['Agent Name', 'Date', 'Calls']];
+        for (let i = 1; i <= 3000; i += 1) {
+          for (let t = 0; t < 4; t += 1) {
+            txnData.push([`Agent_${i}`, '2026-01-15', 1]);
+          }
+        }
+        const txnWs = XLSX.utils.aoa_to_sheet(txnData);
+        const txnWb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(txnWb, txnWs, 'TxnSheet');
+        const txnBuffer = XLSX.write(txnWb, { type: 'array', bookType: 'xlsx' });
+        const txnFile = new File([txnBuffer], 'txn_12k.xlsx', {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        });
+
+        let ticks2 = 0;
+        const interval2 = setInterval(() => {
+          ticks2 += 1;
+        }, 10);
+        let ticks2AtFirstParsing: number | null = null;
+        let txnResult;
+        try {
+          txnResult = await convertWorkbookToSheetsViaWorker(txnFile, {
+            onProgress: (p) => {
+              if (p.phase === 'parsing' && ticks2AtFirstParsing === null) {
+                ticks2AtFirstParsing = ticks2;
+              }
+            },
+          });
+        } finally {
+          clearInterval(interval2);
+        }
+
+        assert.ok(ticks2 >= 10, `Event loop stayed responsive during transaction pipeline, ticks=${ticks2}`);
+        assert.ok(
+          ticks2AtFirstParsing !== null && ticks2 - ticks2AtFirstParsing >= 5,
+          'Event loop kept ticking while the worker mapped transaction rows (mapping must not run on the main thread)'
+        );
+        assert.equal(txnResult.sheets.length, 1);
+        assert.equal(txnResult.sheets[0].rowCount, 12000);
+        assert.ok(txnResult.rows, 'Expected merged rows from transaction pipeline');
+        assert.equal(txnResult.rows.length, 3000, '4 transactions per agent-date collapsed to 1 row inside the worker');
+        assert.equal(txnResult.rows[0].calls, 4, 'calls aggregated across the 4 transactions');
       } finally {
         (globalThis as any).Worker = origWorker;
       }
     }
   );
+
+  it('clampRangeToColumnBudget caps the end column at the column budget', () => {
+    // Full-width Excel ref (16,384 columns) starting at A.
+    assert.deepEqual(clampRangeToColumnBudget({ s: { r: 0, c: 0 }, e: { r: 99, c: 16383 } }), {
+      s: { r: 0, c: 0 },
+      e: { r: 99, c: MAX_COLUMNS_PER_SHEET - 1 },
+    });
+    // Data starting at column C: the budget counts from range.s.c.
+    assert.deepEqual(clampRangeToColumnBudget({ s: { r: 4, c: 2 }, e: { r: 99, c: 16383 } }), {
+      s: { r: 4, c: 2 },
+      e: { r: 99, c: 2 + MAX_COLUMNS_PER_SHEET - 1 },
+    });
+    // Already-narrow ranges are left untouched.
+    assert.deepEqual(clampRangeToColumnBudget({ s: { r: 0, c: 0 }, e: { r: 9, c: 5 } }), {
+      s: { r: 0, c: 0 },
+      e: { r: 9, c: 5 },
+    });
+  });
+
+  it('caps materialized columns when the sheet ref claims the full Excel column width', async () => {
+    const data = [
+      ['Agent', 'Date', 'Calls', 'AHT', 'VXS', 'Resolve2hr', 'Resolve3d', 'Surveys', 'Promoters', 'Handoffs'],
+      ['Alice Smith', '2026-01-01', 10, 120, 90, 80, 70, 5, 4, 3],
+      ['Bob Jones', '2026-01-01', 15, 130, 91, 81, 71, 6, 5, 4],
+    ];
+    const worksheet = XLSX.utils.aoa_to_sheet(data);
+    // Simulate Excel's bloated used range: formatting applied across all
+    // 16,384 columns while the data stops at column J.
+    worksheet['!ref'] = 'A1:XFD3';
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Bloat');
+
+    const direct = await parseWorkbookSheets(workbook);
+    const sheet = direct.sheets[0];
+
+    // Output stays within the column budget…
+    assert.equal(sheet.headerRow.length, MAX_COLUMNS_PER_SHEET);
+    assert.equal(sheet.rows[0].length, MAX_COLUMNS_PER_SHEET);
+    // …while the real data in the first 10 columns is preserved.
+    assert.deepEqual(
+      sheet.headerRow,
+      [...data[0], ...Array(MAX_COLUMNS_PER_SHEET - data[0].length).fill('')]
+    );
+    assert.deepEqual(
+      sheet.rows[0],
+      ['Alice Smith', '2026-01-01', '10', '120', '90', '80', '70', '5', '4', '3',
+        ...Array(MAX_COLUMNS_PER_SHEET - 10).fill('')]
+    );
+    assert.equal(sheet.rowCount, 2);
+
+    // The batched path (large-sheet threshold) produces identical output.
+    const batched = await parseWorkbookSheets(workbook, { largeSheetRowThreshold: 1 });
+    assert.deepEqual(batched.sheets[0].headerRow, sheet.headerRow);
+    assert.deepEqual(batched.sheets[0].rows, sheet.rows);
+
+    // Round-trip through XLSX.read (dense mode) keeps the same guarantees:
+    // the bloat ref survives write→read and the output stays capped/data-safe.
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+    const fromBuffer = await parseWorkbookBuffer(
+      buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer
+    );
+    const buffered = fromBuffer.sheets[0];
+    assert.equal(buffered.headerRow.length, MAX_COLUMNS_PER_SHEET);
+    assert.equal(buffered.rowCount, 2);
+    assert.deepEqual(buffered.rows[0], sheet.rows[0]);
+  });
 });

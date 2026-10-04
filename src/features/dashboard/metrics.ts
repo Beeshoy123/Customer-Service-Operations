@@ -5,7 +5,7 @@
 // ============================================================================
 
 import { useMemo } from 'react';
-import { CHART_COLORS, COL_DEFINITIONS, DAYS_OF_WEEK, TARGETS } from './config';
+import { CHART_COLORS, COL_DEFINITIONS, DAYS_OF_WEEK, METRIC_CONFIG, TARGETS, getDynamicTarget } from './config';
 import {
   agentMatchesSearch,
   aggregateRecords,
@@ -14,6 +14,7 @@ import {
   dowFromDateStr,
   getWeekNumber,
 } from './helpers';
+import { computeRepeatOffenders } from './repeatOffenders';
 
 // ─── Dashboard Metrics Hook ──────────────────────────────────────
 export const useDashboardMetrics = ({
@@ -26,12 +27,14 @@ export const useDashboardMetrics = ({
   selectedDate,
   selectedWeek,
   selectedDow,
+  selectedMonth,
   getAgentDataForTimeframe,
   searchQuery,
   sortConfig,
   runChartMetric,
   isCumulative,
   heatmapViewType,
+  repeatOffenderMetrics = [],
 }) => {
   const parsedQueries = useMemo(
     () => searchQuery.toLowerCase().split(',').map((q) => q.trim()).filter((q) => q),
@@ -160,6 +163,7 @@ export const useDashboardMetrics = ({
     filteredAgents.forEach((a) => {
       const hist = historicalData[a.ccms] || {};
       Object.keys(hist).forEach((dateStr) => {
+        if (selectedMonth !== 'all' && !dateStr.startsWith(selectedMonth)) return;
         const d = new Date(dateStr + 'T00:00:00');
         const dayIdx = d.getDay();
         if (!isNaN(dayIdx)) {
@@ -194,7 +198,7 @@ export const useDashboardMetrics = ({
     });
 
     return { summary: result, worstIdx };
-  }, [filteredAgents, historicalData, hasUploadedData]);
+  }, [filteredAgents, historicalData, hasUploadedData, selectedMonth]);
 
   const orgBurnoutList = useMemo(() => {
     if (!hasUploadedData) return [];
@@ -235,12 +239,11 @@ export const useDashboardMetrics = ({
 
   const { allActiveDates, runChartData } = useMemo(() => {
     if (!hasUploadedData) return { allActiveDates: [], runChartData: [] };
-    const currentMonthPrefix = selectedDate.substring(0, 7);
-
     const datesSet = new Set();
     Object.values(historicalData).forEach((agentDates) => {
       Object.keys(agentDates).forEach((d) => {
-        if (d.startsWith(currentMonthPrefix)) datesSet.add(d);
+        if (selectedMonth !== 'all' && !d.startsWith(selectedMonth)) return;
+        datesSet.add(d);
       });
     });
     const dates = Array.from(datesSet).sort();
@@ -327,7 +330,7 @@ export const useDashboardMetrics = ({
 
     const validDates = finalDates.filter((d) => chartData.some((c) => c.series[d] !== undefined));
     return { allActiveDates: validDates, runChartData: chartData };
-  }, [supervisorStats, filteredAgents, parsedQueries, historicalData, selectedDate, hasUploadedData, runChartMetric, oamName, isCumulative, heatmapViewType]);
+  }, [supervisorStats, filteredAgents, parsedQueries, historicalData, selectedMonth, hasUploadedData, runChartMetric, oamName, isCumulative, heatmapViewType]);
 
   const sortedSupervisors = useMemo(() => {
     let result = [...supervisorStats];
@@ -376,6 +379,29 @@ export const useDashboardMetrics = ({
     return result;
   }, [supervisorStats, parsedQueries, sortConfig]);
 
+  // Repeated Offenders — agents below target for 2+ CONSECUTIVE calendar
+  // months, for the metrics picked in Settings (empty selection = off).
+  // Deliberately spans ALL loaded months (a streak is multi-month) and reads
+  // real per-month aggregates from repeatOffenders.ts — never the blended
+  // selectedMonth view and never gated on selectedMonth.
+  const repeatOffenders = useMemo(() => {
+    if (!hasUploadedData || !Array.isArray(repeatOffenderMetrics) || repeatOffenderMetrics.length === 0) {
+      return computeRepeatOffenders([], historicalData, {}, []);
+    }
+    const targets: Record<string, { target: number; reverse: boolean; label?: string; format?: string }> = {};
+    for (const key of repeatOffenderMetrics) {
+      const cfg = (METRIC_CONFIG as Record<string, any>)[key];
+      if (!cfg) continue;
+      targets[key] = {
+        target: getDynamicTarget(key, 1),
+        reverse: Boolean(cfg.reverse),
+        label: cfg.label,
+        format: cfg.format ?? '',
+      };
+    }
+    return computeRepeatOffenders(agents, historicalData, targets, repeatOffenderMetrics);
+  }, [agents, historicalData, hasUploadedData, repeatOffenderMetrics]);
+
   return {
     mtdLeaderData,
     activeLeaderData,
@@ -386,5 +412,6 @@ export const useDashboardMetrics = ({
     allActiveDates,
     runChartData,
     sortedSupervisors,
+    repeatOffenders,
   };
 };

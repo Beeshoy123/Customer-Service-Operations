@@ -61,7 +61,7 @@ const parseTextFile = async (file: File, options: ImportOptions = {}): Promise<{
       .filter((v) => v !== undefined && v !== null && String(v).trim() !== '');
     const mappedField = Object.prototype.hasOwnProperty.call(options.mappingOverrides || {}, headers[i])
       ? options.mappingOverrides?.[headers[i]]
-      : normalizeHeaderToField(headers[i], sampleVals);
+      : normalizeHeaderToField(headers[i], sampleVals, headers);
     if (mappedField) {
       mappedHeaders.push({ index: i, mappedField });
     }
@@ -139,7 +139,7 @@ const parseWorkbookFile = async (file: File, options: ImportOptions = {}): Promi
       mappingDiagnostics: (workerResult.sheets || []).flatMap((sheet) =>
         (sheet.headerRow || []).map((header, index) => {
           const sampleValues = (sheet.rows || []).slice(0, 50).map((row) => row?.[index] as string | number | null | undefined);
-          const mapping = detectColumnMappingWithConfidence(String(header ?? ''), index, sampleValues);
+          const mapping = detectColumnMappingWithConfidence(String(header ?? ''), index, sampleValues, undefined, sheet.headerRow || []);
           return {
             fileName: file.name,
             sheetName: sheet.sheetName,
@@ -203,7 +203,7 @@ const parseWorkbookFile = async (file: File, options: ImportOptions = {}): Promi
   const sheetMappingDiagnostics = filteredSheets.flatMap((sheet) =>
     (sheet.headerRow || []).map((header, index) => {
       const sampleValues = (sheet.rows || []).slice(0, 50).map((row) => row?.[index] as string | number | null | undefined);
-      const mapping = detectColumnMappingWithConfidence(String(header ?? ''), index, sampleValues);
+      const mapping = detectColumnMappingWithConfidence(String(header ?? ''), index, sampleValues, undefined, sheet.headerRow || []);
       return {
         fileName: file.name,
         sheetName: sheet.sheetName,
@@ -348,7 +348,7 @@ export const runImportService = async (files: File[], options: ImportOptions = {
           const parsed = await parseTextFile(file, fileOptions);
           for (let index = 0; index < parsed.headers.length; index += 1) {
             const sampleValues = (parsed.sampleRows || []).map((row) => row?.[index] as string | number | null | undefined);
-            const mapping = detectColumnMappingWithConfidence(parsed.headers[index], index, sampleValues);
+            const mapping = detectColumnMappingWithConfidence(parsed.headers[index], index, sampleValues, undefined, parsed.headers);
             result.mappingDiagnostics.push({
               fileName: file.name,
               sheetName: 'CSV',

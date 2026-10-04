@@ -5,1191 +5,152 @@
 // applyBatchImport is correct and generic. See recommendations.md §"STANDING
 // RULE" and the top-of-file banner in importPolicy.ts for the full checklist.
 
-import React, { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import {
   CHART_COLORS,
-  DAYS_OF_WEEK,
-  DEFAULT_DATE,
-  DEFAULT_MANAGER_NAME,
   METRIC_CONFIG,
   PERSONA,
   TARGETS,
-  applyAccountProfile,
-  DEFAULT_ACCOUNT_PROFILE,
 } from './config';
-import { getResolveWindowField, RESOLVE_WINDOW_FIELDS } from './import/importPolicy';
+import { useDashboardDataState } from './state';
+import { readPersistedDashboardState, useDashboardPersistence } from './persistence';
+import { useTimeframeSelectors } from './timeframe';
+import { useBatchImport } from './batchImport';
+import { useUploadFlow } from './uploadFlow';
 import {
   agentMatchesSearch,
-  aggregateRecords,
   aggregateTeamMetrics,
+  ALL_MONTHS,
   calculateTrend,
   calculateWeightedVSF,
-  dowFromDateStr,
-  normalizeDate,
 } from './helpers';
-import {
-  convertWorkbookToSheets,
-  convertWorkbookToSheetsViaWorker,
-  selectSheets,
-  selectSheetsWithDetails,
-  parseCsvFileText,
-  aggregateTransactions,
-  validateNormalizedRows,
-  mergeNormalizedRows,
-  runImportService,
-  normalizeCellValue,
-  normalizeHeaderToField,
-} from './import';
-import type { SheetTable, SheetGranularity, ImportResult, MappingDiagnostic, SkippedSheetInfo } from './import/types';
-import { detectFileType } from './import/fileTypeDetector';
-import { loadAccountProfile, saveAccountProfile, loadRateMergeStyle, saveRateMergeStyle } from '../accountSetup/account-profile-storage';
+import type { SheetTable, SheetGranularity, ImportResult, SkippedSheetInfo } from './import/types';
 
 // ============================================================================
 // FILE STRUCTURE:
-// ├── Local Storage Persistence Helpers
 // ├── Dashboard Context & Hook
 // ├── Dashboard Data Management Hook
 // ├── AI Network & Resilience Helpers
 // └── AI Assistant Tools Hook
 // ============================================================================
 
-// ─── Local Storage Persistence Helpers ──────────────────────────────────────
-const DASHBOARD_STORAGE_KEY = 'customer-service-dashboard-state-v1';
-
 const CONTEXT_ONLY_HEADER_PATTERN = /(?:^|[_\s-])(location|department|dept|skill\s*group|skillgroup|track|tracking|intent|intent\s*description|description|category|categorical|queue|team|region|site|supervisor|manager|recovery|hour|geographic|scorecard|id|key)(?:$|[_\s-])|key$|id$/i;
 
 const isContextOnlyMapping = (diagnostic) =>
   !diagnostic.mappedField && CONTEXT_ONLY_HEADER_PATTERN.test(String(diagnostic.header || ''));
 
-const resolveWindowReviewItems = (diagnostics, accountProfile) => {
-  if (accountProfile?.resolveRate?.shortTerm?.data?.matchedColumns?.length &&
-      accountProfile?.resolveRate?.longTerm?.data?.matchedColumns?.length) {
-    return [];
-  }
-
-  const windows = diagnostics.filter((item) => item.resolveWindow || getResolveWindowField(item.mappedField));
-  return windows.length > 2 ? windows : [];
-};
-
-const customerExperienceReviewItems = (diagnostics, accountProfile) => {
-  if (accountProfile?.customerExperience?.agentSpecificColumn) return [];
-  return diagnostics.filter((item) => item.choiceGroup === 'customer-experience-agent-survey');
-};
-
-const customMetricReviewItems = (diagnostics, accountProfile) => {
-  const ignored = new Set(accountProfile?.ignoredCustomMetricColumns || []);
-  return diagnostics.filter((item) => item.unrecognizedPlausible && !ignored.has(String(item.header).trim().toLowerCase()));
-};
-
-const customMetricKeyForHeader = (header) =>
-  `customMetric_${String(header || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'column'}`;
-
-const saveCustomMetricDecisions = (accountName, answers) => {
-  const overrides = {};
-  const entries = Object.entries(answers || {});
-  if (!accountName || entries.length === 0) return overrides;
-
-  const profile = JSON.parse(JSON.stringify(loadAccountProfile(accountName) || DEFAULT_ACCOUNT_PROFILE));
-  profile.accountName = accountName;
-  profile.customMetrics = Array.isArray(profile.customMetrics) ? profile.customMetrics : [];
-  profile.ignoredCustomMetricColumns = Array.isArray(profile.ignoredCustomMetricColumns)
-    ? profile.ignoredCustomMetricColumns
-    : [];
-
-  for (const [header, answer] of entries) {
-    const normalizedHeader = String(header).trim().toLowerCase();
-    if (!answer || answer.decision === 'ignore') {
-      profile.ignoredCustomMetricColumns = [...new Set([...profile.ignoredCustomMetricColumns, normalizedHeader])];
-      overrides[header] = null;
-      continue;
-    }
-
-    const key = customMetricKeyForHeader(header);
-    profile.ignoredCustomMetricColumns = profile.ignoredCustomMetricColumns.filter((item) => item !== normalizedHeader);
-    profile.customMetrics = profile.customMetrics.filter((metric) => metric.matchedColumn !== header);
-    profile.customMetrics.push({
-      key,
-      label: answer.label,
-      matchedColumn: header,
-      calcStyle: answer.calcStyle,
-      target: Number(answer.target || 0),
-      higherIsBetter: Boolean(answer.higherIsBetter),
-    });
-    overrides[header] = key;
-  }
-
-  saveAccountProfile(profile);
-  applyAccountProfile(profile);
-  return overrides;
-};
-
-const saveResolveWindowChoices = (accountName, diagnostics, mappingOverrides) => {
-  if (!accountName) return;
-
-  const selected = { shortTerm: null, longTerm: null };
-  for (const diagnostic of diagnostics) {
-    const choice = Object.prototype.hasOwnProperty.call(mappingOverrides, diagnostic.header)
-      ? mappingOverrides[diagnostic.header]
-      : diagnostic.mappedField;
-    if (choice === 'resolve2hr' && !selected.shortTerm) selected.shortTerm = diagnostic;
-    if (choice === 'resolve3d' && !selected.longTerm) selected.longTerm = diagnostic;
-  }
-  if (!selected.shortTerm && !selected.longTerm) return;
-
-  const profile = JSON.parse(JSON.stringify(loadAccountProfile(accountName) || DEFAULT_ACCOUNT_PROFILE));
-  profile.accountName = accountName;
-  profile.resolveRate = {
-    ...profile.resolveRate,
-    shortTerm: selected.shortTerm
-      ? {
-          tracked: true,
-          windowLabel: selected.shortTerm.resolveWindow || RESOLVE_WINDOW_FIELDS.resolve2hr.windowLabel,
-          data: { shape: 'ready-rate', matchedColumns: [selected.shortTerm.header] },
-          target: profile.resolveRate.shortTerm.target,
-        }
-      : profile.resolveRate.shortTerm,
-    longTerm: selected.longTerm
-      ? {
-          tracked: true,
-          windowLabel: selected.longTerm.resolveWindow || RESOLVE_WINDOW_FIELDS.resolve3d.windowLabel,
-          data: { shape: 'ready-rate', matchedColumns: [selected.longTerm.header] },
-          target: profile.resolveRate.longTerm.target,
-        }
-      : profile.resolveRate.longTerm,
-  };
-  saveAccountProfile(profile);
-  applyAccountProfile(profile);
-};
-
-const saveCustomerExperienceChoice = (accountName, diagnostics, mappingOverrides) => {
-  if (!accountName) return;
-  const choice = diagnostics.find((diagnostic) =>
-    diagnostic.choiceGroup === 'customer-experience-agent-survey' &&
-    mappingOverrides[diagnostic.header] === 'vxs'
-  );
-  if (!choice) return;
-
-  const profile = JSON.parse(JSON.stringify(loadAccountProfile(accountName) || DEFAULT_ACCOUNT_PROFILE));
-  profile.accountName = accountName;
-  profile.customerExperience = {
-    ...profile.customerExperience,
-    agentSpecificColumn: choice.header,
-    data: {
-      ...profile.customerExperience.data,
-      matchedColumns: [choice.header],
-    },
-  };
-  saveAccountProfile(profile);
-  applyAccountProfile(profile);
-};
-
-const readPersistedDashboardState = () => {
-  if (typeof window === 'undefined') return null;
-
-  try {
-    const raw = window.localStorage.getItem(DASHBOARD_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object') return null;
-    return parsed;
-  } catch (error) {
-    console.warn('Failed to load persisted dashboard state:', error);
-    return null;
-  }
-};
-
 // ─── Dashboard Context & Hook ──────────────────────────────────────
-export const DashboardContext = createContext(null);
+// Typed as `any` on purpose: consumers are spread across many extracted
+// component files that read the bundle loosely (no prop drilling). This keeps
+// those files out of @ts-nocheck land without inventing a full prop contract.
+export const DashboardContext = createContext<any>(null);
 export const useDashboard = () => useContext(DashboardContext);
 
 // ─── Dashboard Data Management Hook ──────────────────────────────────────
-export const useDashboardData = (onDataReset = null, accountName = '') => {
+export const useDashboardData = (onDataReset = null, accountName = '', onImportColumnsScan = null) => {
   const persistedState = useMemo(() => readPersistedDashboardState(), []);
 
-  const accountProfile = useMemo(() => {
-    const profile = accountName ? loadAccountProfile(accountName) : null;
-    return applyAccountProfile(profile);
-  }, [accountName]);
-  const hasSavedAccountProfile = useMemo(
-    () => Boolean(accountName && loadAccountProfile(accountName)),
-    [accountName]
+  // S1(a): the accountProfile memos, the 16 useState declarations, the
+  // setSelectedMonth wrapper, the two refs and the loadedMonths memo now
+  // live in ./state.ts (move-only extraction, recommendations.md).
+  const state = useDashboardDataState(persistedState, accountName, onImportColumnsScan);
+  const {
+    accountProfile, hasSavedAccountProfile,
+    activeTimeframe, setActiveTimeframe,
+    selectedWeek, setSelectedWeek,
+    selectedDate, setSelectedDate,
+    selectedDow, setSelectedDow,
+    selectedMonth, setSelectedMonth, setSelectedMonthRaw,
+    selectedMonthChosen, setSelectedMonthChosen,
+    agents, setAgents,
+    supervisors, setSupervisors,
+    oamName, setOamName,
+    historicalData, setHistoricalData,
+    hasUploadedData, setHasUploadedData,
+    uploadStatus, setUploadStatus,
+    batchImportSummary, setBatchImportSummary,
+    importPreview, setImportPreview,
+    mappingReview, setMappingReview,
+    pendingAutomaticImport, setPendingAutomaticImport,
+    pendingAutomaticFiles, setPendingAutomaticFiles,
+    rateMergeStyle, setRateMergeStyle,
+    openImportPreview, closeImportPreview,
+    importAbortControllerRef,
+    onImportColumnsScanRef,
+    loadedMonths,
+  } = state;
+
+  // S1(b): resetDashboard, the once-per-mount localStorage read and both write
+  // effects now live in ./persistence.ts (move-only extraction, recommendations.md).
+  const { resetDashboard } = useDashboardPersistence(
+    {
+      agents, supervisors, oamName, historicalData, hasUploadedData,
+      activeTimeframe, selectedWeek, selectedDate, selectedDow, selectedMonth, selectedMonthChosen,
+      setAgents, setSupervisors, setHistoricalData, setHasUploadedData, setBatchImportSummary,
+      setImportPreview, setMappingReview, setPendingAutomaticImport, setPendingAutomaticFiles,
+      setUploadStatus, setActiveTimeframe, setSelectedWeek, setSelectedDate, setSelectedDow,
+      setSelectedMonthRaw, setSelectedMonthChosen,
+      importAbortControllerRef,
+    },
+    onDataReset
   );
 
-  const [activeTimeframe, setActiveTimeframe] = useState(() => persistedState?.activeTimeframe || 'monthly');
-  const [selectedWeek, setSelectedWeek] = useState(() => persistedState?.selectedWeek || 'Week 1');
-  const [selectedDate, setSelectedDate] = useState(() => persistedState?.selectedDate || DEFAULT_DATE);
-  const [selectedDow, setSelectedDow] = useState(() => persistedState?.selectedDow || 'Monday');
-
-  const [agents, setAgents] = useState(() => persistedState?.agents || []);
-  const [supervisors, setSupervisors] = useState(() => persistedState?.supervisors || []);
-  const [oamName, setOamName] = useState(() => persistedState?.oamName || DEFAULT_MANAGER_NAME);
-  const [historicalData, setHistoricalData] = useState(() => persistedState?.historicalData || {});
-  const [hasUploadedData, setHasUploadedData] = useState(() => !!persistedState?.hasUploadedData);
-  const [uploadStatus, setUploadStatus] = useState(null);
-  const [batchImportSummary, setBatchImportSummary] = useState(null);
-  const [importPreview, setImportPreview] = useState(null);
-  const [mappingReview, setMappingReview] = useState<MappingDiagnostic[]>([]);
-  const [pendingAutomaticImport, setPendingAutomaticImport] = useState(null);
-  const [pendingAutomaticFiles, setPendingAutomaticFiles] = useState<File[]>([]);
-  const [rateMergeStyle, setRateMergeStyleState] = useState(() => loadRateMergeStyle(accountName));
-  const importAbortControllerRef = useRef(null);
-
-  const openImportPreview = useCallback((config) => {
-    setImportPreview({
-      isOpen: true,
-      fileName: config.fileName,
-      sheets: config.sheets,
-      skippedSheets: config.skippedSheets || [],
-    });
-  }, []);
-
-  const closeImportPreview = useCallback(() => {
-    setImportPreview(null);
-  }, []);
-
-  const resetDashboard = useCallback(() => {
-    importAbortControllerRef.current?.abort();
-    importAbortControllerRef.current = null;
-    setAgents([]);
-    setSupervisors([]);
-    setHistoricalData({});
-    setHasUploadedData(false);
-    setBatchImportSummary(null);
-    setImportPreview(null);
-    setMappingReview([]);
-    setPendingAutomaticImport(null);
-    setPendingAutomaticFiles([]);
-    setUploadStatus(null);
-    setActiveTimeframe('monthly');
-    setSelectedWeek('Week 1');
-    setSelectedDate(DEFAULT_DATE);
-    setSelectedDow('Monday');
-
-    if (typeof window !== 'undefined') {
-      window.localStorage.removeItem(DASHBOARD_STORAGE_KEY);
-    }
-    onDataReset?.();
-  }, [onDataReset]);
-
+  // Keep the selection valid as data changes: default to the latest loaded
+  // month until the user picks one explicitly, and fall back to the latest
+  // month if the selected month's data disappears (reset / new import).
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    try {
-      const payload = {
-        activeTimeframe,
-        selectedWeek,
-        selectedDate,
-        selectedDow,
-        agents,
-        supervisors,
-        oamName,
-        historicalData,
-        hasUploadedData,
-      };
-      window.localStorage.setItem(DASHBOARD_STORAGE_KEY, JSON.stringify(payload));
-    } catch (error) {
-      console.warn('Failed to persist dashboard state:', error);
-    }
-  }, [activeTimeframe, selectedWeek, selectedDate, selectedDow, agents, supervisors, oamName, historicalData, hasUploadedData]);
-
-  const MULTI_FILE_CONCURRENCY = 4;
-
-  const handleMultipleFiles = useCallback(
-    async (files) => {
-      // Cancel any in-flight single-file load before starting a batch.
-      importAbortControllerRef.current?.abort();
-      const controller = new AbortController();
-      importAbortControllerRef.current = controller;
-
-      // Filter out duplicate files by name and size to prevent redundant parses
-      const seenFiles = new Set<string>();
-      const uniqueFiles: any[] = [];
-      const duplicateFiles: string[] = [];
-
-      for (const file of files) {
-        const key = `${(file.name || '').trim().toLowerCase()}|${file.size ?? 0}`;
-        if (seenFiles.has(key)) {
-          duplicateFiles.push(file.name);
-        } else {
-          seenFiles.add(key);
-          uniqueFiles.push(file);
-        }
-      }
-
-      if (duplicateFiles.length > 0) {
-        console.warn(`[handleMultipleFiles] Duplicate files skipped: ${duplicateFiles.join(', ')}`);
-      }
-
-      const filesToProcess = uniqueFiles;
-      const totalFiles = filesToProcess.length;
-      // Track per-file progress percent (0–100) for live aggregation.
-      const filePercents = new Array(totalFiles).fill(0);
-
-      const cancelBatch = () => {
-        controller.abort();
-        setUploadStatus({
-          type: 'info',
-          message: 'Batch import cancelled.',
-          progress: 100,
-          cancelAction: null,
-        });
-        setTimeout(() => setUploadStatus(null), 2000);
-      };
-
-      const emitBatchProgress = (fileIndex, filePercent, fileName) => {
-        filePercents[fileIndex] = filePercent;
-        const completedFiles = filePercents.filter((p) => p >= 100).length;
-        const overallPercent = Math.round(
-          filePercents.reduce((sum, p) => sum + p, 0) / totalFiles
-        );
-        const currentFile = Math.min(
-          completedFiles + (filePercent >= 100 ? 0 : 1),
-          totalFiles,
-        );
-        setUploadStatus({
-          type: 'info',
-          message: `File ${currentFile} of ${totalFiles} — ${fileName} — ${filePercent}%`,
-          progress: Math.min(overallPercent, 99),
-          cancelAction: cancelBatch,
-        });
-      };
-
-      setUploadStatus({
-        type: 'info',
-        message: `Preparing ${totalFiles} files for import preview...`,
-        progress: 0,
-        cancelAction: cancelBatch,
-      });
-
-      // Concurrency pool: process up to MULTI_FILE_CONCURRENCY files in parallel.
-      const results = new Array(totalFiles).fill(null);
-      const skippedResults = new Array(totalFiles).fill(null);
-      let nextIndex = 0;
-
-      const runWorker = async () => {
-        while (nextIndex < totalFiles) {
-          if (controller.signal.aborted) break;
-          const i = nextIndex;
-          nextIndex += 1;
-          const file = filesToProcess[i];
-          const fileType = detectFileType(file.name);
-          try {
-            if (fileType === 'xlsx' || fileType === 'xls' || fileType === 'xlsm') {
-              const { sheets, skippedSheets: rawSkipped } = await convertWorkbookToSheetsViaWorker(file, {
-                signal: controller.signal,
-                includeRawRowsForPreview: true,
-                onProgress: (progress) => {
-                  emitBatchProgress(i, progress.percent ?? 0, file.name);
-                },
-              });
-              emitBatchProgress(i, 100, file.name);
-              const selection = selectSheetsWithDetails(sheets);
-              results[i] = selection.selectedSheets;
-              skippedResults[i] = [
-                ...selection.skippedSheets,
-                ...(rawSkipped || []).map((name) => ({
-                  sheetName: name,
-                  workbookName: file.name,
-                  reason: 'Empty sheet or no data rows',
-                })),
-              ];
-            } else if (fileType === 'csv' || fileType === 'tsv' || fileType === 'txt') {
-              emitBatchProgress(i, 50, file.name);
-              const textTable = await parseCsvFileText(file);
-              emitBatchProgress(i, 100, file.name);
-              results[i] = [
-                {
-                  workbookName: file.name,
-                  sheetName: file.name.replace(/\.[^/.]+$/, '') || 'CSV',
-                  index: i,
-                  headerRow: textTable.headers,
-                  rows: textTable.rows,
-                  rowCount: textTable.rows.length,
-                },
-              ];
-              skippedResults[i] = [];
-            }
-          } catch (error) {
-            if (error instanceof Error && error.name === 'AbortError') {
-              throw error;
-            }
-            console.error(`Failed to parse file "${file.name}":`, error);
-            results[i] = [];
-            skippedResults[i] = [];
-          }
-        }
-      };
-
-      try {
-        const pool = Array.from(
-          { length: Math.min(MULTI_FILE_CONCURRENCY, totalFiles) },
-          () => runWorker()
-        );
-        await Promise.all(pool);
-      } catch (error) {
-        if (error instanceof Error && error.name === 'AbortError') {
-          return;
-        }
-        console.error('Failed to parse batch files:', error);
-        setUploadStatus({
-          type: 'error',
-          message: 'The batch files could not be processed. Please check the file set.',
-        });
-        setTimeout(() => setUploadStatus(null), 5000);
-        return;
-      } finally {
-        if (importAbortControllerRef.current?.signal === controller.signal) {
-          importAbortControllerRef.current = null;
-        }
-      }
-
-      if (controller.signal.aborted) return;
-
-      const combinedSheets = results.flat().filter(Boolean);
-      const combinedSkipped = skippedResults.flat().filter(Boolean);
-
-      if (combinedSheets.length === 0 && combinedSkipped.length === 0) {
-        setUploadStatus(null);
-        setUploadStatus({ type: 'error', message: 'No usable sheets detected across the selected files.' });
-        setTimeout(() => setUploadStatus(null), 5000);
-        return;
-      }
-
-      openImportPreview({
-        fileName: `${totalFiles} files batch`,
-        sheets: combinedSheets,
-        skippedSheets: combinedSkipped,
-      });
-      setUploadStatus(null);
-    },
-    [openImportPreview, setUploadStatus]
-  );
-
-
-  const applyBatchImport = useCallback(async (sourceSelection = null, explicitSummary = null) => {
-    const summary = explicitSummary || batchImportSummary;
-    if (!summary || !summary.rows?.length) {
-      setUploadStatus({ type: 'error', message: 'There is no valid batch import ready to apply.' });
-      setTimeout(() => setUploadStatus(null), 4000);
-      return;
-    }
-
-    const selectedKeys = sourceSelection && typeof sourceSelection === 'object'
-      ? Object.keys(sourceSelection).filter((key) => sourceSelection[key])
-      : null;
-
-    const rowsToApply = selectedKeys && selectedKeys.length
-      ? summary.rows.filter((row) => {
-          const sourceKey = `${row.sourceFile || 'unknown'}|${row.sourceSheet || 'CSV'}`;
-          return selectedKeys.includes(sourceKey);
-        })
-      : summary.rows;
-
-    if (!rowsToApply.length) {
-      setUploadStatus({ type: 'error', message: 'No selected sheets have usable rows to apply.' });
-      setTimeout(() => setUploadStatus(null), 4000);
-      return;
-    }
-
-    const newHistory = { ...historicalData };
-    const updatedAgents = [...agents];
-    const nextSupervisors = new Set(supervisors);
-
-    const toNumber = (value) => {
-      if (value === null || value === undefined || value === '') return 0;
-      if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
-      const parsed = Number(String(value).replace(/[%,$\s]/g, ''));
-      return Number.isFinite(parsed) ? parsed : 0;
-    };
-
-    const agentByCcms = new Map();
-    const agentByNameAndId = new Map();
-
-    for (const agent of updatedAgents) {
-      if (agent.ccms) {
-        agentByCcms.set(agent.ccms, agent);
-      }
-      const nameIdKey = `${(agent.name || '').toLowerCase()}|${agent.sourceId || ''}`;
-      agentByNameAndId.set(nameIdKey, agent);
-    }
-
-    const chunkSize = 2500;
-    console.log('[DEBUG 8 - applyBatchImport] Starting to apply rows to state. Total rows:', rowsToApply.length);
-    for (let index = 0; index < rowsToApply.length; index += 1) {
-      if (index > 0 && index % chunkSize === 0) {
-        const applyPercent = Math.round((index / rowsToApply.length) * 100);
-        setUploadStatus({
-          type: 'info',
-          message: `Applying rows… ${index.toLocaleString()} / ${rowsToApply.length.toLocaleString()}`,
-          progress: applyPercent,
-        });
-        await new Promise((resolve) => setTimeout(resolve, 0));
-      }
-
-      const row = rowsToApply[index];
-      const rawName = String(row.agentName ?? row.name ?? '').trim();
-      const rawDate = normalizeDate(String(row.date ?? ''));
-      if (!rawName || !rawDate) continue;
-
-      const rawSupervisor = String(row.supervisor ?? '').trim() || 'Unknown';
-      const rawOam = String(row.oam ?? '').trim() || 'Unknown';
-      const rawId = String(row.employeeId ?? '').trim();
-      const agentKey = rawId ? `ID_${rawId}` : `AUTO_${rawName.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`;
-
-      const nameIdKey = `${rawName.toLowerCase()}|${rawId}`;
-      let targetAgent = agentByCcms.get(agentKey) || agentByNameAndId.get(nameIdKey);
-      if (!targetAgent) {
-        targetAgent = {
-          ccms: agentKey,
-          sourceId: rawId || null,
-          name: rawName,
-          supervisor: rawSupervisor,
-          oam: rawOam,
-          coding: 'Unknown',
-          phase: 'Unknown',
-        };
-        updatedAgents.push(targetAgent);
-        agentByCcms.set(agentKey, targetAgent);
-        agentByNameAndId.set(nameIdKey, targetAgent);
-      } else {
-        targetAgent.name = rawName;
-        targetAgent.supervisor = rawSupervisor;
-        targetAgent.oam = rawOam;
-        if (!targetAgent.sourceId && rawId) targetAgent.sourceId = rawId;
-      }
-
-      if (rawSupervisor && rawSupervisor !== 'Unknown') nextSupervisors.add(rawSupervisor);
-      if (!newHistory[targetAgent.ccms]) newHistory[targetAgent.ccms] = {};
-
-      const callsValue = toNumber(row.calls);
-      const ahtValue = toNumber(row.aht);
-      const vxsValue = toNumber(row.vxs);
-      const resolve2hrValue = toNumber(row.resolve2hr);
-      const resolve3dValue = toNumber(row.resolve3d);
-
-      // Read every recognized metric field off the normalized row.
-      // toNumber() returns 0 for missing/null, so we preserve null for truly absent
-      // fields by checking row[field] explicitly before converting.
-      const toNumberOrNull = (value) => {
-        if (value === null || value === undefined || value === '') return null;
-        return toNumber(value);
-      };
-
-      // resolveTotalContacts: use imported value when present, fall back to callsValue
-      const resolveTotalContactsValue =
-        row.resolveTotalContacts != null && row.resolveTotalContacts !== ''
-          ? toNumber(row.resolveTotalContacts)
-          : callsValue;
-
-      newHistory[targetAgent.ccms][rawDate] = {
-        isOff: callsValue === 0,
-        calls: callsValue,
-        resolveTotalContacts: resolveTotalContactsValue,
-        resolveTotalContacts2hr: toNumberOrNull(row.resolveTotalContacts2hr),
-        resolveTotalContacts3d: toNumberOrNull(row.resolveTotalContacts3d),
-        surveys: toNumberOrNull(row.surveys),
-        promoters: toNumberOrNull(row.promoters),
-        vxs: vxsValue,
-        resolve3d: resolve3dValue,
-        handoffs: toNumberOrNull(row.handoffs),
-        handoffsCount: toNumberOrNull(row.handoffsCount),
-        resolve2hr: resolve2hrValue,
-        aht: ahtValue,
-        hold: toNumberOrNull(row.hold),
-        dpc: toNumberOrNull(row.dpc),
-        viewTogether: toNumberOrNull(row.viewTogether),
-        vtt: toNumberOrNull(row.vtt),
-        vttSent: toNumberOrNull(row.vttSent),
-        vttTransacted: toNumberOrNull(row.vttTransacted),
-        netOcc: toNumberOrNull(row.netOcc),
-        creditFreq: toNumberOrNull(row.creditFreq),
-        phoneAdds: toNumberOrNull(row.phoneAdds),
-        vhi: toNumberOrNull(row.vhi),
-      };
-    }
-
-    setUploadStatus({ type: 'info', message: 'Finalizing dashboard…', progress: 100 });
-    await new Promise((resolve) => setTimeout(resolve, 0)); // let UI paint
-
-    setHistoricalData(newHistory);
-    setAgents(updatedAgents);
-    setSupervisors(Array.from(nextSupervisors).sort());
-    setHasUploadedData(true);
-    const firstDate = rowsToApply.find((row) => row.date)?.date ? normalizeDate(String(rowsToApply.find((row) => row.date)?.date ?? '')) : DEFAULT_DATE;
-    setSelectedDate(firstDate || DEFAULT_DATE);
-    setActiveTimeframe('monthly');
-    setUploadStatus({ type: 'success', message: `Applied ${rowsToApply.length} imported rows from the selected sheets.` });
-    setTimeout(() => setUploadStatus(null), 5000);
-  }, [agents, batchImportSummary, historicalData, setActiveTimeframe, setAgents, setHasUploadedData, setHistoricalData, setSelectedDate, setSupervisors, setUploadStatus, supervisors]);
-
-  const handleAutomaticImport = useCallback(
-    async (files, mappingOverrides = {}, customMetricAnswers = {}) => {
-      const filesToImport = Array.from(files || []).filter(Boolean);
-      if (!filesToImport.length) return;
-
-      const customMetricOverrides = saveCustomMetricDecisions(accountName, customMetricAnswers);
-      const effectiveMappingOverrides = { ...mappingOverrides, ...customMetricOverrides };
-
-      importAbortControllerRef.current?.abort();
-      const controller = new AbortController();
-      importAbortControllerRef.current = controller;
-
-      setUploadStatus({
-        type: 'info',
-        message: `Preparing ${filesToImport.length} file${filesToImport.length > 1 ? 's' : ''}...`,
-        progress: 0,
-        cancelAction: () => controller.abort(),
-      });
-
-      try {
-        const result = await runImportService(filesToImport, {
-          signal: controller.signal,
-          detectDuplicateFiles: true,
-          mappingOverrides: effectiveMappingOverrides,
-          rateMergeStyle: loadAccountProfile(accountName)?.calculationStyles?.rateMergeStyle || rateMergeStyle,
-          onProgress: (progress) => {
-            setUploadStatus({
-              type: 'info',
-              message: progress.message || 'Importing your files...',
-              progress: typeof progress.percent === 'number' ? progress.percent : 0,
-              cancelAction: () => controller.abort(),
-            });
-          },
-        });
-
-        if (!result.rows?.length) {
-          throw new Error(result.errors?.[0]?.message || 'No valid rows were found in the selected files.');
-        }
-
-        setBatchImportSummary(result);
-        const diagnostics = result.mappingDiagnostics || [];
-        const unmappedCount = diagnostics.filter((item) => !item.mappedField).length;
-        const lowConfidenceCount = diagnostics.filter((item) => item.mappedField && item.confidence === 'low').length;
-        const collisionCount = diagnostics.filter((item) => item.collisionWith?.length).length;
-        // Rule 1: Confident canonical matches auto-apply silently (no question).
-        // Rule 2: Structural/non-metric fingerprints and identifier keywords are silently ignored (no question).
-        // Rule 3: Only unmapped columns with metric fingerprints (count-integer, percent-decimal, percent-whole, duration-seconds)
-        //         are reviewed via customMetricReviewItems below.
-        const reviewItems = diagnostics.filter((item) =>
-          (item.mappedField && item.confidence === 'low') ||
-          Boolean(item.collisionWith?.length)
-        );
-        const windowItems = resolveWindowReviewItems(diagnostics, hasSavedAccountProfile ? accountProfile : null);
-        for (const item of windowItems) {
-          if (!reviewItems.some((candidate) => candidate.header === item.header && candidate.fileName === item.fileName && candidate.sheetName === item.sheetName)) {
-            reviewItems.push(item);
-          }
-        }
-        const customerExperienceItems = customerExperienceReviewItems(
-          diagnostics,
-          hasSavedAccountProfile ? accountProfile : null
-        );
-        for (const item of customerExperienceItems) {
-          if (!reviewItems.some((candidate) => candidate.header === item.header && candidate.fileName === item.fileName && candidate.sheetName === item.sheetName)) {
-            reviewItems.push(item);
-          }
-        }
-        const customItems = customMetricReviewItems(
-          diagnostics,
-          hasSavedAccountProfile ? accountProfile : null
-        );
-        for (const item of customItems) {
-          if (!reviewItems.some((candidate) => candidate.header === item.header && candidate.fileName === item.fileName && candidate.sheetName === item.sheetName)) {
-            reviewItems.push(item);
-          }
-        }
-        if (reviewItems.length > 0 && Object.keys(effectiveMappingOverrides).length === 0) {
-          setPendingAutomaticImport(result);
-          setPendingAutomaticFiles(filesToImport);
-          setMappingReview(reviewItems);
-          setUploadStatus(null);
-          return;
-        }
-        if (Object.keys(effectiveMappingOverrides).length > 0) {
-          saveResolveWindowChoices(accountName, diagnostics, effectiveMappingOverrides);
-          saveCustomerExperienceChoice(accountName, diagnostics, effectiveMappingOverrides);
-        }
-        setUploadStatus({
-          type: 'info',
-          message: `Mapped ${diagnostics.length - unmappedCount} of ${diagnostics.length} columns. ${unmappedCount + lowConfidenceCount} field${unmappedCount + lowConfidenceCount === 1 ? '' : 's'} need attention${collisionCount ? `; ${collisionCount} collision${collisionCount === 1 ? '' : 's'} detected` : ''}. Applying ${result.rows.length.toLocaleString()} rows...`,
-          progress: 100,
-          cancelAction: null,
-        });
-        await applyBatchImport(null, result);
-      } catch (error) {
-        if (error instanceof Error && error.name === 'AbortError') {
-          setUploadStatus({ type: 'info', message: 'Import cancelled.' });
-          setTimeout(() => setUploadStatus(null), 2000);
-          return;
-        }
-
-        console.error('Automatic import failed:', error);
-        setUploadStatus({
-          type: 'error',
-          message: error instanceof Error ? error.message : 'The files could not be imported.',
-        });
-        setTimeout(() => setUploadStatus(null), 6000);
-      } finally {
-        if (importAbortControllerRef.current?.signal === controller.signal) {
-          importAbortControllerRef.current = null;
-        }
-      }
-    },
-    [accountName, accountProfile, applyBatchImport, hasSavedAccountProfile, rateMergeStyle, setBatchImportSummary, setUploadStatus]
-  );
-
-  const setRateMergeStyle = useCallback((style) => {
-    setRateMergeStyleState(style);
-    saveRateMergeStyle(accountName, style);
-  }, [accountName]);
-
-  const continueAutomaticImport = useCallback(
-    async (mappingOverrides = {}, customMetricAnswers = {}) => {
-      const cachedResult = pendingAutomaticImport;
-      if (!cachedResult) return;
-
-      setPendingAutomaticImport(null);
-      setPendingAutomaticFiles([]);
-      setMappingReview([]);
-
-      try {
-        const customMetricOverrides = saveCustomMetricDecisions(accountName, customMetricAnswers);
-        const effectiveMappingOverrides = { ...mappingOverrides, ...customMetricOverrides };
-        const diagnostics = cachedResult.mappingDiagnostics || [];
-
-        if (Object.keys(effectiveMappingOverrides).length > 0) {
-          saveResolveWindowChoices(accountName, diagnostics, effectiveMappingOverrides);
-          saveCustomerExperienceChoice(accountName, diagnostics, effectiveMappingOverrides);
-        }
-
-        setUploadStatus({
-          type: 'info',
-          message: 'Applying imported data...',
-          progress: 100,
-        });
-
-        await applyBatchImport(null, cachedResult);
-      } catch (error) {
-        console.error('Failed to apply cached import:', error);
-        setUploadStatus({
-          type: 'error',
-          message: error instanceof Error ? error.message : 'The files could not be imported.',
-        });
-        setTimeout(() => setUploadStatus(null), 6000);
-      }
-    },
-    [
-      accountName,
-      accountProfile,
-      applyBatchImport,
-      pendingAutomaticImport,
-      saveCustomerExperienceChoice,
-      saveCustomMetricDecisions,
-      saveResolveWindowChoices,
-      setMappingReview,
-      setPendingAutomaticFiles,
-      setPendingAutomaticImport,
-      setUploadStatus,
-    ]
-  );
-
-  const handleAutomaticFileUpload = useCallback(
-    (event) => {
-      const files = Array.from(event.target.files || []);
-      event.target.value = '';
-      void handleAutomaticImport(files);
-    },
-    [handleAutomaticImport]
-  );
-
-  const confirmImportPreview = useCallback(
-    async (config) => {
-      if (!importPreview?.sheets || !importPreview.sheets.length) {
-        closeImportPreview();
-        return;
-      }
-
-      setUploadStatus({ type: 'info', message: 'Applying imported sheets to dashboard...' });
-
-      try {
-        if (config?.accountProfile) {
-          saveAccountProfile(config.accountProfile);
-          applyAccountProfile(config.accountProfile);
-        }
-        const sheetConfigs = config?.sheetConfigs || {};
-        const allNormalizedRows = [];
-        const warnings = [];
-
-        // 1. Column mapping with user overrides & 2. aggregateTransactions for transaction-classified sheets
-        for (let sheetIdx = 0; sheetIdx < importPreview.sheets.length; sheetIdx += 1) {
-          const sheet = importPreview.sheets[sheetIdx];
-          const namespacedKey = sheet.workbookName ? `${sheet.workbookName}::${sheet.sheetName}` : null;
-          const sheetConfig =
-            (namespacedKey ? sheetConfigs[namespacedKey] : null) ||
-            sheetConfigs[sheet.sheetName] ||
-            sheetConfigs[sheetIdx];
-          const userMappings = sheetConfig?.columnMappings || {};
-          const headers = sheet.headerRow ?? [];
-          const rows = sheet.rows ?? [];
-
-          const mappedHeaders = [];
-          for (let colIdx = 0; colIdx < headers.length; colIdx += 1) {
-            const rawHeader = headers[colIdx];
-            const headerStr = String(rawHeader ?? '').trim();
-
-            let mappedField = undefined;
-            if (Object.prototype.hasOwnProperty.call(userMappings, headerStr)) {
-              mappedField = userMappings[headerStr];
-            } else if (Object.prototype.hasOwnProperty.call(userMappings, rawHeader)) {
-              mappedField = userMappings[rawHeader];
-            } else {
-              const sampleVals = rows
-                .slice(0, 50)
-                .map((r) => r?.[colIdx])
-                .filter((v) => v !== undefined && v !== null && String(v).trim() !== '');
-              mappedField = normalizeHeaderToField(headerStr, sampleVals);
-            }
-
-            if (mappedField) {
-              mappedHeaders.push({ colIdx, mappedField });
-            }
-          }
-
-          const rawMappedRows = [];
-          for (const rawRow of rows) {
-            const mappedRow = {};
-            for (let m = 0; m < mappedHeaders.length; m += 1) {
-              const { colIdx, mappedField } = mappedHeaders[m];
-              const val = rawRow?.[colIdx];
-              mappedRow[mappedField] = normalizeCellValue(val, mappedField);
-            }
-
-            if (Object.keys(mappedRow).length > 0) {
-              mappedRow.sourceFile = sheet.workbookName || importPreview.fileName || 'Upload';
-              mappedRow.sourceSheet = sheet.sheetName || 'CSV';
-              rawMappedRows.push(mappedRow);
-            }
-          }
-
-          // Pass user's SELECTED granularity (target.selectedGranularity) into aggregation
-          const selectedGranularity = sheetConfig?.granularity || 'aggregate';
-          const sheetRows =
-            selectedGranularity === 'transaction'
-              ? aggregateTransactions(rawMappedRows)
-              : rawMappedRows;
-
-          allNormalizedRows.push(...sheetRows);
-        }
-
-        // 3. validateNormalizedRows
-        const fileName = importPreview.fileName || 'Import';
-        const validated = validateNormalizedRows(allNormalizedRows, fileName);
-        warnings.push(...(validated.warnings || []));
-
-        if (!validated.rows.length) {
-          setUploadStatus({
-            type: 'error',
-            message: 'No valid rows found after validation. Please check column mappings.',
-          });
-          setTimeout(() => setUploadStatus(null), 5000);
-          closeImportPreview();
-          return;
-        }
-
-        // 4. mergeNormalizedRows
-        const mergedRows = mergeNormalizedRows(validated.rows, {
-          onWarning: (w) => warnings.push(w),
-        });
-
-        const summary = {
-          files: new Set(importPreview.sheets.map((s) => s.workbookName || fileName)).size || 1,
-          sheets: importPreview.sheets.length,
-          rows: mergedRows,
-          warnings,
-          errors: [],
-          sources: importPreview.sheets.map((s) => ({
-            fileName: s.workbookName || fileName,
-            sheetName: s.sheetName,
-            rowCount: s.rowCount,
-          })),
-        };
-
-        // 5. applyBatchImport
-        setBatchImportSummary(summary);
-        await applyBatchImport(null, summary);
-        closeImportPreview();
-      } catch (error) {
-        console.error('Failed to confirm import preview:', error);
-        setUploadStatus({
-          type: 'error',
-          message: 'Failed to process and import the sheets.',
-        });
-        setTimeout(() => setUploadStatus(null), 5000);
-      }
-    },
-    [importPreview, closeImportPreview, setUploadStatus, setBatchImportSummary, applyBatchImport]
-  );
-
-  const processFile = useCallback(
-    async (file) => {
-      if (!file) return;
-
-      if (loadAccountProfile(accountName)) {
-        await handleAutomaticImport([file]);
-        return;
-      }
-
-      const fileType = detectFileType(file.name);
-      console.log('[DEBUG 1b - processFile] File detected:', { name: file.name, size: file.size, detectedType: fileType });
-
-      if (fileType === 'xlsx' || fileType === 'xls' || fileType === 'xlsm') {
-        console.log('[DEBUG 1c - processFile] Routing Excel to import preview');
-        const controller = new AbortController();
-        importAbortControllerRef.current?.abort();
-        importAbortControllerRef.current = controller;
-
-        const cancelLoading = () => {
-          controller.abort();
-          setUploadStatus({
-            type: 'info',
-            message: 'Workbook loading cancelled.',
-            progress: 100,
-            cancelAction: null,
-          });
-          setTimeout(() => setUploadStatus(null), 2000);
-        };
-
-        setUploadStatus({
-          type: 'info',
-          message: `Preparing ${file.name} for import preview...`,
-          progress: 0,
-          cancelAction: cancelLoading,
-        });
-
-        try {
-          const { sheets, skippedSheets: rawSkipped } = await convertWorkbookToSheets(file, {
-            signal: controller.signal,
-            onProgress: (progress) => {
-              setUploadStatus({
-                type: 'info',
-                message: progress.message || `Loading ${file.name}...`,
-                progress: typeof progress.percent === 'number' ? progress.percent : 0,
-                cancelAction: cancelLoading,
-              });
-            },
-          });
-          const { selectedSheets: filteredSheets, skippedSheets } = selectSheetsWithDetails(sheets);
-          const combinedSkipped = [
-            ...skippedSheets,
-            ...(rawSkipped || []).map((name) => ({
-              sheetName: name,
-              workbookName: file.name,
-              reason: 'Empty sheet or no data rows',
-            })),
-          ];
-
-          setUploadStatus(null);
-
-          if ((!filteredSheets || filteredSheets.length === 0) && combinedSkipped.length === 0) {
-            setUploadStatus({ type: 'error', message: 'No usable data sheets detected in the workbook.' });
-            setTimeout(() => setUploadStatus(null), 5000);
-            return;
-          }
-
-          openImportPreview({
-            fileName: file.name,
-            sheets: filteredSheets || [],
-            skippedSheets: combinedSkipped,
-          });
-        } catch (error) {
-          if (error instanceof Error && error.name === 'AbortError') {
-            return;
-          }
-          console.error('Failed to parse workbook for preview:', error);
-          setUploadStatus({
-            type: 'error',
-            message: 'The workbook could not be processed. Please check the file format.',
-          });
-          setTimeout(() => setUploadStatus(null), 5000);
-        } finally {
-          if (importAbortControllerRef.current?.signal === controller.signal) {
-            importAbortControllerRef.current = null;
-          }
-        }
-        return;
-      }
-
-      if (fileType === 'csv' || fileType === 'tsv' || fileType === 'txt') {
-        console.log('[DEBUG 1d - processFile] Routing to parseCsvFileText (CSV preview route)');
-        setUploadStatus({ type: 'info', message: `Preparing ${file.name} for import preview...` });
-        try {
-          const textTable = await parseCsvFileText(file);
-          const singleSheet = [
-            {
-              workbookName: file.name,
-              sheetName: file.name.replace(/\.[^/.]+$/, '') || 'CSV',
-              index: 0,
-              headerRow: textTable.headers,
-              rows: textTable.rows,
-              rowCount: textTable.rows.length,
-            },
-          ];
-
-          setUploadStatus(null);
-          openImportPreview({
-            fileName: file.name,
-            sheets: singleSheet,
-          });
-        } catch (error) {
-          console.error('Failed to parse CSV for preview:', error);
-          setUploadStatus({
-            type: 'error',
-            message: 'The file could not be processed. Please check the file format.',
-          });
-          setTimeout(() => setUploadStatus(null), 5000);
-        }
-        return;
-      }
-
-      setUploadStatus({
-        type: 'error',
-        message: `Unsupported file format: ${file.name}. Please upload CSV, TSV, TXT, or Excel files.`,
-      });
-      setTimeout(() => setUploadStatus(null), 5000);
-    },
-    [accountName, handleAutomaticImport, openImportPreview, setUploadStatus]
-  );
-
-  const handleFileUpload = useCallback(
-    async (event) => {
-      const files = Array.from(event.target.files || []);
-      if (!files.length) return;
-
-      if (files.length === 1) {
-        await processFile(files[0]);
-        if (event.target) event.target.value = '';
-        return;
-      }
-
-      await handleMultipleFiles(files);
-      if (event.target) event.target.value = '';
-    },
-    [processFile, handleMultipleFiles]
-  );
-
-  const handleFileDrop = useCallback(
-    (fileOrFiles) => {
-      console.log('[DEBUG 1a - handleFileDrop] File(s) dropped:', fileOrFiles);
-      if (!fileOrFiles) return;
-
-      if (Array.isArray(fileOrFiles) || (typeof FileList !== 'undefined' && fileOrFiles instanceof FileList)) {
-        const files = Array.from(fileOrFiles);
-        if (files.length === 1) {
-          processFile(files[0]);
-        } else if (files.length > 1) {
-          handleMultipleFiles(files);
-        }
-        return;
-      }
-
-      processFile(fileOrFiles);
-    },
-    [processFile, handleMultipleFiles]
-  );
-
-  const agentDataCache = useMemo(() => {
-    const cache = {};
-    if (!hasUploadedData) return cache;
-
-    const OFF = { isOff: true, calls: 0 };
-    const daysMap = { Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6 };
-    const targetDow = daysMap[selectedDow];
-    const weekNum = parseInt(selectedWeek.replace('Week ', ''));
-    const startDay = (weekNum - 1) * 7 + 1;
-    const endDay = weekNum >= 5 ? 31 : startDay + 6;
-
-    Object.keys(historicalData).forEach((ccms) => {
-      const agentHistory = historicalData[ccms];
-      const allDates = Object.keys(agentHistory);
-
-      cache[`${ccms}|monthly`] = allDates.length > 0 ? aggregateRecords(allDates.map((d) => agentHistory[d])) : OFF;
-      cache[`${ccms}|daily`] = agentHistory[selectedDate] ? { ...agentHistory[selectedDate] } : OFF;
-
-      const weekDates = allDates.filter((d) => {
-        const parts = d.split('-');
-        if (parts.length !== 3) return false;
-        const day = parseInt(parts[2], 10);
-        return day >= startDay && day <= endDay;
-      });
-      cache[`${ccms}|weekly`] = weekDates.length > 0 ? aggregateRecords(weekDates.map((d) => agentHistory[d])) : OFF;
-
-      const dowDates = allDates.filter((d) => dowFromDateStr(d) === targetDow);
-      cache[`${ccms}|dow`] = dowDates.length > 0 ? aggregateRecords(dowDates.map((d) => agentHistory[d])) : OFF;
+    if (loadedMonths.length === 0) return;
+    setSelectedMonthRaw((current) => {
+      if (selectedMonthChosen && (current === ALL_MONTHS || loadedMonths.includes(current))) return current;
+      return loadedMonths[0];
     });
+  }, [loadedMonths, selectedMonthChosen]); // oxlint-disable-line react-hooks/exhaustive-deps -- setSelectedMonthRaw comes from ./state (S1a), untraceable to its useState here
 
-    return cache;
-  }, [historicalData, hasUploadedData, selectedDate, selectedWeek, selectedDow]);
+  // S1(d): applyBatchImport, confirmImportPreview and processFile now live in
+  // ./batchImport.ts (move-only extraction, recommendations.md). They are fed
+  // into useUploadFlow below as parameters — batchImport.ts and uploadFlow.ts
+  // never import each other (the S1(c) cycle break made that possible).
+  const { applyBatchImport, confirmImportPreview, processFile } = useBatchImport({
+    agents, supervisors, historicalData, batchImportSummary, importPreview,
+    importAbortControllerRef, onImportColumnsScanRef,
+    setAgents, setSupervisors, setHistoricalData, setHasUploadedData,
+    setSelectedDate, setActiveTimeframe, setUploadStatus, setBatchImportSummary,
+    openImportPreview, closeImportPreview,
+  });
 
-  const getAgentDataForTimeframe = (agent, timeframe) => {
-    if (!hasUploadedData) return { isOff: true, calls: 0 };
-    return agentDataCache[`${agent.ccms}|${timeframe}`] || { isOff: true, calls: 0 };
-  };
+  // S1(c): handleMultipleFiles, handleAutomaticImport, continueAutomaticImport,
+  // handleAutomaticFileUpload, handleFileUpload and handleFileDrop now live in
+  // ./uploadFlow.ts (move-only extraction, recommendations.md). The S1(d)
+  // callbacks below are injected as parameters — uploadFlow.ts never imports
+  // this module back, so the two can never form an import cycle (the
+  // processFile → handleAutomaticImport early-out moved into uploadFlow's
+  // routeSingleFile to make that possible).
+  const {
+    handleAutomaticImport, handleAutomaticFileUpload, continueAutomaticImport,
+    handleFileUpload, handleFileDrop,
+  } = useUploadFlow({
+    accountName, accountProfile, hasSavedAccountProfile, rateMergeStyle,
+    pendingAutomaticImport, importAbortControllerRef, openImportPreview,
+    setUploadStatus, setBatchImportSummary, setPendingAutomaticImport,
+    setPendingAutomaticFiles, setMappingReview,
+    applyBatchImport, processFile,
+  });
 
-  const handleDateChange = (daysToAdd) => {
-    if (!hasUploadedData) return;
-    const current = new Date(selectedDate + 'T00:00:00');
-    const year = current.getFullYear();
-    const month = current.getMonth();
-    const day = current.getDate();
-
-    if (activeTimeframe === 'dow') {
-      let idx = DAYS_OF_WEEK.indexOf(selectedDow) + daysToAdd;
-      if (idx < 0) idx = 6;
-      if (idx > 6) idx = 0;
-      setSelectedDow(DAYS_OF_WEEK[idx]);
-      return;
-    }
-
-    if (activeTimeframe !== 'daily') {
-      if (daysToAdd < 0) return;
-      setActiveTimeframe('daily');
-      const firstDay = new Date(year, month, 1);
-      setSelectedDate(`${firstDay.getFullYear()}-${String(firstDay.getMonth() + 1).padStart(2, '0')}-${String(firstDay.getDate()).padStart(2, '0')}`);
-      return;
-    }
-
-    if (daysToAdd < 0) {
-      if (day === 1) { setActiveTimeframe('monthly'); return; }
-      const prevDay = new Date(year, month, day - 1);
-      setSelectedDate(`${prevDay.getFullYear()}-${String(prevDay.getMonth() + 1).padStart(2, '0')}-${String(prevDay.getDate()).padStart(2, '0')}`);
-      return;
-    }
-
-    const lastDayOfMonth = new Date(year, month + 1, 0).getDate();
-    if (day >= lastDayOfMonth) return;
-    const nextDay = new Date(year, month, day + 1);
-    setSelectedDate(`${nextDay.getFullYear()}-${String(nextDay.getMonth() + 1).padStart(2, '0')}-${String(nextDay.getDate()).padStart(2, '0')}`);
-  };
-
-  const getCurrentMonthName = () => {
-    const parts = selectedDate.split('-');
-    if (parts.length !== 3) return 'Current Month';
-    const localDate = new Date(parts[0], parseInt(parts[1]) - 1, parts[2]);
-    return localDate.toLocaleString('en-US', { month: 'long' });
-  };
-
-  const getTopHeadlineMonth = () => {
-    if (activeTimeframe === 'monthly') return getCurrentMonthName();
-    if (activeTimeframe === 'weekly') return selectedWeek;
-    return getCurrentMonthName();
-  };
+  // S1(e): the agentDataCache memo and the four timeframe selectors now live
+  // in ./timeframe.ts (move-only extraction, recommendations.md).
+  const { getAgentDataForTimeframe, handleDateChange, getTopHeadlineMonth, monthLabel } =
+    useTimeframeSelectors({
+      historicalData, hasUploadedData, activeTimeframe, selectedWeek,
+      selectedDow, selectedDate, selectedMonth,
+      setActiveTimeframe, setSelectedDate, setSelectedDow,
+    });
 
   return {
     agents, supervisors, oamName, historicalData, hasUploadedData, uploadStatus, batchImportSummary,
     handleFileUpload, handleFileDrop, handleAutomaticImport, handleAutomaticFileUpload, continueAutomaticImport, mappingReview, rateMergeStyle, setRateMergeStyle, applyBatchImport, resetDashboard,
     accountProfile, hasSavedAccountProfile, importPreview, openImportPreview, closeImportPreview, confirmImportPreview,
     activeTimeframe, setActiveTimeframe, selectedWeek, setSelectedWeek, selectedDate, setSelectedDate,
-    selectedDow, setSelectedDow,
+    selectedDow, setSelectedDow, selectedMonth, setSelectedMonth, loadedMonths, monthLabel,
     getAgentDataForTimeframe, handleDateChange, getTopHeadlineMonth,
   };
 };
