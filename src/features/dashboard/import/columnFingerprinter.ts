@@ -27,6 +27,11 @@ export interface ColumnStats {
 // 35000 is ~1995-10-23, 60000 is ~2064-03-05.
 // Bare numbers outside this range or fewer than 5 digits (e.g. 100, 150, 300)
 // are ordinary integers (calls, durations), NOT Excel date serials.
+// KNOWN DIVERGENCE (S7): importPolicy.ts uses EXCEL_SERIAL_MIN = 1 for
+// *conversion* of values already deemed date-like; this stricter MIN = 35000
+// governs *classification* only. Serials in 1–34999 therefore convert as dates
+// in importPolicy but are not fingerprinted as date-like here. Intentional;
+// see recommendations.md §S7 before changing either constant.
 const EXCEL_SERIAL_MIN = 35000;
 const EXCEL_SERIAL_MAX = 60000;
 

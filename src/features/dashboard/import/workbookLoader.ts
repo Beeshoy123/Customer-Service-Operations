@@ -1,6 +1,8 @@
 import * as RawXLSX from 'xlsx';
 import type { ImportOptions, ImportProgress, SheetTable, WorkbookResult } from './types';
 import type { WorkerInMessage, WorkerOutMessage, WorkerImportPayload } from './workbookWorker';
+// S8: helpers now owned by ./asyncUtils (single source for the import pipeline).
+import { createAbortError, yieldToEventLoop } from './asyncUtils';
 
 const resolveXlsx = (moduleRef: any): typeof RawXLSX => {
   return moduleRef.read ? moduleRef : (moduleRef.default ?? moduleRef);
@@ -26,7 +28,6 @@ export interface SheetBatchOptions {
   endRow?: number;
 }
 
-const yieldToEventLoop = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 const isMeaningfulRow = (row: unknown[]) => Array.isArray(row) && row.some((value) => value !== '' && value !== null && value !== undefined);
 
@@ -52,11 +53,7 @@ export const clampRangeToColumnBudget = (range: RawXLSX.Range): RawXLSX.Range =>
   e: { r: range.e.r, c: Math.min(range.e.c, range.s.c + MAX_COLUMNS_PER_SHEET - 1) },
 });
 
-const createAbortError = () => {
-  const error = new Error('Import cancelled.');
-  (error as Error & { name?: string }).name = 'AbortError';
-  return error;
-};
+// S8: yieldToEventLoop + createAbortError now imported from ./asyncUtils.
 
 export const getSheetRowCountFromRef = (sheet: Record<string, any> | null | undefined): number => {
   const ref = sheet?.['!ref'];
@@ -473,7 +470,8 @@ export const convertWorkbookToSheetsViaWorker = async (
   const bufferStartTime = performance.now();
   const arrayBuffer = await file.arrayBuffer();
   const bufferDuration = (performance.now() - bufferStartTime).toFixed(1);
-  console.log(`[WORKER-LOADER] file.arrayBuffer() resolved in ${bufferDuration}ms. byteLength: ${arrayBuffer.byteLength}`);
+  // S9: kept as a warning-level diagnostic ([import] prefix) — useful when users report slow imports.
+  console.warn(`[import] file.arrayBuffer() resolved in ${bufferDuration}ms. byteLength: ${arrayBuffer.byteLength}`);
 
   if (options.signal?.aborted) {
     throw createAbortError();
@@ -522,13 +520,12 @@ export const convertWorkbookToSheetsViaWorker = async (
     }
 
     try {
-      console.log('[DEBUG 3d - convertWorkbookToSheetsViaWorker] Right before new Worker(...)');
       worker = new Worker(new URL('./workbookWorker.ts', import.meta.url), {
         type: 'module',
       });
-      console.log('[DEBUG 3e - convertWorkbookToSheetsViaWorker] Worker instance created successfully!');
     } catch (err) {
-      console.error('[DEBUG 3-CATCH] Worker creation threw an exception! Falling back to synchronous parseWorkbookBuffer on MAIN THREAD:', err);
+      // S9: operational diagnostic retained as warn.
+      console.warn('[import] Worker creation threw; falling back to synchronous parseWorkbookBuffer on MAIN THREAD:', err);
       cleanup();
       return parseWorkbookBuffer(
         arrayBuffer,
@@ -538,7 +535,6 @@ export const convertWorkbookToSheetsViaWorker = async (
     }
 
     worker.onmessage = (event: MessageEvent<WorkerOutMessage>) => {
-      console.log('[DEBUG 3f - Main thread received worker onmessage]:', event.data?.type);
       if (isCancelled || isSettled) {
         return;
       }
@@ -560,7 +556,8 @@ export const convertWorkbookToSheetsViaWorker = async (
         if (!isCancelled && !isSettled) {
           isSettled = true;
           cleanup();
-          console.error('[DEBUG 3f-ERROR] Worker returned error message:', data.error);
+          // S9: operational diagnostic retained as warn.
+          console.warn('[import] Worker returned error message:', data.error);
           const err = new Error(data.error || 'Workbook worker failed.');
           if (data.name) {
             err.name = data.name;
@@ -571,7 +568,8 @@ export const convertWorkbookToSheetsViaWorker = async (
     };
 
     worker.onerror = (event: ErrorEvent) => {
-      console.error('[DEBUG 3g - Main thread worker.onerror fired]:', event.message, event);
+      // S9: operational diagnostic retained as warn.
+      console.warn('[import] worker.onerror fired:', event.message, event);
       cleanup();
       if (isCancelled || isSettled) {
         return;
@@ -600,15 +598,14 @@ export const convertWorkbookToSheetsViaWorker = async (
       options: transferableOptions,
     };
 
-    console.log('[DEBUG 3h - convertWorkbookToSheetsViaWorker] Calling worker.postMessage with transferable arrayBuffer...');
     try {
       worker.postMessage(parseMessage, [arrayBuffer]);
-      console.log('[DEBUG 3i - convertWorkbookToSheetsViaWorker] worker.postMessage returned. Main thread is free.');
     } catch (err) {
       // If the initial post throws (e.g. transfer of a detached buffer), the worker
       // would otherwise be orphaned: no onmessage/onerror can ever fire, the promise
       // never settles, and the worker keeps running. Always terminate + reject.
-      console.error('[DEBUG 3h-CATCH] worker.postMessage threw; terminating worker and rejecting:', err);
+      // S9: operational diagnostic retained as warn.
+      console.warn('[import] worker.postMessage threw; terminating worker and rejecting:', err);
       isSettled = true;
       cleanup();
       reject(err instanceof Error ? err : new Error(String(err)));

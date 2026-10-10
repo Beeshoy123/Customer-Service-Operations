@@ -60,6 +60,8 @@ interface WorkerScope {
 
 let currentAbortController: AbortController | null = null;
 
+// S8: DELIBERATE inline copy — the worker is instantiated from a blob/URL and
+// must not gain an import edge to ./asyncUtils. Do not deduplicate.
 const createAbortError = () => {
   const error = new Error('Import cancelled.');
   (error as Error & { name?: string }).name = 'AbortError';
@@ -84,7 +86,6 @@ export const handleWorkerMessage = async (
     currentAbortController = new AbortController();
     const { arrayBuffer, options = {} } = data;
     const fileName = options.fileName || 'workbook.xlsx';
-    const workerStartTime = performance.now();
 
     try {
       // Phase 1: Parse Workbook Buffer into sheets
@@ -219,8 +220,6 @@ export const handleWorkerMessage = async (
         },
       });
 
-      const totalDuration = (performance.now() - workerStartTime).toFixed(1);
-      console.log(`[WORKER] Pipeline complete in ${totalDuration}ms. Merged rows: ${finalMergedRows.length}. Posting success to main thread.`);
 
       // Post final processed result to main thread. When the caller only needs
       // raw sheets (preview mode), skip the merged `rows` clone entirely: the
@@ -260,10 +259,8 @@ export const handleWorkerMessage = async (
 
 // If running in a Web Worker environment, wire up the listener
 if (typeof self !== 'undefined' && typeof (self as unknown as WorkerScope).postMessage === 'function') {
-  console.log('[DEBUG 4b-setup] Web Worker environment detected (self.postMessage is function). Attaching message listener.');
   const workerScope = self as unknown as WorkerScope;
   workerScope.addEventListener('message', (event: MessageEvent<WorkerInMessage>) => {
-    console.log('[DEBUG 4b - workbookWorker.ts] Worker addEventListener message received:', event.data?.type);
     void handleWorkerMessage(event.data, (msg) => workerScope.postMessage(msg));
   });
 }

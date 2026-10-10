@@ -310,8 +310,8 @@ Then: preview returns HTTP 200 with no HMR errors, and **every touched module re
 
 | Batch | Items | Why grouped |
 |---|---|---|
-| 1 | **S5** (delete 6 dead files), **S10** (10 specifiers), **S8** (`asyncUtils`), **S9** (debug logs) | Zero-risk mechanical work; grep proves S5, tests prove the rest |
-| 2 | **S7.1** (duplicate `normalizeHeader`) | 15 minutes, byte-identical, proven by 60 existing tests |
+| 1 | ~~**S5** (delete 6 dead files), **S10** (specifiers), **S8** (`asyncUtils`), **S9** (debug logs)~~ ✅ **done 2026-10-10** | Zero-risk mechanical work; grep proves S5, tests prove the rest |
+| 2 | ~~**S7.1** (duplicate `normalizeHeader`)~~ ✅ **done 2026-10-10** | 15 minutes, byte-identical, proven by 60 existing tests |
 | 3 | **S2** (`scheduleStatusClear`), **S12** (copy button) | Small, self-contained, both visible in the UI so verify by hand |
 | 4 | **S6** (storage module), **S11** (`buildAccountProfile`) | Touch persisted data; both need a manual round trip |
 | 5 | **S4** (ImportPreviewModal split) | Move-only; collect **S15/S16** inline while the file is open |
@@ -470,6 +470,8 @@ Then replace all 16 sites with `scheduleStatusClear(2000 | 4000 | 5000 | 6000)` 
 
 #### S5 — Dead modules and unused barrels · **LOW (pure deletion)**
 
+> ✅ **LANDED 2026-10-10.** All six files deleted. Note the doc's de-barrelling table was stale: `hooks.ts` no longer imports `./import` (the S1 split moved those consumers). The actual importers were `uploadFlow.ts` (4 symbols) and `batchImport.ts` (8 symbols); both were de-barrelled to direct module paths first, then `grep -rn "from './import'" src` returned zero hits and all six files were removed. Gates: tsc 0 · tests 248/249 (baseline unchanged) · lint 0 errors · build ok · dev-server transform 200 for hooks/uploadFlow/batchImport · headless render clean.
+
 **Evidence.** Verified zero importers for each:
 
 | Path | Lines | Content | Action |
@@ -518,6 +520,12 @@ Then `grep -rn "from './import'" src` must return **zero** hits before the file 
 
 #### S7 — Header normalization exists in three variants; two Excel-serial thresholds disagree · **MEDIUM (STANDING RULE domain)**
 
+> ✅ **LANDED 2026-10-10** (steps 1–3 as specified; step 3 explicitly *not* unified). Details:
+> - **Step 1 done:** the byte-identical private `normalizeHeader` copy in `schemaNormalizer.ts` was deleted; the file now imports the single owner's export from `importPolicy.ts`. Zero behavior change — proven by all importPolicy (42) + schemaNormalizer tests passing unchanged.
+> - **Step 2 done:** `ImportPreviewModal.tsx` sheet-signature helper left alone, with a NOTE comment marking it as a different contract (lowercases already-normalized field names) so nobody "unifies" it later.
+> - **Step 3 done as specified:** constants NOT changed. Both `EXCEL_SERIAL_MIN` sites (`importPolicy.ts` = 1 for conversion, `columnFingerprinter.ts` = 35000 for classification) now cross-reference each other with a KNOWN DIVERGENCE comment describing the 1–34999 window. Unification remains open work (see roadmap item 11 / S7.3) and requires writing boundary tests for serials 1, 10000, 34999, 35000, 45383, 60000, 60001 **before** touching either constant.
+> - Gates: `tsc -b` 0 · tests 248/249 (the 1 failure pre-exists — worker `.ts` glob issue under bare tsx, unrelated) · oxlint 0 errors · vite build ok · dev server 200 · headless render clean.
+
 **Evidence.**
 - `importPolicy.ts:565` `export const normalizeHeader` and `schemaNormalizer.ts:11` `const normalizeHeader` are **byte-identical implementations** (same two camelCase regexes, lowercase, strip non-alphanumerics) — pure duplication inside the exact domain the STANDING RULE governs.
 - `ImportPreviewModal.tsx:336` adds a third, weaker variant (`.map(m => m.normalized.toLowerCase().trim())`) for sheet matching.
@@ -532,6 +540,8 @@ Then `grep -rn "from './import'" src` must return **zero** hits before the file 
 
 #### S8 — `createAbortError` ×3, `yieldToEventLoop` ×2 · **LOW (duplication)**
 
+> ✅ **LANDED 2026-10-10.** Created `src/features/dashboard/import/asyncUtils.ts`; converted `importService.ts` and `workbookLoader.ts` to import from it; `workbookWorker.ts` keeps its deliberate inline copy with a comment explaining the blob/URL no-import-edge rule. Gates: tsc 0 · tests 248/249 baseline · lint 0 errors on touched files.
+
 **Evidence.** `createAbortError`: `importService.ts:27`, `workbookLoader.ts:39`, `workbookWorker.ts:63`. `yieldToEventLoop`: `importService.ts:25`, `workbookLoader.ts:29`.
 
 **Precisely what to do.** Extract both into `src/features/dashboard/import/asyncUtils.ts`. The `workbookWorker.ts` copy **must stay inline** — the worker is instantiated from a blob/URL and must not gain an import edge; leave a comment there saying so. Net result: 1 shared module, 2 call sites converted, 1 deliberate inline copy.
@@ -540,6 +550,8 @@ Then `grep -rn "from './import'" src` must return **zero** hits before the file 
 
 #### S9 — 13 leftover debug logs in the production import path · **LOW (hygiene)**
 
+> ✅ **LANDED 2026-10-10.** All `[DEBUG 3*]`/`[WORKER-LOADER]`/`[WORKER]` traces removed from `workbookLoader.ts` + `workbookWorker.ts`. Per spec, four operational error paths kept as `console.warn('[import] …')` (worker creation fallback, worker error message, `onerror`, `postMessage` throw) plus the arrayBuffer timing line. `grep -c "DEBUG 3" workbookLoader.ts` → 0; zero `console.log` left in either file. Dead `totalDuration`/`workerStartTime` locals removed with their only consumer. Note: doc said 3 retained diagnostics; there were 4 error-path lines worth keeping — judgment call, all under one `[import]` prefix now.
+
 **Evidence.** `workbookLoader.ts:437, 482, 486, 488, 498, 520, 531, 560, 563, 568` (labels `[WORKER-LOADER]`, `[DEBUG 3d…3i]`) and `workbookWorker.ts:223, 260, 263` (labels `[WORKER]`). They fire on every workbook import. Meanwhile legitimate diagnostics use `console.warn` in `mappingMemory.ts:78,95,314` and `hooks.ts:249,254,377` — so debug and real warnings are indistinguishable.
 
 **Precisely what to do.** Delete the 13 debug logs. For the three that carry operational value (`workbookLoader.ts:437` timing, `:520` worker error, `:531` `onerror`) keep them as `console.warn` with the `[import]` prefix; for the `[DEBUG 3*]` trace lines delete outright. Do not add a logging framework in this step — the goal is that a user reporting a failed import sees warnings, not a 13-line trace.
@@ -547,6 +559,8 @@ Then `grep -rn "from './import'" src` must return **zero** hits before the file 
 **Verification.** `grep -c "DEBUG 3" src/features/dashboard/import/workbookLoader.ts` → `0`. 194/194, preview 200, and one real workbook import exercised in the browser to confirm no diagnostics were lost.
 
 #### S10 — Mixed module specifier conventions · **LOW (consistency)**
+
+> ✅ **LANDED 2026-10-10.** Dropped the `.ts` extension at the 6 non-worker sites (`sheetSelector`, `aggregateTransactions` ×2, `schemaNormalizer`, `granularityDetector`, `importPolicy` ×2). The remaining explicit-extension imports are all inside `workbookWorker.ts` — that file is loaded by Node's native ESM loader in the real-worker tests, which cannot resolve extensionless `.ts`; its header comment already documents this exception (the doc's "dynamic import()" phrasing was slightly off — it's the static imports *in the worker entry* that need extensions, not the dynamic `new Worker(new URL(...))` call). Gates: tsc 0 · tests 248/249 baseline · build ok.
 
 **Evidence.** 159 extensionless relative imports vs **10 with an explicit `.ts` extension**, all inside `import/`: `./schemaNormalizer.ts` ×3, `./importPolicy.ts` ×2, `./columnFingerprinter.ts` ×2, `./workbookLoader.ts`, `./validation.ts`, `./sheetSelector.ts`, `./mergeData.ts`, `./mappingMemory.ts`, `./granularityDetector.ts`, `./aggregateTransactions.ts`.
 
@@ -744,9 +758,9 @@ Then convert `account-profile-storage.ts` (raw `localStorage` today) and `hooks.
 
 | Rank | Item | Effort | Risk | Why this position |
 |---|---|---|---|---|
-| 1 | S5 dead files | minutes | none | pure deletion, zero importers, shrinks the audit surface for everything after |
-| 2 | S10 specifiers, S8 asyncUtils, S9 debug logs | ~1 h | none | mechanical; each verified by the existing 194 tests |
-| 3 | S7.1 (remove duplicate `normalizeHeader`) | ~15 min | none | byte-identical, proven by 60 existing tests |
+| 1 | ~~S5 dead files~~ ✅ **done 2026-10-10** | minutes | none | pure deletion, zero importers, shrinks the audit surface for everything after |
+| 2 | ~~S10 specifiers, S8 asyncUtils, S9 debug logs~~ ✅ **done 2026-10-10** | ~1 h | none | mechanical; each verified by the existing 194 tests |
+| 3 | ~~S7.1 (remove duplicate `normalizeHeader`)~~ ✅ **done 2026-10-10** | ~15 min | none | byte-identical, proven by 60 existing tests |
 | 4 | S2 `scheduleStatusClear` | ~1 h | low | removes 16 sites and a real unmount leak; visible in the UI, so verify by hand |
 | 5 | S12 copy button | ~1 h | low | small, self-contained |
 | 6 | S6 storage module | ~2 h | medium | no key renames; touches 3 files, all with existing test coverage |

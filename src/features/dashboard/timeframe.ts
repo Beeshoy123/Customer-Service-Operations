@@ -5,7 +5,7 @@
 // ⚠️ STANDING RULE — DO NOT FIX MAPPING BUGS IN THIS FILE. Mapping/alias fixes
 // belong in importPolicy.ts (FIELD_ALIASES), nowhere else.
 
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { DAYS_OF_WEEK } from './config';
 import { aggregateRecords, dowFromDateStr, monthLabel, ALL_MONTHS } from './helpers';
 
@@ -73,12 +73,16 @@ export const useTimeframeSelectors = (deps: TimeframeSelectorDeps) => {
     return cache;
   }, [historicalData, hasUploadedData, selectedDate, selectedWeek, selectedDow, selectedMonth]);
 
-  const getAgentDataForTimeframe = (agent: any, timeframe: any) => {
+  // S3 — useCallback-wrapped so the identities stay stable across renders.
+  // useDashboardData / useDashboardMetrics memoize their return objects on
+  // these values; a fresh function literal per render would defeat that memo
+  // and re-render every consumer of DashboardContext on each keystroke.
+  const getAgentDataForTimeframe = useCallback((agent: any, timeframe: any) => {
     if (!hasUploadedData) return { isOff: true, calls: 0 };
     return agentDataCache[`${agent.ccms}|${timeframe}`] || { isOff: true, calls: 0 };
-  };
+  }, [hasUploadedData, agentDataCache]);
 
-  const handleDateChange = (daysToAdd: any) => {
+  const handleDateChange = useCallback((daysToAdd: any) => {
     if (!hasUploadedData) return;
     const current = new Date(selectedDate + 'T00:00:00');
     const year = current.getFullYear();
@@ -112,20 +116,17 @@ export const useTimeframeSelectors = (deps: TimeframeSelectorDeps) => {
     if (day >= lastDayOfMonth) return;
     const nextDay = new Date(year, month, day + 1);
     setSelectedDate(`${nextDay.getFullYear()}-${String(nextDay.getMonth() + 1).padStart(2, '0')}-${String(nextDay.getDate()).padStart(2, '0')}`);
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- S3: the three setters are useState setters (stable), but oxlint cannot trace them through the plain `deps` parameter object; listing the traced values they read is what matters here.
+  }, [hasUploadedData, selectedDate, activeTimeframe, selectedDow]);
 
-  const getCurrentMonthName = () => {
+  const getTopHeadlineMonth = useCallback(() => {
+    if (activeTimeframe === 'monthly') return monthLabel(selectedMonth);
+    if (activeTimeframe === 'weekly') return selectedWeek;
     const parts = selectedDate.split('-');
     if (parts.length !== 3) return 'Current Month';
     const localDate = new Date(parts[0], parseInt(parts[1]) - 1, parts[2]);
     return localDate.toLocaleString('en-US', { month: 'long' });
-  };
-
-  const getTopHeadlineMonth = () => {
-    if (activeTimeframe === 'monthly') return monthLabel(selectedMonth);
-    if (activeTimeframe === 'weekly') return selectedWeek;
-    return getCurrentMonthName();
-  };
+  }, [activeTimeframe, selectedMonth, selectedWeek, selectedDate]);
 
   // `monthLabel` is re-exported here so consumers keep getting it through the
   // dashboard bundle; it has always been a helper, not selector state.

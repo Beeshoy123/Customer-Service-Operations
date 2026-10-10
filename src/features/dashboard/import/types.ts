@@ -55,6 +55,8 @@ export type ImportOptions = {
   rateMergeStyle?: RateMergeStyle;
   /** Whether to detect and skip duplicate file uploads (defaults to true) */
   detectDuplicateFiles?: boolean;
+  /** Header-scan only: parse + map columns but skip row validation/merge. Used by account auto-detection. */
+  dryRun?: boolean;
 };
 
 export type ImportWarning = {

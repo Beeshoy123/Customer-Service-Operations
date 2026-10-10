@@ -49,8 +49,8 @@ import type {
   ColumnMappingConfidence,
   ColumnMatchType,
 } from './types';
-import { analyzeColumnValues, type ColumnFingerprint } from './columnFingerprinter.ts';
-import { recallMapping } from './mappingMemory.ts';
+import { analyzeColumnValues, type ColumnFingerprint } from './columnFingerprinter';
+import { recallMapping } from './mappingMemory';
 
 export type ImportFieldKind = 'text' | 'number' | 'percent' | 'date';
 
@@ -1405,6 +1405,12 @@ const EXCEL_EPOCH_MS = Date.UTC(1899, 11, 30); // 1899-12-30 UTC
 //   1 → 1900-01-01,  60000 → 2064-03-05
 // Values outside this range are rejected rather than passed to new Date() as a
 // bare string, which would silently produce astronomical-year nonsense.
+// KNOWN DIVERGENCE (S7): columnFingerprinter.ts uses EXCEL_SERIAL_MIN = 35000
+// for *classification* (avoid calling ordinary 1–4 digit integers dates), while
+// this file's MIN = 1 governs *conversion* once a value is already deemed
+// date-like. Consequence: a serial in 1–34999 is converted to a date here but
+// is NOT classified as date-like there. Intentional; unifying is a behavioral
+// change that needs its own test pass (see recommendations.md §S7).
 const EXCEL_SERIAL_MIN = 1;
 const EXCEL_SERIAL_MAX = 60000;
 

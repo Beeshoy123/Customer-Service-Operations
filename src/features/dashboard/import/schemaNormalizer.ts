@@ -5,17 +5,12 @@
 // does not contain and must not contain any source-system column-name knowledge.
 // See recommendations.md §"STANDING RULE" and the banner in importPolicy.ts.
 
-import { FIELD_ALIASES, FIELD_COMPONENT_GROUPS, normalizeImportedValue, findCanonicalField, findPairedCountField } from './importPolicy.ts';
+import { FIELD_ALIASES, FIELD_COMPONENT_GROUPS, normalizeImportedValue, findCanonicalField, findPairedCountField, normalizeHeader } from './importPolicy';
 import type { NormalizedRow, SheetTable } from './types';
 
-const normalizeHeader = (value: string): string =>
-  `${value ?? ''}`
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
+// S7: header normalization is owned solely by importPolicy.ts — `normalizeHeader`
+// is imported from there. A byte-identical private copy used to live here; it was
+// deleted so the STANDING RULE domain has exactly one implementation.
 
 const CANONICAL_FIELDS: Record<string, string[]> = Object.fromEntries(
   Object.entries(FIELD_ALIASES).map(([field, policy]) => [field, policy.aliases]),

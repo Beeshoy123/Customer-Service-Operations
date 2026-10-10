@@ -18,16 +18,14 @@ import { useCallback } from 'react';
 import { applyAccountProfile, DEFAULT_DATE } from './config';
 import { normalizeDate } from './helpers';
 import { collectFieldsWithData } from './emptyColumns';
-import {
-  convertWorkbookToSheetsViaWorker,
-  selectSheetsWithDetails,
-  parseCsvFileText,
-  aggregateTransactions,
-  validateNormalizedRows,
-  mergeNormalizedRows,
-  normalizeCellValue,
-  normalizeHeaderToField,
-} from './import';
+// S5: de-barrelled — direct module paths replace the ./import barrel.
+import { convertWorkbookToSheetsViaWorker } from './import/workbookLoader';
+import { selectSheetsWithDetails } from './import/sheetSelector';
+import { parseCsvFileText } from './import/csvParser';
+import { aggregateTransactions } from './import/aggregateTransactions';
+import { validateNormalizedRows } from './import/validation';
+import { mergeNormalizedRows } from './import/mergeData';
+import { normalizeCellValue, normalizeHeaderToField } from './import/schemaNormalizer';
 import { detectFileType } from './import/fileTypeDetector';
 import { saveAccountProfile } from '../accountSetup/account-profile-storage';
 

@@ -50,8 +50,10 @@ import { FloorBurnoutTab } from './features/dashboard/views/tabs/FloorBurnoutTab
 import { FloorDowTab } from './features/dashboard/views/tabs/FloorDowTab';
 import { MainModal } from './features/dashboard/views/modals/MainModal';
 import { TopNavbar } from './features/dashboard/views/chrome/TopNavbar';
+import { SidebarNav } from './features/dashboard/views/chrome/SidebarNav';
 import { MainStatsRow } from './features/dashboard/views/chrome/MainStatsRow';
 import { FloorHeader } from './features/dashboard/views/chrome/FloorHeader';
+import { FloorOffendersTab } from './features/dashboard/views/tabs/FloorOffendersTab';
 import { MODAL_INITIAL, UI_INITIAL, modalReducer, uiReducer } from './features/dashboard/uiReducer';
 
 if (typeof window !== 'undefined') {
@@ -368,29 +370,36 @@ export default function App() {
           <UploadStatus uploadStatus={dashData.uploadStatus} />
           <ChartActionPlanModal />
 
-          {/* ==== Header / shell navigation ==== */}
-          <TopNavbar />
+          {/* ==== Fixed left sidebar navigation (redesign) ==== */}
+          <SidebarNav />
 
-          {/* ==== Dashboard body shell ==== */}
-          <div className="main-workspace" style={{ width: '100%', maxWidth: '1100px', minWidth: 0, margin: '0 auto', padding: '32px 24px' }}>
-            {/* ==== KPI summary row ==== */}
-            <MainStatsRow />
+          {/* ==== Right workspace column ==== */}
+          <div className="workspace-col">
+            {/* ==== Slim utility strip (Assistant / Timeframe / Metrics / Exit) ==== */}
+            <TopNavbar />
 
-            {/* ==== Floor board / roster content ==== */}
-            <div className="flex flex-col gap-4 mb-16">
-              {/* ==== Header area for floor selection ==== */}
+            {/* ==== Dashboard body shell ==== */}
+            <div className="main-workspace" style={{ width: '100%', maxWidth: '1240px', minWidth: 0, margin: '0 auto', padding: '36px 40px' }}>
+              {/* ==== Workspace header: department title + live headcount ==== */}
               <FloorHeader />
 
-              {/* ==== Tab content switcher ==== */}
-              <div className="roster-container">
-                {mainTab === 'roster'      && <FloorRosterTab />}
-                {mainTab === 'outliers'    && <FloorOutliersTab />}
-                {mainTab === 'apprentice'  && <FloorApprenticeTab />}
-                {mainTab === 'analysis'    && <FloorAnalysisTab />}
-                {mainTab === 'trends'      && <FloorTrendsTab />}
-                {mainTab === 'correlation' && <FloorCorrelationTab />}
-                {mainTab === 'burnout'     && <FloorBurnoutTab />}
-                {mainTab === 'dow'         && <FloorDowTab />}
+              {/* ==== KPI summary row: two aligned metric cards ==== */}
+              <MainStatsRow />
+
+              {/* ==== Floor board / roster content (sidebar-driven) ==== */}
+              <div className="flex flex-col gap-4 mb-16">
+                {/* ==== Tab content switcher ==== */}
+                <div className="roster-container">
+                  {mainTab === 'roster'      && <FloorRosterTab />}
+                  {mainTab === 'outliers'    && <FloorOutliersTab />}
+                  {mainTab === 'apprentice'  && <FloorApprenticeTab />}
+                  {mainTab === 'analysis'    && <FloorAnalysisTab />}
+                  {mainTab === 'trends'      && <FloorTrendsTab />}
+                  {mainTab === 'correlation' && <FloorCorrelationTab />}
+                  {mainTab === 'burnout'     && <FloorBurnoutTab />}
+                  {mainTab === 'dow'         && <FloorDowTab />}
+                  {mainTab === 'offenders'   && <FloorOffendersTab />}
+                </div>
               </div>
             </div>
           </div>

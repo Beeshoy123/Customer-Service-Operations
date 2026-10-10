@@ -6,6 +6,8 @@ import './features/dashboard/import/ImportPreviewModal.css'
 // sheets above — this preserves the cascade the App-injected <style> tag had
 // (it lived in <body>, after every stylesheet in <head>).
 import './styles/dashboard.css'
+// Frontend redesign: two-column shell (sidebar + workspace) overrides.
+import './styles/layout.css'
 import App from './App.tsx'
 
 createRoot(document.getElementById('root')!).render(

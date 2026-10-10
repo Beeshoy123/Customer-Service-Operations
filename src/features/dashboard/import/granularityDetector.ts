@@ -5,7 +5,7 @@ import type {
   SheetHeaderMapping,
   SheetTable,
 } from './types';
-import { normalizeCellValue, normalizeSheetHeaders } from './schemaNormalizer.ts';
+import { normalizeCellValue, normalizeSheetHeaders } from './schemaNormalizer';
 
 export const DEFAULT_AGGREGATE_THRESHOLD = 1.5;
 

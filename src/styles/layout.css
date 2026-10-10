@@ -1,0 +1,241 @@
+/* layout.css — Frontend redesign: two-column shell (fixed left sidebar + right workspace).
+   Loaded after dashboard.css so its rules win same-specificity ties.
+   Typography: Inter with Roboto/system fallbacks; title-case labels; generous whitespace. */
+
+/* ─── Typography: clean Inter stack across the app ─────────────── */
+body, .analyst-dashboard {
+  font-family: 'Inter', 'Roboto', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+button, input, select, textarea { font-family: inherit; }
+
+/* ─── Two-column shell ─────────────────────────────────────────── */
+.analyst-dashboard {
+  display: flex;
+  align-items: stretch;
+  min-height: 100vh;
+}
+.workspace-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ─── Left sidebar (fixed) ─────────────────────────────────────── */
+.sidebar-nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 272px;
+  background: #0b0f19;
+  border-right: 1px solid #1e293b;
+  padding: 28px 16px 40px;
+  overflow-y: auto;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+  box-sizing: border-box;
+}
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 8px 4px;
+}
+.sidebar-brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  color: #fff;
+  font-weight: 800;
+  font-size: .8rem;
+  letter-spacing: .04em;
+  flex-shrink: 0;
+}
+.sidebar-brand-text {
+  color: #e2e8f0;
+  font-size: .82rem;
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: .01em;
+}
+.sidebar-folder { display: flex; flex-direction: column; gap: 2px; }
+.sidebar-folder-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #64748b;
+  font-size: .7rem;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  border-radius: 8px;
+  transition: color .15s ease;
+}
+.sidebar-folder-header:hover { color: #cbd5e1; }
+.sidebar-chevron { display: inline-flex; align-items: center; width: 14px; }
+.sidebar-folder.open .sidebar-folder-title { color: #94a3b8; }
+.sidebar-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0 0 0 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: #94a3b8;
+  font-family: inherit;
+  font-size: .9rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color .15s ease, color .15s ease;
+}
+.sidebar-item:hover { background: rgba(148, 163, 184, .08); color: #f1f5f9; }
+.sidebar-item.active {
+  background: #ffffff;
+  color: #0b0f19;
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, .08), 0 2px 8px rgba(2, 6, 23, .35);
+}
+.sidebar-item-icon { width: 20px; display: inline-flex; justify-content: center; font-size: .95rem; opacity: .9; flex-shrink: 0; }
+
+/* ─── Right workspace: slim utility navbar ─────────────────────── */
+.top-navbar { padding: 12px 40px; }
+.top-navbar-inner { max-width: 1240px; margin: 0 auto; gap: 12px; }
+.navbar-account {
+  color: #94a3b8;
+  font-size: .8rem;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+/* ─── Workspace header (title + live headcount) ────────────────── */
+.workspace-header {
+  display: block;
+  padding: 8px 0 4px;
+}
+.workspace-header-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+.workspace-title {
+  margin: 0;
+  font-size: 1.65rem;
+  font-weight: 800;
+  color: #0b0f19;
+  letter-spacing: -.01em;
+  line-height: 1.2;
+}
+.workspace-title-sep { color: #cbd5e1; font-weight: 400; margin: 0 6px; }
+.workspace-headcount {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: .9rem;
+  color: #64748b;
+}
+.headcount-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, .18);
+  flex-shrink: 0;
+}
+.headcount-value { font-weight: 800; color: #0b0f19; font-variant-numeric: tabular-nums; }
+.headcount-label { font-weight: 600; letter-spacing: .02em; }
+.filtered-chip {
+  margin-left: 6px;
+  font-size: .68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: #1e40af;
+  background: #dbeafe;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+.workspace-controls { display: flex; align-items: center; gap: 12px; }
+.workspace-date-steps { display: flex; align-items: center; gap: 4px; }
+.date-step-btn {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+  color: #475569;
+  font-size: 1.15rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: all .15s ease;
+}
+.date-step-btn:hover { background: #f1f5f9; color: #0b0f19; border-color: #cbd5e1; }
+.workspace-controls .search-input { width: 300px; border-radius: 8px; }
+
+/* ─── Metric cards: perfectly aligned, identical size ──────────── */
+.stats-row { margin-top: 28px; align-items: stretch; }
+.metric-card { display: flex; flex-direction: column; min-height: 420px; }
+.metric-card-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: -.01em;
+}
+
+/* ─── Chronic Offenders placeholder ────────────────────────────── */
+.offenders-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  text-align: center;
+  padding: 96px 32px;
+}
+.offenders-placeholder-icon { font-size: 2.4rem; opacity: .55; }
+.offenders-placeholder .workspace-title { font-size: 1.3rem; }
+.offenders-placeholder-text { margin: 0; max-width: 460px; color: #64748b; font-size: .95rem; line-height: 1.7; }
+
+/* ─── Responsive: collapse sidebar to an icon rail on narrow screens ── */
+@media (max-width: 1024px) {
+  .sidebar-nav { width: 72px; padding: 24px 10px; }
+  .sidebar-brand-text, .sidebar-folder-title, .sidebar-item span:not(.sidebar-item-icon), .sidebar-chevron { display: none; }
+  .sidebar-item { justify-content: center; padding: 12px 0; }
+  .sidebar-folder-header { justify-content: center; padding: 8px 0; }
+  .analyst-dashboard { }
+  .top-navbar { padding: 12px 20px; }
+  .main-workspace { padding: 24px 20px !important; }
+}
+@media (min-width: 1025px) {
+  .workspace-col { margin-left: 272px; }
+}

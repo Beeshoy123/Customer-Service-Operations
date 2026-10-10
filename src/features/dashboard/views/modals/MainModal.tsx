@@ -103,6 +103,21 @@ const SupervisorModalContent = () => {
     return sorted;
   }, [supAgentsList, uiState.agentSortConfig]);
 
+  // S19: hoisted out of the JSX IIFE — was re-filtering orgBurnoutList on every modal render.
+  const supBurnoutList = useMemo(
+    () => metrics.orgBurnoutList.filter((item: any) => item.agent.supervisor === supName),
+    [metrics.orgBurnoutList, supName]
+  );
+
+  // S14: hoisted out of the JSX IIFE (was recomputed inline in the render body).
+  // Same semantics: latest supervisor stats for the selected name, falling back to
+  // the snapshot object when no match exists. Guarded so it is safe before the
+  // early-return below runs (supName is undefined then → falls back to null).
+  const liveSupObj = useMemo(() => {
+    if (!uiState.selectedSupervisorObj) return null;
+    return metrics.supervisorStats.find((s: any) => s.name === uiState.selectedSupervisorObj.name) || uiState.selectedSupervisorObj;
+  }, [metrics.supervisorStats, uiState.selectedSupervisorObj]);
+
   if (!uiState.selectedSupervisorObj) return null;
 
   return (
@@ -115,7 +130,6 @@ const SupervisorModalContent = () => {
             </div>
             <div className="grid grid-cols-6 gap-4">
               {(() => {
-                  const liveSupObj = metrics.supervisorStats.find((s: any) => s.name === uiState.selectedSupervisorObj.name) || uiState.selectedSupervisorObj;
                   const aData = liveSupObj.activeData;
 
 
@@ -306,7 +320,6 @@ const SupervisorModalContent = () => {
 
 
             {uiState.activeSupAiTool === 'burnout' && (() => {
-              const supBurnoutList = metrics.orgBurnoutList.filter((item: any) => item.agent.supervisor === uiState.selectedSupervisorObj.name);
               return (
                 <div className="bg-white border border-slate-200 rounded-xl p-8 shadow-sm">
                   <div className="mb-6 border-b border-slate-100 pb-4">

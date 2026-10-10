@@ -22,13 +22,8 @@ import { detectGranularity } from './granularityDetector';
 import { validateNormalizedRows } from './validation';
 import type { ImportOptions, ImportProgress, ImportResult, ImportSourceSummary, ImportWarning, MappingDiagnostic, NormalizedRow } from './types';
 
-const yieldToEventLoop = () => new Promise((resolve) => setTimeout(resolve, 0));
-
-const createAbortError = () => {
-  const error = new Error('Import cancelled.');
-  (error as Error & { name?: string }).name = 'AbortError';
-  return error;
-};
+// S8: helpers now owned by ./asyncUtils (single source for the import pipeline).
+import { createAbortError, yieldToEventLoop } from './asyncUtils';
 
 const throwIfAborted = (signal?: AbortSignal) => {
   if (signal?.aborted) {
@@ -364,7 +359,7 @@ export const runImportService = async (files: File[], options: ImportOptions = {
               fingerprint: mapping.fingerprint,
             });
           }
-          const validated = validateNormalizedRows(parsed.rows, file.name);
+          const validated = options.dryRun ? { rows: [], warnings: [] } : validateNormalizedRows(parsed.rows, file.name);
           result.rows = validated.rows;
           result.sourceSummary = parsed.sourceSummary;
           result.warnings = validated.warnings;
@@ -376,7 +371,13 @@ export const runImportService = async (files: File[], options: ImportOptions = {
           for (const source of parsed.mappingDiagnostics || []) {
             result.mappingDiagnostics.push(source);
           }
-          if (isLargeFile || fileOptions.forceWorker) {
+          if (options.dryRun) {
+            // Header-scan only: the worker path still maps columns, but we drop
+            // rows/validation/merge — account detection needs names, not data.
+            result.rows = [];
+            result.warnings = [];
+            result.sourceSummary = parsed.sourceSummary || [];
+          } else if (isLargeFile || fileOptions.forceWorker) {
             // Worker already mapped, validated, and merged the rows.
             result.rows = parsed.rows;
             result.warnings = parsed.warnings;

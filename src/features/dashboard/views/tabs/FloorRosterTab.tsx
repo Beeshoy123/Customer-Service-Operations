@@ -29,15 +29,8 @@ export const FloorRosterTab = () => {
       </thead>
       <tbody>
         {(() => {
-          const queries = uiState.searchQuery.toLowerCase().split(',').map((q: any) => q.trim()).filter((q: any) => q);
-          let activeOamName: string | null = null;
-          
-          if (queries.length > 0) {
-              const searchedOams = [...new Set(dashData.agents.map((a: any) => a.oam).filter((o: any) => o && queries.some((q: any) => o.toLowerCase().includes(q))))];
-              if (searchedOams.length === 1) {
-                  activeOamName = searchedOams[0] as string;
-              }
-          }
+          // S13: singleSearchedOam is computed once in useDashboardMetrics and shared here.
+          const activeOamName: string | null = metrics.singleSearchedOam;
 
 
           const rollupRow = activeOamName ? (

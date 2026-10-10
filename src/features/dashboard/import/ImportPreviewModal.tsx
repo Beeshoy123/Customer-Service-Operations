@@ -333,6 +333,10 @@ export const findMatchingSheets = (sourceIdx: number, sheetStates: LocalSheetSta
   const source = sheetStates[sourceIdx];
   if (!source) return [];
 
+  // NOTE (S7): this is NOT a fourth header-normalizer. `m.normalized` is already
+  // output of importPolicy.normalizeHeader; this only lowercases/trims already
+  // normalized field names for sheet-signature comparison. Different input,
+  // different contract — do not "unify" it with normalizeHeader.
   const normalizeHeaders = (state: LocalSheetState): string =>
     state.columnMappings
       .map((m) => m.normalized.toLowerCase().trim())

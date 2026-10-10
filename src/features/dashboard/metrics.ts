@@ -41,6 +41,14 @@ export const useDashboardMetrics = ({
     [searchQuery]
   );
 
+  // S13: the "exactly one OAM matches the search" lookup was recomputed inline
+  // in three places (here, TopNavbar, FloorRosterTab). Compute once, share.
+  const searchedOams = useMemo(
+    () => [...new Set(agents.map((a) => a.oam).filter((o) => o && parsedQueries.some((q) => o.toLowerCase().includes(q))))],
+    [agents, parsedQueries]
+  );
+  const singleSearchedOam = searchedOams.length === 1 ? searchedOams[0] : null;
+
   const filteredAgents = useMemo(
     () => agents.filter((a) => agentMatchesSearch(a, parsedQueries)),
     [agents, parsedQueries]
@@ -253,9 +261,8 @@ export const useDashboardMetrics = ({
 
     let overallName = `${oamName} (Manager Overall)`;
     if (!isSearchEmpty) {
-      const searchedOams = [...new Set(agents.map((a) => a.oam).filter((o) => o && queries.some((q) => o.toLowerCase().includes(q))))];
-      if (searchedOams.length === 1) {
-        overallName = `${searchedOams[0]} (OAM Overall)`;
+      if (singleSearchedOam) {
+        overallName = `${singleSearchedOam} (OAM Overall)`;
       } else if (queries.length === 1) {
         overallName = `Search: ${queries[0].toUpperCase()}`;
       }
@@ -291,15 +298,27 @@ export const useDashboardMetrics = ({
           }
         });
       } else {
+        // S22: pre-compute date -> week buckets once per recompute instead of
+        // calling getWeekNumber for every (week x date) pair in the nested loop.
+        const weekBuckets = new Map();
+        dates.forEach((date) => {
+          const wk = getWeekNumber(date);
+          let bucket = weekBuckets.get(wk);
+          if (!bucket) {
+            bucket = [];
+            weekBuckets.set(wk, bucket);
+          }
+          bucket.push(date);
+        });
+
         finalDates.forEach((week) => {
+          const bucketDates = weekBuckets.get(week) || [];
           let currentWeekRecords = [];
-          dates.forEach((date) => {
-            if (getWeekNumber(date) === week) {
-              agentList.forEach((a) => {
-                const hist = historicalData[a.ccms] || {};
-                if (hist[date]) currentWeekRecords.push(hist[date]);
-              });
-            }
+          bucketDates.forEach((date) => {
+            agentList.forEach((a) => {
+              const hist = historicalData[a.ccms] || {};
+              if (hist[date]) currentWeekRecords.push(hist[date]);
+            });
           });
 
           if (isCumulative) {
@@ -402,7 +421,11 @@ export const useDashboardMetrics = ({
     return computeRepeatOffenders(agents, historicalData, targets, repeatOffenderMetrics);
   }, [agents, historicalData, hasUploadedData, repeatOffenderMetrics]);
 
-  return {
+  // S3 — memoized return: every key above is a useMemo result (or derived
+  // synchronously from one), so this object keeps its identity until an input
+  // to one of the memos actually changes. That is what lets App.tsx's ctxValue
+  // memo hit and stops all 12 view components re-rendering per keystroke.
+  return useMemo(() => ({
     mtdLeaderData,
     activeLeaderData,
     supervisorStats,
@@ -413,5 +436,10 @@ export const useDashboardMetrics = ({
     runChartData,
     sortedSupervisors,
     repeatOffenders,
-  };
+    singleSearchedOam, // S13: shared "one OAM matches search" result (TopNavbar / FloorRosterTab)
+  }), [
+    mtdLeaderData, activeLeaderData, supervisorStats, paretoData,
+    orgBurnoutList, dowData, allActiveDates, runChartData,
+    sortedSupervisors, repeatOffenders, singleSearchedOam,
+  ]);
 };

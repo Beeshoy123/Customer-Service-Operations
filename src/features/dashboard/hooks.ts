@@ -145,14 +145,32 @@ export const useDashboardData = (onDataReset = null, accountName = '', onImportC
       setActiveTimeframe, setSelectedDate, setSelectedDow,
     });
 
-  return {
+  // S3 — memoized return (recommendations.md): the identity changes only when
+  // one of the listed values changes. Every non-listed member is referentially
+  // stable by construction: `resetDashboard` and the batch/upload callbacks are
+  // useCallback, the setters come from state.ts's own useState calls, the two
+  // refs never change identity, `monthLabel` is a module-level helper import,
+  // and getAgentDataForTimeframe / handleDateChange / getTopHeadlineMonth are
+  // useCallback-wrapped in timeframe.ts (agentDataCache is the only signal
+  // they need — it recomputes whenever any value they read changes).
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- see rationale above; setters/refs/callbacks omitted deliberately.
+  return useMemo(() => ({
     agents, supervisors, oamName, historicalData, hasUploadedData, uploadStatus, batchImportSummary,
     handleFileUpload, handleFileDrop, handleAutomaticImport, handleAutomaticFileUpload, continueAutomaticImport, mappingReview, rateMergeStyle, setRateMergeStyle, applyBatchImport, resetDashboard,
     accountProfile, hasSavedAccountProfile, importPreview, openImportPreview, closeImportPreview, confirmImportPreview,
     activeTimeframe, setActiveTimeframe, selectedWeek, setSelectedWeek, selectedDate, setSelectedDate,
     selectedDow, setSelectedDow, selectedMonth, setSelectedMonth, loadedMonths, monthLabel,
     getAgentDataForTimeframe, handleDateChange, getTopHeadlineMonth,
-  };
+  }), [
+    agents, supervisors, oamName, historicalData, hasUploadedData, uploadStatus, batchImportSummary,
+    mappingReview, rateMergeStyle, accountProfile, hasSavedAccountProfile, importPreview,
+    activeTimeframe, selectedWeek, selectedDate, selectedDow, selectedMonth, loadedMonths,
+    handleFileUpload, handleFileDrop, handleAutomaticImport, handleAutomaticFileUpload, continueAutomaticImport,
+    setRateMergeStyle, applyBatchImport, resetDashboard,
+    openImportPreview, closeImportPreview, confirmImportPreview,
+    getAgentDataForTimeframe, handleDateChange, getTopHeadlineMonth,
+    setActiveTimeframe, setSelectedWeek, setSelectedDate, setSelectedDow, setSelectedMonth,
+  ]);
 };
 
 // ─── AI Network & Resilience Helpers ──────────────────────────────────────
@@ -413,7 +431,11 @@ export const useAiTools = ({
     executeGeminiAction(context, systemPrompt, setAskAiResponse, setAskAiLoading, 'Unable to answer right now. Please try again.');
   }, []);
 
-  return {
+  // S3 — memoized return: the 15 report/loading/query state values plus
+  // resetAiStates and the six generate* callbacks (all useCallback([]) reading
+  // varsRef, so stable by construction). The object identity now only changes
+  // when a report state actually changes.
+  return useMemo(() => ({
     report,
     loading,
     teamReport,
@@ -439,5 +461,11 @@ export const useAiTools = ({
     generateApprenticeReport,
     generateDowReport,
     resetAiStates,
-  };
+  }), [
+    report, loading, teamReport, loadingTeam, chartActionPlan, loadingChartActionPlan,
+    correlationReport, loadingCorrelation, apprenticeReport, loadingApprentice,
+    dowReport, loadingDow, askAiQuery, askAiResponse, askAiLoading,
+    handleAskAiSubmit, generateTeamReport, generateExpertReport, generateChartActionPlan,
+    generateCorrelationReport, generateApprenticeReport, generateDowReport, resetAiStates,
+  ]);
 };

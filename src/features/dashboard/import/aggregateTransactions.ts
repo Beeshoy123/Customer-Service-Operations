@@ -1,6 +1,6 @@
 import type { ImportFieldKind } from './importPolicy';
-import { FIELD_ALIASES, findCanonicalField, findPairedCountField } from './importPolicy.ts';
-import { normalizeHeaderToField } from './schemaNormalizer.ts';
+import { FIELD_ALIASES, findCanonicalField, findPairedCountField } from './importPolicy';
+import { normalizeHeaderToField } from './schemaNormalizer';
 import type { NormalizedRow } from './types';
 
 // Calculation convention: add new account-specific aggregation styles as separate

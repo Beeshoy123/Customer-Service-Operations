@@ -21,30 +21,17 @@ export const TopNavbar = React.memo(() => {
   }, [uiHandlers]);
 
 
-  let headerName = dashData.oamName;
-  const queries = uiState.searchQuery.toLowerCase().split(',').map((q: any) => q.trim()).filter((q: any) => q);
-  if (queries.length > 0) {
-      const searchedOams = [...new Set(dashData.agents.map((a: any) => a.oam).filter((o: any) => o && queries.some((q: any) => o.toLowerCase().includes(q))))];
-      if (searchedOams.length === 1) {
-          headerName = searchedOams[0]; 
-      }
-  }
+  // Frontend redesign: the department title + headcount moved into the Right
+  // Workspace header (FloorHeader). This bar is now a slim utility strip:
+  // account/batch summary on the left, tool buttons (Assistant / Timeframe /
+  // Metrics / Exit) on the right. Navigation lives in SidebarNav.
 
 
   return (
     <div className="top-navbar">
       <div className="top-navbar-inner">
         <div className="header-info">
-          <div className="flex flex-col">
-            <h1 className="text-xl font-bold m-0 mb-1 text-white tracking-wide">
-              {headerName} <span className="opacity-50 mx-1 font-normal">|</span> Floor
-            </h1>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-slate-400 italic">
-                {uiState.searchQuery ? 'Filtered View' : `${dashData.supervisors.length} Supervisors / ${dashData.agents.length} Agents`}
-              </span>
-            </div>
-          </div>
+          <span className="navbar-account">{dashData.accountName || 'Customer Service Operations'}</span>
         </div>
         
         <div className="action-buttons">

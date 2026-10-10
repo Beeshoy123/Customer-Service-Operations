@@ -17,13 +17,13 @@
 import { useCallback } from 'react';
 import { applyAccountProfile, DEFAULT_ACCOUNT_PROFILE } from './config';
 import { getResolveWindowField, RESOLVE_WINDOW_FIELDS } from './import/importPolicy';
-import {
-  convertWorkbookToSheetsViaWorker,
-  parseCsvFileText,
-  runImportService,
-  selectSheetsWithDetails,
-} from './import';
+// S5: de-barrelled — direct module paths replace the ./import barrel.
+import { convertWorkbookToSheetsViaWorker } from './import/workbookLoader';
+import { parseCsvFileText } from './import/csvParser';
+import { runImportService } from './import/importService';
+import { selectSheetsWithDetails } from './import/sheetSelector';
 import { detectFileType } from './import/fileTypeDetector';
+import { detectAccountFromData } from './import/accountDetector';
 import { loadAccountProfile, saveAccountProfile } from '../accountSetup/account-profile-storage';
 
 // ─── Mapping-review & account-profile helpers ──────────────────────────────
@@ -210,6 +210,9 @@ export interface UploadFlowDeps {
   setMappingReview: (value: any) => void;
   applyBatchImport: any;
   processFile: any;
+  // Auto-detection fallback: called when the data could not be matched to any
+  // saved account, so the UI can ask for the account inside the wizard.
+  onRequestAccountSelection?: () => void;
 }
 
 export const useUploadFlow = (deps: UploadFlowDeps) => {
@@ -218,7 +221,7 @@ export const useUploadFlow = (deps: UploadFlowDeps) => {
     pendingAutomaticImport, importAbortControllerRef, openImportPreview,
     setUploadStatus, setBatchImportSummary, setPendingAutomaticImport,
     setPendingAutomaticFiles, setMappingReview, scheduleStatusClear,
-    applyBatchImport, processFile,
+    applyBatchImport, processFile, onRequestAccountSelection,
   } = deps;
 
   const handleMultipleFiles = useCallback(
@@ -397,7 +400,66 @@ export const useUploadFlow = (deps: UploadFlowDeps) => {
       const filesToImport: any = Array.from(files || []).filter(Boolean);
       if (!filesToImport.length) return;
 
-      const customMetricOverrides = saveCustomMetricDecisions(accountName, customMetricAnswers);
+      // Account auto-detection: the drop zone no longer asks "which account?"
+      // up front. When no account is selected yet, we parse first and match
+      // the scanned headers against every saved account profile's remembered
+      // columns. If detection fails, onRequestAccountSelection surfaces the
+      // question inside the existing wizard instead of blocking the upload.
+      let effectiveAccountName = accountName;
+      let detectedFiles = false;
+      if (!effectiveAccountName) {
+        try {
+          const scan = await runImportService(filesToImport, {
+            signal: undefined,
+            detectDuplicateFiles: false,
+            dryRun: true,
+            forceWorker: true,
+          });
+          const names = [
+            ...(scan.mappingDiagnostics || []).map((item: any) => item.header),
+            ...(scan.sourceSummary || []).flatMap((source: any) => [source.fileName, source.sheetName]),
+          ];
+          const detected = detectAccountFromData(names);
+          if (detected) {
+            effectiveAccountName = detected;
+            onAccountDetected?.(detected);
+            setUploadStatus({
+              type: 'info',
+              message: `Recognized account "${detected}" from the data in your files.`,
+              progress: 5,
+            });
+          } else {
+            detectedFiles = true;
+            setPendingAutomaticFiles(filesToImport);
+            setMappingReview([{
+              fileName: filesToImport[0]?.name || 'uploaded files',
+              sheetName: '',
+              header: '__account__',
+              mappedField: null,
+              confidence: 'low',
+              unrecognizedPlausible: false,
+            }] as any);
+            setUploadStatus(null);
+            onRequestAccountSelection?.();
+            return;
+          }
+        } catch (error) {
+          if (error instanceof Error && error.name === 'AbortError') {
+            setUploadStatus({ type: 'info', message: 'Import cancelled.' });
+            scheduleStatusClear(2000);
+            return;
+          }
+          console.error('Account detection scan failed:', error);
+          setUploadStatus({
+            type: 'error',
+            message: error instanceof Error ? error.message : 'The files could not be read.',
+          });
+          scheduleStatusClear(6000);
+          return;
+        }
+      }
+
+      const customMetricOverrides = saveCustomMetricDecisions(effectiveAccountName, customMetricAnswers);
       const effectiveMappingOverrides = { ...mappingOverrides, ...customMetricOverrides };
 
       importAbortControllerRef.current?.abort();

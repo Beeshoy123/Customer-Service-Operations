@@ -97,7 +97,10 @@ export const useDashboardDataState = (persistedState: any, accountName: string, 
 
   // One flat bundle — useDashboardData destructures all of it and forwards it
   // through the unchanged 37-key return object, so no consumer changes.
-  return {
+  // S3: memoized so `state` keeps a stable identity when nothing changed —
+  // useState setters and the refs/callbacks above are referentially stable,
+  // so the deps below only list the values that can actually change.
+  return useMemo(() => ({
     accountProfile, hasSavedAccountProfile,
     activeTimeframe, setActiveTimeframe,
     selectedWeek, setSelectedWeek,
@@ -122,5 +125,14 @@ export const useDashboardDataState = (persistedState: any, accountName: string, 
     importAbortControllerRef,
     onImportColumnsScanRef,
     loadedMonths,
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- S3: the omitted members are useState setters / useRef objects / useCallback-stable functions (setters from this file's own useState calls, scheduleStatusClear/openImportPreview/closeImportPreview/setSelectedMonth are useCallback([]), setRateMergeStyle is useCallback([accountName]) — covered via accountProfile/rateMergeStyle which recompute on accountName). Listing them adds no invalidation signal; the listed values are exactly the changing state.
+  }), [
+    accountProfile, hasSavedAccountProfile,
+    activeTimeframe, selectedWeek, selectedDate, selectedDow,
+    selectedMonth, selectedMonthChosen,
+    agents, supervisors, oamName, historicalData, hasUploadedData,
+    uploadStatus, batchImportSummary, importPreview, mappingReview,
+    pendingAutomaticImport, pendingAutomaticFiles, rateMergeStyle,
+    loadedMonths,
+  ]);
 };
