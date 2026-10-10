@@ -23,7 +23,7 @@ import { parseCsvFileText } from './import/csvParser';
 import { runImportService } from './import/importService';
 import { selectSheetsWithDetails } from './import/sheetSelector';
 import { detectFileType } from './import/fileTypeDetector';
-import { detectAccountFromData } from './import/accountDetector';
+import { detectAccountWithAliases } from './import/accountDetector';
 import { listAccountNames, loadAccountProfile, saveAccountProfile } from '../accountSetup/account-profile-storage';
 
 // ─── Mapping-review & account-profile helpers ──────────────────────────────
@@ -226,6 +226,7 @@ export const useUploadFlow = (deps: UploadFlowDeps) => {
     pendingAutomaticImport, importAbortControllerRef, openImportPreview,
     setUploadStatus, setBatchImportSummary, setPendingAutomaticImport,
     setPendingAutomaticFiles, setMappingReview, scheduleStatusClear,
+    setAwaitingAccountChoice,
     applyBatchImport, processFile, onAccountDetected, onRequestAccountSelection,
   } = deps;
 
@@ -236,6 +237,17 @@ export const useUploadFlow = (deps: UploadFlowDeps) => {
   useEffect(() => {
     pendingAutomaticFilesRef.current = deps.pendingAutomaticFiles;
   }, [deps.pendingAutomaticFiles]);
+
+  // Same ref-mirror trick for accountName (the second half of the resume bug):
+  // App calls resumePendingImport from an effect that fires in the SAME commit
+  // as setAccountName, so handleAutomaticImport's closure still captures the
+  // pre-selection (empty) account. Without this mirror the resumed import
+  // re-runs detection with accountName === '', fails again, and pauses forever
+  // — the "Import for this account" button looked dead. The ref is updated
+  // synchronously here, before any effect runs, so the resumed call always
+  // sees the account the user just picked.
+  const accountNameRef = useRef<string>(accountName);
+  accountNameRef.current = accountName || '';
 
   const handleMultipleFiles = useCallback(
     async (files: any) => {
@@ -418,7 +430,13 @@ export const useUploadFlow = (deps: UploadFlowDeps) => {
       // the scanned headers against every saved account profile's remembered
       // columns. If detection fails, onRequestAccountSelection surfaces the
       // question inside the existing wizard instead of blocking the upload.
-      let effectiveAccountName = accountName;
+      // Read through the ref mirror, not the closure: resumePendingImport is
+      // called from an effect that fires in the SAME commit as setAccountName,
+      // so `accountName` captured here can still be '' on the resumed run. The
+      // ref is written synchronously above, so an explicitly picked account is
+      // always honored — and detection is skipped entirely (a user choice beats
+      // auto-detection).
+      let effectiveAccountName = accountNameRef.current || accountName;
       if (!effectiveAccountName) {
         try {
           const scan = await runImportService(filesToImport, {
@@ -430,6 +448,10 @@ export const useUploadFlow = (deps: UploadFlowDeps) => {
           const names = [
             ...(scan.mappingDiagnostics || []).map((item) => item.header),
             ...(scan.headers || []),
+            // Sampled cell text: lets alias tokens like "VZ" (→ Verizon
+            // Consumer) inside a Brand/Account column drive detection even
+            // when the headers themselves match no saved profile.
+            ...(scan.sampleCellTexts || []),
           ];
           // Remember every recognized column name for the account we import
           // under, so detection has a growing fingerprint to match against on
@@ -464,7 +486,7 @@ export const useUploadFlow = (deps: UploadFlowDeps) => {
               if (changed) saveAccountProfile(profile);
             } catch { /* non-critical: fingerprint memory only */ }
           };
-          const detected = detectAccountFromData(names);
+          const detected = detectAccountWithAliases(names);
           if (detected) {
             effectiveAccountName = detected;
             onAccountDetected?.(detected);
@@ -497,6 +519,12 @@ export const useUploadFlow = (deps: UploadFlowDeps) => {
                 : 'I could not recognize this data and there are no saved accounts yet. Set up the first account to continue.',
             }]);
             setUploadStatus(null);
+            // Flag the pause so ImportLanding shows the saved-accounts card.
+            // Without this, awaitingAccountChoice stayed false forever and the
+            // "Import for this account" UI never appeared (regression: the hook
+            // accepted the setter but never called it). Cleared by
+            // resetDashboard / a successful resume below.
+            setAwaitingAccountChoice(true);
             onRequestAccountSelection?.();
             return;
           }
@@ -635,7 +663,7 @@ export const useUploadFlow = (deps: UploadFlowDeps) => {
         }
       }
     },
-    [accountName, accountProfile, applyBatchImport, hasSavedAccountProfile, importAbortControllerRef, onAccountDetected, onRequestAccountSelection, rateMergeStyle, setBatchImportSummary, setMappingReview, setPendingAutomaticFiles, setPendingAutomaticImport, setUploadStatus, scheduleStatusClear]
+    [accountName, accountProfile, applyBatchImport, hasSavedAccountProfile, importAbortControllerRef, onAccountDetected, onRequestAccountSelection, rateMergeStyle, setAwaitingAccountChoice, setBatchImportSummary, setMappingReview, setPendingAutomaticFiles, setPendingAutomaticImport, setUploadStatus, scheduleStatusClear]
   );
 
   // Detection-fallback resume: the import was paused before parsing because
@@ -651,8 +679,11 @@ export const useUploadFlow = (deps: UploadFlowDeps) => {
     if (!files.length) return;
     setPendingAutomaticFiles([]);
     setMappingReview([]);
+    // The user answered the account question — leave the awaiting state even
+    // if the resumed run later pauses again (it will re-set the flag itself).
+    setAwaitingAccountChoice(false);
     await handleAutomaticImport(files);
-  }, [handleAutomaticImport, setPendingAutomaticFiles, setMappingReview]);
+  }, [handleAutomaticImport, setPendingAutomaticFiles, setMappingReview, setAwaitingAccountChoice]);
 
   const continueAutomaticImport = useCallback(
     async (mappingOverrides: any = {}, customMetricAnswers: any = {}) => {

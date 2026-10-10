@@ -136,6 +136,11 @@ export const useDashboardData = (onDataReset = null, accountName = '', onImportC
     setUploadStatus, setBatchImportSummary, setPendingAutomaticImport,
     setPendingAutomaticFiles, setMappingReview, scheduleStatusClear,
     applyBatchImport, processFile,
+    // Resume path plumbing: uploadFlow's UploadFlowDeps requires these (the
+    // detection-fallback pause sets awaitingAccountChoice, and the file list
+    // is mirrored through a ref inside uploadFlow to dodge stale closures).
+    // They come from state.ts's own useState calls — referentially stable.
+    pendingAutomaticFiles, awaitingAccountChoice, setAwaitingAccountChoice,
     // Auto-detection: App owns accountName, so the callbacks come in as props.
     // varsRef-style stable wrappers keep handleAutomaticImport's identity from
     // churning when App re-renders (S3 memoization rule).

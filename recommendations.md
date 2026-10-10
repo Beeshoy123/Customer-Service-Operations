@@ -120,6 +120,13 @@ The rest of the pipeline (`schemaNormalizer.ts`, `importService.ts`, `helpers.ts
 
 ## Critical
 
+### Import account-picker regression — FIXED 2026-10-11 (verified e2e)
+The detection-fallback flow ("I could not recognize this data…" card) had three stacked defects, all closed and proven by `python3 e2e_account_picker.py` (13/13 checks PASS):
+1. **Hidden dropdown / dead button (UI):** `ImportLanding.tsx` used an `input + datalist` whose suggestions are invisible in the dark theme, plus a disabled-until-selected button with no feedback. Replaced with a visible `<select aria-label="Choose a saved account">` (saved accounts + "Other/new account…"), an always-clickable "Import for this account" button, and helper text ("Pick an account above first") when clicked empty.
+2. **Card never appeared (state flag):** `useUploadFlow` accepted `setAwaitingAccountChoice` but never called it on detection failure, so `awaitingAccountChoice` stayed false. Now set to `true` at the pause site and cleared in `resumePendingImport`.
+3. **Resume re-paused forever (stale closure):** App's resume effect fires in the same commit as `setAccountName`, so `handleAutomaticImport`'s closure saw `accountName === ''` and re-ran detection. Fixed with a synchronous `accountNameRef` mirror read at the `effectiveAccountName` seed (user choice beats auto-detection; detection is skipped entirely when an account was picked).
+Also landed: `VZ → Verizon Consumer` word-boundary alias in `detectAccountWithAliases` (Fios precedence kept), with `sampleCellTexts` from the dry-run scan feeding detection so cell-level tokens count, not just headers. No `__account__` sentinel anywhere (asserted in e2e). Auto-detection for recognizable files still works (scenario 2 in the e2e script).
+
 Findings that are **live defects, not code smells** — things that are broken right now, or that will silently ship a secret or a customer dataset. Everything here was found by static reading of `src/` during the whole-codebase audit; **no code was changed and nothing was executed at runtime**, so step 0 of every fix is to reproduce the reported path in the browser before touching anything.
 
 | # | Finding | Severity | Status |

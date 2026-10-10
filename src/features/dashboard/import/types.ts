@@ -112,6 +112,10 @@ export type ImportResult = ImportSummary & {
   /** Only populated on dryRun header scans (account auto-detection): every
    * distinct column header seen across all files/sheets, in first-seen order. */
   headers?: string[];
+  /** Only populated on dryRun alias scans: sampled cell text (CSV rows /
+   * workbook sheets) used for account-alias detection, e.g. a column full of
+   * "VZ" values that identifies the file as Verizon Consumer data. */
+  sampleCellTexts?: string[];
 };
 
 export type MappingDiagnostic = {

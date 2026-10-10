@@ -56,14 +56,42 @@ export const ImportLanding: React.FC<ImportLandingProps> = ({ accountName, onAcc
   const [mappingAnswers, setMappingAnswers] = useState<Record<string, string | null>>({});
   const [accountChoice, setAccountChoice] = useState('');
   const accountChoiceItem = mappingReview.find((item) => item.accountChoice);
-  // Saved accounts offered as suggestions in the detection-fallback card.
-  const savedAccountNames = (() => {
+  // Saved accounts offered in the detection-fallback card. Read imperatively
+  // at render time (never memoized): accounts can be created while the import
+  // is paused, and a stale snapshot used to leave the picker empty with no way
+  // to pick — which made "Import for this account" look dead.
+  const getSavedAccountNames = (): string[] => {
     try {
       return listAccountNames();
     } catch {
       return [];
     }
-  })();
+  };
+  const savedAccountNames = getSavedAccountNames();
+  // Refresh the list whenever the fallback card appears or the account name
+  // changes (e.g. right after "Set up a new account" completes).
+  useEffect(() => {
+    if (!accountChoiceItem) return;
+    setAccountChoice((current) => {
+      const names = getSavedAccountNames();
+      if (current && !names.includes(current)) {
+        setOtherAccountMode(true);
+      } else if (current && names.includes(current)) {
+        setSelectedAccount(current);
+      }
+      return current;
+    });
+  }, [accountChoiceItem]);
+  // Visible <select> state. `otherAccountMode` reveals a free-text input for
+  // brand-new account names (the old input+datalist hid the saved accounts and
+  // its native popup frequently failed to register, leaving users staring at
+  // a disabled-looking button).
+  const [selectedAccount, setSelectedAccount] = useState('');
+  const [otherAccountMode, setOtherAccountMode] = useState(false);
+  // When true, the button is always clickable; clicking without a selection
+  // shows helper text instead of silently doing nothing.
+  const hasAccountOptions = otherAccountMode || savedAccountNames.length > 0;
+  const effectiveAccountChoice = otherAccountMode ? accountChoice.trim() : selectedAccount.trim();
   const [customMetricAnswers, setCustomMetricAnswers] = useState<Record<string, {
     decision?: 'accept' | 'ignore';
     label?: string;
@@ -159,9 +187,73 @@ export const ImportLanding: React.FC<ImportLandingProps> = ({ accountName, onAcc
   // Detection-fallback card: the import is paused ONLY because the data did
   // not match a saved account. Answering here resumes with the same files —
   // no fake __account__ column ever reaches the mapping wizard.
+  const [accountHint, setAccountHint] = useState('');
   const resumeWithAccount = (name: string) => {
-    if (!name || !onAccountSelected) return;
+    if (!onAccountSelected) return;
+    if (!name) {
+      // The button is deliberately never disabled — a dead-looking button was
+      // half of this bug report. Clicking without a choice explains itself.
+      setAccountHint(hasAccountOptions
+        ? 'Pick an account above first (or choose "Other / new account…").'
+        : 'No saved accounts yet — type a name for the first one.');
+      return;
+    }
+    setAccountHint('');
     onAccountSelected(name);
+  };
+  // One picker rendered in BOTH places the fallback question can appear
+  // (landing card + wizard step): a visible <select> of saved accounts so the
+  // choices are always on screen — the old datalist hid them behind a text
+  // input that looked like an empty box.
+  const renderAccountPicker = (compact: boolean) => {
+    const names = getSavedAccountNames();
+    const listId = compact ? 'import-account-select-landing' : 'import-account-select-step';
+    return (
+      <>
+        {!otherAccountMode && (
+          <select
+            id={listId}
+            aria-label="Choose a saved account"
+            value={selectedAccount}
+            onChange={(event) => {
+              const value = event.target.value;
+              if (value === '__other__') {
+                setOtherAccountMode(true);
+                setSelectedAccount('');
+                return;
+              }
+              setSelectedAccount(value);
+              setAccountHint('');
+            }}
+          >
+            <option value="">Select an account…</option>
+            {names.map((name) => <option key={name} value={name}>{name}</option>)}
+            <option value="__other__">Other / new account…</option>
+          </select>
+        )}
+        {otherAccountMode && (
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <input
+              type="text"
+              autoFocus
+              placeholder="New account name…"
+              value={accountChoice}
+              onChange={(event) => setAccountChoice(event.target.value)}
+              style={compact
+                ? { flex: '1 1 220px', padding: '8px 10px', borderRadius: '8px', border: '1px solid #3f3f46', background: '#18181b', color: '#fafafa' }
+                : undefined}
+            />
+            <button
+              type="button"
+              onClick={() => { setOtherAccountMode(false); setAccountChoice(''); }}
+              style={{ padding: '8px 14px', borderRadius: '8px', border: '1px solid #3f3f46', background: 'transparent', color: '#d4d4d8', cursor: 'pointer' }}
+            >
+              Back to saved accounts
+            </button>
+          </div>
+        )}
+      </>
+    );
   };
   const customerExperienceChoices = mappingReview.filter(
     (item) => item.choiceGroup === 'customer-experience-agent-survey'
@@ -261,22 +353,11 @@ export const ImportLanding: React.FC<ImportLandingProps> = ({ accountName, onAcc
               <strong>{accountChoiceItem.choiceQuestion}</strong>
               <p>Your files are already scanned and safe — pick the account below or set up a new one, and the import resumes right where it paused. No need to re-upload.</p>
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', marginTop: '10px' }}>
-                <input
-                  type="text"
-                  list="import-account-options"
-                  placeholder={savedAccountNames.length ? 'Type or pick an account…' : 'New account name…'}
-                  value={accountChoice}
-                  onChange={(event) => setAccountChoice(event.target.value)}
-                  style={{ flex: '1 1 220px', padding: '8px 10px', borderRadius: '8px', border: '1px solid #3f3f46', background: '#18181b', color: '#fafafa' }}
-                />
-                <datalist id="import-account-options">
-                  {savedAccountNames.map((name) => <option key={name} value={name} />)}
-                </datalist>
+                {renderAccountPicker(true)}
                 <button
                   type="button"
-                  disabled={!accountChoice.trim()}
-                  onClick={() => resumeWithAccount(accountChoice.trim())}
-                  style={{ padding: '8px 14px', borderRadius: '8px', border: 'none', background: accountChoice.trim() ? '#2563eb' : '#475569', color: '#fff', cursor: accountChoice.trim() ? 'pointer' : 'not-allowed', fontWeight: 600 }}
+                  onClick={() => resumeWithAccount(effectiveAccountChoice)}
+                  style={{ padding: '8px 14px', borderRadius: '8px', border: 'none', background: '#2563eb', color: '#fff', cursor: 'pointer', fontWeight: 600 }}
                 >
                   Import for this account
                 </button>
@@ -288,6 +369,7 @@ export const ImportLanding: React.FC<ImportLandingProps> = ({ accountName, onAcc
                   Set up a new account
                 </button>
               </div>
+              {accountHint && <p style={{ marginTop: 8, color: '#fbbf24', fontSize: 13 }}>{accountHint}</p>}
             </div>
           )}
 
@@ -469,23 +551,16 @@ export const ImportLanding: React.FC<ImportLandingProps> = ({ accountName, onAcc
             {currentReviewItem?.accountChoice ? (
               <>
                 <strong>{savedAccountNames.length ? 'Pick a saved account' : 'Name this account'}</strong>
-                <input
-                  type="text"
-                  list="import-account-options"
-                  placeholder={savedAccountNames.length ? 'Type or pick an account…' : 'New account name…'}
-                  value={accountChoice}
-                  onChange={(event) => setAccountChoice(event.target.value)}
-                />
-                <datalist id="import-account-options">
-                  {savedAccountNames.map((name) => <option key={name} value={name} />)}
-                </datalist>
+                {renderAccountPicker(false)}
                 <button
                   type="button"
-                  disabled={!accountChoice.trim()}
-                  onClick={() => resumeWithAccount(accountChoice.trim())}
+                  onClick={() => resumeWithAccount(effectiveAccountChoice)}
                 >
                   Import for this account
                 </button>
+                {accountHint && (
+                  <p style={{ color: '#fbbf24', fontSize: 13, margin: '6px 0 0' }}>{accountHint}</p>
+                )}
                 <button type="button" onClick={() => onOpenSetup?.()}>
                   Set up a new account
                 </button>

@@ -35,7 +35,7 @@ const notifyProgress = (options: ImportOptions, progress: ImportProgress) => {
   options.onProgress?.(progress);
 };
 
-const parseTextFile = async (file: File, options: ImportOptions = {}): Promise<{ rows: NormalizedRow[]; sourceSummary: ImportSourceSummary[]; headers: string[]; sampleRows: unknown[][] }> => {
+const parseTextFile = async (file: File, options: ImportOptions = {}): Promise<{ rows: NormalizedRow[]; sourceSummary: ImportSourceSummary[]; headers: string[]; sampleRows: unknown[][]; sampleCellTexts?: string[] }> => {
   throwIfAborted(options.signal);
 
   const text = await file.text();
@@ -102,6 +102,20 @@ const parseTextFile = async (file: File, options: ImportOptions = {}): Promise<{
     rows,
     rowCount: rows.length,
   };
+  // Cheap alias scan (account auto-detection): sample the first text-ish
+  // cells so tokens like "VZ" in a Brand/Account column are visible to the
+  // detector even when no header matches a saved profile.
+  const sampleCellTexts: string[] = [];
+  if (options.dryRun) {
+    outer: for (const row of rows.slice(0, 50)) {
+      for (const cell of row || []) {
+        if (typeof cell === 'string' && cell.trim()) {
+          sampleCellTexts.push(cell.trim());
+          if (sampleCellTexts.length >= 400) break outer;
+        }
+      }
+    }
+  }
   const finalRows = detectGranularity(normalizedTable).classification === 'transaction'
     ? aggregateTransactions(normalizedRows)
     : normalizedRows;
@@ -111,10 +125,31 @@ const parseTextFile = async (file: File, options: ImportOptions = {}): Promise<{
     sourceSummary: [{ fileName: file.name, sheetName: 'CSV', rowCount: finalRows.length }],
     headers,
     sampleRows: rows.slice(0, 50),
+    sampleCellTexts,
   };
 };
 
-const parseWorkbookFile = async (file: File, options: ImportOptions = {}): Promise<{ rows: NormalizedRow[]; sourceSummary: ImportSourceSummary[]; warnings: ImportWarning[]; mappingDiagnostics: MappingDiagnostic[] }> => {
+// Cheap alias scan (account auto-detection): sample the first text-ish cells
+// across sheets so tokens like "VZ" in a Brand/Account column are visible to
+// the detector even when no header matches a saved profile.
+const collectSampleCellTexts = (
+  sheets: Array<{ rows?: unknown[][] } | null | undefined>,
+): string[] => {
+  const texts: string[] = [];
+  outer: for (const sheet of sheets || []) {
+    for (const row of (sheet?.rows || []).slice(0, 50)) {
+      for (const cell of row || []) {
+        if (typeof cell === 'string' && cell.trim()) {
+          texts.push(cell.trim());
+          if (texts.length >= 400) break outer;
+        }
+      }
+    }
+  }
+  return texts;
+};
+
+const parseWorkbookFile = async (file: File, options: ImportOptions = {}): Promise<{ rows: NormalizedRow[]; sourceSummary: ImportSourceSummary[]; warnings: ImportWarning[]; mappingDiagnostics: MappingDiagnostic[]; sampleCellTexts?: string[] }> => {
   throwIfAborted(options.signal);
 
   const threshold = options.largeFileSizeThreshold ?? DEFAULT_LARGE_FILE_SIZE_THRESHOLD;
@@ -131,6 +166,7 @@ const parseWorkbookFile = async (file: File, options: ImportOptions = {}): Promi
       rows: workerResult.rows || [],
       sourceSummary: workerResult.sourceSummary || [],
       warnings: workerResult.warnings || [],
+      ...(options.dryRun ? { sampleCellTexts: collectSampleCellTexts(workerResult.sheets) } : {}),
       mappingDiagnostics: (workerResult.sheets || []).flatMap((sheet) =>
         (sheet.headerRow || []).map((header, index) => {
           const sampleValues = (sheet.rows || []).slice(0, 50).map((row) => row?.[index] as string | number | null | undefined);
@@ -216,7 +252,13 @@ const parseWorkbookFile = async (file: File, options: ImportOptions = {}): Promi
     })
   );
 
-  return { rows: mergedRows, sourceSummary, warnings, mappingDiagnostics: sheetMappingDiagnostics };
+  return {
+    rows: mergedRows,
+    sourceSummary,
+    warnings,
+    mappingDiagnostics: sheetMappingDiagnostics,
+    ...(options.dryRun ? { sampleCellTexts: collectSampleCellTexts(filteredSheets) } : {}),
+  };
 };
 
 /** Maximum number of files parsed concurrently during a multi-file batch. */
@@ -294,6 +336,7 @@ export const runImportService = async (files: File[], options: ImportOptions = {
     warnings: ImportWarning[];
     errors: ImportWarning[];
     mappingDiagnostics: MappingDiagnostic[];
+    sampleCellTexts: string[];
     fileIndex: number;
   };
 
@@ -314,6 +357,7 @@ export const runImportService = async (files: File[], options: ImportOptions = {
         warnings: [],
         errors: [],
         mappingDiagnostics: [],
+        sampleCellTexts: [],
         fileIndex,
       };
 
@@ -363,6 +407,7 @@ export const runImportService = async (files: File[], options: ImportOptions = {
           result.rows = validated.rows;
           result.sourceSummary = parsed.sourceSummary;
           result.warnings = validated.warnings;
+          if (options.dryRun) result.sampleCellTexts = parsed.sampleCellTexts || [];
         } else if (fileType === 'xlsx' || fileType === 'xls' || fileType === 'xlsm') {
           const fileSize = options.fileSize ?? (typeof file?.size === 'number' ? file.size : undefined);
           const isLargeFile = typeof fileSize === 'number' && fileSize >= threshold;
@@ -377,6 +422,7 @@ export const runImportService = async (files: File[], options: ImportOptions = {
             result.rows = [];
             result.warnings = [];
             result.sourceSummary = parsed.sourceSummary || [];
+            result.sampleCellTexts = parsed.sampleCellTexts || [];
           } else if (isLargeFile || fileOptions.forceWorker) {
             // Worker already mapped, validated, and merged the rows.
             result.rows = parsed.rows;
@@ -412,6 +458,7 @@ export const runImportService = async (files: File[], options: ImportOptions = {
   const errors: ImportWarning[] = [];
   const aggregatedRows: NormalizedRow[] = [];
   const sourceSummary: ImportSourceSummary[] = [];
+  const sampleCellTexts: string[] = [];
 
   for (const result of fileResults) {
     for (const warning of result.warnings) {
@@ -428,6 +475,9 @@ export const runImportService = async (files: File[], options: ImportOptions = {
     }
     for (const diagnostic of result.mappingDiagnostics) {
       mappingDiagnostics.push(diagnostic);
+    }
+    for (const text of result.sampleCellTexts) {
+      if (sampleCellTexts.length < 800) sampleCellTexts.push(text);
     }
   }
 
@@ -504,5 +554,7 @@ export const runImportService = async (files: File[], options: ImportOptions = {
     mappingDiagnostics,
     // Dry-run header scan (account auto-detection) needs the raw header names.
     ...(options.dryRun ? { headers: [...new Set(mappingDiagnostics.map((d) => d.header))] } : {}),
+    // Alias scan (e.g. "VZ" → Verizon Consumer): sampled cell text, dry-run only.
+    ...(options.dryRun ? { sampleCellTexts } : {}),
   } as ImportResult;
 };
