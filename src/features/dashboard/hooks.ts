@@ -47,7 +47,7 @@ export const DashboardContext = createContext<any>(null);
 export const useDashboard = () => useContext(DashboardContext);
 
 // ─── Dashboard Data Management Hook ──────────────────────────────────────
-export const useDashboardData = (onDataReset = null, accountName = '', onImportColumnsScan = null) => {
+export const useDashboardData = (onDataReset = null, accountName = '', onImportColumnsScan = null, onAccountDetected = null, onRequestAccountSelection = null) => {
   const persistedState = useMemo(() => readPersistedDashboardState(), []);
 
   // S1(a): the accountProfile memos, the 16 useState declarations, the
@@ -73,6 +73,7 @@ export const useDashboardData = (onDataReset = null, accountName = '', onImportC
     mappingReview, setMappingReview,
     pendingAutomaticImport, setPendingAutomaticImport,
     pendingAutomaticFiles, setPendingAutomaticFiles,
+    awaitingAccountChoice, setAwaitingAccountChoice,
     rateMergeStyle, setRateMergeStyle,
     openImportPreview, closeImportPreview,
     importAbortControllerRef,
@@ -88,6 +89,7 @@ export const useDashboardData = (onDataReset = null, accountName = '', onImportC
       activeTimeframe, selectedWeek, selectedDate, selectedDow, selectedMonth, selectedMonthChosen,
       setAgents, setSupervisors, setHistoricalData, setHasUploadedData, setBatchImportSummary,
       setImportPreview, setMappingReview, setPendingAutomaticImport, setPendingAutomaticFiles,
+      setAwaitingAccountChoice,
       setUploadStatus, setActiveTimeframe, setSelectedWeek, setSelectedDate, setSelectedDow,
       setSelectedMonthRaw, setSelectedMonthChosen,
       importAbortControllerRef,
@@ -127,13 +129,18 @@ export const useDashboardData = (onDataReset = null, accountName = '', onImportC
   // routeSingleFile to make that possible).
   const {
     handleAutomaticImport, handleAutomaticFileUpload, continueAutomaticImport,
-    handleFileUpload, handleFileDrop,
+    resumePendingImport, handleFileUpload, handleFileDrop,
   } = useUploadFlow({
     accountName, accountProfile, hasSavedAccountProfile, rateMergeStyle,
     pendingAutomaticImport, importAbortControllerRef, openImportPreview,
     setUploadStatus, setBatchImportSummary, setPendingAutomaticImport,
     setPendingAutomaticFiles, setMappingReview, scheduleStatusClear,
     applyBatchImport, processFile,
+    // Auto-detection: App owns accountName, so the callbacks come in as props.
+    // varsRef-style stable wrappers keep handleAutomaticImport's identity from
+    // churning when App re-renders (S3 memoization rule).
+    onAccountDetected: useCallback((name: string) => { onAccountDetected?.(name); }, [onAccountDetected]),
+    onRequestAccountSelection: useCallback(() => { onRequestAccountSelection?.(); }, [onRequestAccountSelection]),
   });
 
   // S1(e): the agentDataCache memo and the four timeframe selectors now live
@@ -156,7 +163,7 @@ export const useDashboardData = (onDataReset = null, accountName = '', onImportC
   // eslint-disable-next-line react-hooks/exhaustive-deps -- see rationale above; setters/refs/callbacks omitted deliberately.
   return useMemo(() => ({
     agents, supervisors, oamName, historicalData, hasUploadedData, uploadStatus, batchImportSummary,
-    handleFileUpload, handleFileDrop, handleAutomaticImport, handleAutomaticFileUpload, continueAutomaticImport, mappingReview, rateMergeStyle, setRateMergeStyle, applyBatchImport, resetDashboard,
+    handleFileUpload, handleFileDrop, handleAutomaticImport, handleAutomaticFileUpload, continueAutomaticImport, resumePendingImport, mappingReview, rateMergeStyle, setRateMergeStyle, applyBatchImport, resetDashboard,
     accountProfile, hasSavedAccountProfile, importPreview, openImportPreview, closeImportPreview, confirmImportPreview,
     activeTimeframe, setActiveTimeframe, selectedWeek, setSelectedWeek, selectedDate, setSelectedDate,
     selectedDow, setSelectedDow, selectedMonth, setSelectedMonth, loadedMonths, monthLabel,
@@ -165,7 +172,7 @@ export const useDashboardData = (onDataReset = null, accountName = '', onImportC
     agents, supervisors, oamName, historicalData, hasUploadedData, uploadStatus, batchImportSummary,
     mappingReview, rateMergeStyle, accountProfile, hasSavedAccountProfile, importPreview,
     activeTimeframe, selectedWeek, selectedDate, selectedDow, selectedMonth, loadedMonths,
-    handleFileUpload, handleFileDrop, handleAutomaticImport, handleAutomaticFileUpload, continueAutomaticImport,
+    handleFileUpload, handleFileDrop, handleAutomaticImport, handleAutomaticFileUpload, continueAutomaticImport, resumePendingImport,
     setRateMergeStyle, applyBatchImport, resetDashboard,
     openImportPreview, closeImportPreview, confirmImportPreview,
     getAgentDataForTimeframe, handleDateChange, getTopHeadlineMonth,

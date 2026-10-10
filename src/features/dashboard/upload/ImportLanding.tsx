@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import './ImportLanding.css';
+import { listAccountNames } from '../../accountSetup/account-profile-storage';
 import type { MappingDiagnostic } from '../import/types';
 
 type UploadStatus = {
@@ -10,10 +11,15 @@ type UploadStatus = {
 
 type ImportLandingProps = {
   accountName: string;
-  accountOptions?: string[];
-  onAccountNameChange?: (accountName: string) => void;
   uploadStatus?: UploadStatus | null;
   onFiles: (files: File[]) => void;
+  /** Fired when the wizard's account question is answered while no account is
+   * set yet (detection fallback). The parent sets the account and resumes the
+   * paused import with the already-scanned files. */
+  onAccountSelected?: (accountName: string) => void;
+  /** Opens the account setup wizard for a brand-new account (used by the
+   * detection-fallback card when no saved account matches). */
+  onOpenSetup?: () => void;
   mappingReview?: MappingDiagnostic[];
   onContinueImport?: (
     mappingOverrides: Record<string, string | null>,
@@ -40,7 +46,7 @@ const fileSize = (bytes: number): string => {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
-export const ImportLanding: React.FC<ImportLandingProps> = ({ accountName, accountOptions = ['Verizon Consumer'], onAccountNameChange, uploadStatus, onFiles, mappingReview = [], onContinueImport, rateMergeStyle = 'arithmetic-average', onRateMergeStyleChange }) => {
+export const ImportLanding: React.FC<ImportLandingProps> = ({ accountName, onAccountSelected, onOpenSetup, uploadStatus, onFiles, mappingReview = [], onContinueImport, rateMergeStyle = 'arithmetic-average', onRateMergeStyleChange }) => {
   const inputRef = useRef<HTMLInputElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<SelectedFile[]>([]);
@@ -48,9 +54,16 @@ export const ImportLanding: React.FC<ImportLandingProps> = ({ accountName, accou
   const [isWaiting, setIsWaiting] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [mappingAnswers, setMappingAnswers] = useState<Record<string, string | null>>({});
-  const [queuedFiles, setQueuedFiles] = useState<File[]>([]);
   const [accountChoice, setAccountChoice] = useState('');
-  const [awaitingAccountSelection, setAwaitingAccountSelection] = useState(false);
+  const accountChoiceItem = mappingReview.find((item) => item.accountChoice);
+  // Saved accounts offered as suggestions in the detection-fallback card.
+  const savedAccountNames = (() => {
+    try {
+      return listAccountNames();
+    } catch {
+      return [];
+    }
+  })();
   const [customMetricAnswers, setCustomMetricAnswers] = useState<Record<string, {
     decision?: 'accept' | 'ignore';
     label?: string;
@@ -73,13 +86,6 @@ export const ImportLanding: React.FC<ImportLandingProps> = ({ accountName, accou
   useEffect(() => () => {
     if (timerRef.current) clearTimeout(timerRef.current);
   }, []);
-
-  useEffect(() => {
-    if (!accountName || !awaitingAccountSelection || queuedFiles.length === 0) return;
-    setAwaitingAccountSelection(false);
-    setIsProcessing(true);
-    onFiles(queuedFiles);
-  }, [accountName, awaitingAccountSelection, onFiles, queuedFiles]);
 
   useEffect(() => {
     if (mappingReview.length === 0) return;
@@ -113,7 +119,6 @@ export const ImportLanding: React.FC<ImportLandingProps> = ({ accountName, accou
     if (!supported.length) return;
 
     resetStart();
-    setQueuedFiles(supported);
     const next = supported.map((file) => ({ file, state: 'scanning' as const }));
     setSelectedFiles((current) => [...current, ...next]);
 
@@ -123,11 +128,9 @@ export const ImportLanding: React.FC<ImportLandingProps> = ({ accountName, accou
           ? { ...item, state: 'ready', detectedAs: 'Ready to import' }
           : item
       ));
-      if (!accountName) {
-        setIsWaiting(false);
-        setAwaitingAccountSelection(true);
-        return;
-      }
+      // No up-front account question: hand the files straight to the import
+      // flow, which auto-detects the account from the data and only asks in
+      // the wizard when detection fails.
       setIsWaiting(true);
       timerRef.current = setTimeout(() => {
         setIsWaiting(false);
@@ -153,6 +156,13 @@ export const ImportLanding: React.FC<ImportLandingProps> = ({ accountName, accou
     : 0;
   const isImporting = isProcessing || uploadStatus?.type === 'info';
   const needsReview = mappingReview.length > 0;
+  // Detection-fallback card: the import is paused ONLY because the data did
+  // not match a saved account. Answering here resumes with the same files —
+  // no fake __account__ column ever reaches the mapping wizard.
+  const resumeWithAccount = (name: string) => {
+    if (!name || !onAccountSelected) return;
+    onAccountSelected(name);
+  };
   const customerExperienceChoices = mappingReview.filter(
     (item) => item.choiceGroup === 'customer-experience-agent-survey'
   );
@@ -178,10 +188,14 @@ export const ImportLanding: React.FC<ImportLandingProps> = ({ accountName, accou
       Boolean(currentCustomAnswer.label?.trim()) &&
       Boolean(currentCustomAnswer.calcStyle)
     )
-    : Boolean(currentAnswer);
+    : currentReviewItem?.accountChoice
+      // The account question is answered through its own buttons; the generic
+      // "Continue" step never applies to it.
+      ? false
+      : Boolean(currentAnswer);
 
   const advanceReview = () => {
-    if (!currentReviewItem || !currentQuestionReady) return;
+    if (!currentReviewItem || !currentQuestionReady || currentReviewItem.accountChoice) return;
     if (reviewStep < reviewQuestions.length - 1) {
       setReviewStep((step) => step + 1);
       return;
@@ -196,7 +210,7 @@ export const ImportLanding: React.FC<ImportLandingProps> = ({ accountName, accou
           <header className="import-landing-header">
             <div>
               <p className="import-landing-eyebrow">{accountName ? 'Now importing for' : 'Start a new account import'}</p>
-              <h1>{accountName || 'Choose account after upload'}</h1>
+              <h1>{accountName || 'Drop files — I will recognize the account'}</h1>
             </div>
             <span className="import-landing-mark" aria-hidden="true">CSO</span>
           </header>
@@ -234,37 +248,6 @@ export const ImportLanding: React.FC<ImportLandingProps> = ({ accountName, accou
             <p className="import-notice success">Files will be mapped automatically from their real headers.</p>
           )}
 
-          {selectedFiles.length > 0 && !accountName && awaitingAccountSelection && (
-            <div className="import-account-choice">
-              <label htmlFor="import-account-name">Account</label>
-              <select
-                id="import-account-name"
-                value={accountChoice}
-                onChange={(event) => setAccountChoice(event.target.value)}
-              >
-                <option value="">Choose an account</option>
-                {Array.from(new Set(['Verizon Consumer', ...accountOptions])).map((option) => (
-                  <option key={option} value={option}>{option}</option>
-                ))}
-                <option value="__custom__">Other account...</option>
-              </select>
-              {accountChoice === '__custom__' && (
-                <input
-                  type="text"
-                  placeholder="Type account name"
-                  onChange={(event) => setAccountChoice(event.target.value)}
-                />
-              )}
-              <button
-                type="button"
-                disabled={!accountChoice || accountChoice === '__custom__'}
-                onClick={() => onAccountNameChange?.(accountChoice)}
-              >
-                Continue with account
-              </button>
-            </div>
-          )}
-
           <label className="import-calculation-style">
             Rate calculation
             <select value={rateMergeStyle} onChange={(event) => onRateMergeStyleChange?.(event.target.value as 'arithmetic-average' | 'weighted-by-counts')}>
@@ -273,7 +256,42 @@ export const ImportLanding: React.FC<ImportLandingProps> = ({ accountName, accou
             </select>
           </label>
 
-          {needsReview && (
+          {accountChoiceItem && (
+            <div className="import-mapping-review" role="alert">
+              <strong>{accountChoiceItem.choiceQuestion}</strong>
+              <p>Your files are already scanned and safe — pick the account below or set up a new one, and the import resumes right where it paused. No need to re-upload.</p>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', marginTop: '10px' }}>
+                <input
+                  type="text"
+                  list="import-account-options"
+                  placeholder={savedAccountNames.length ? 'Type or pick an account…' : 'New account name…'}
+                  value={accountChoice}
+                  onChange={(event) => setAccountChoice(event.target.value)}
+                  style={{ flex: '1 1 220px', padding: '8px 10px', borderRadius: '8px', border: '1px solid #3f3f46', background: '#18181b', color: '#fafafa' }}
+                />
+                <datalist id="import-account-options">
+                  {savedAccountNames.map((name) => <option key={name} value={name} />)}
+                </datalist>
+                <button
+                  type="button"
+                  disabled={!accountChoice.trim()}
+                  onClick={() => resumeWithAccount(accountChoice.trim())}
+                  style={{ padding: '8px 14px', borderRadius: '8px', border: 'none', background: accountChoice.trim() ? '#2563eb' : '#475569', color: '#fff', cursor: accountChoice.trim() ? 'pointer' : 'not-allowed', fontWeight: 600 }}
+                >
+                  Import for this account
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onOpenSetup?.()}
+                  style={{ padding: '8px 14px', borderRadius: '8px', border: '1px solid #3f3f46', background: 'transparent', color: '#d4d4d8', cursor: 'pointer' }}
+                >
+                  Set up a new account
+                </button>
+              </div>
+            </div>
+          )}
+
+          {needsReview && !accountChoiceItem && (
             <div className="import-mapping-review" role="alert">
               <strong>{customMetricQuestions.length > 0
                 ? 'Unrecognized but plausible metric columns found'
@@ -434,17 +452,47 @@ export const ImportLanding: React.FC<ImportLandingProps> = ({ accountName, accou
           <div className="import-orb import-question-orb" aria-hidden="true"><span>?</span></div>
           <h1>{currentReviewItem?.choiceQuestion || (currentReviewItem?.unrecognizedPlausible
             ? 'Custom metric question'
-            : 'One quick question about your data')}</h1>
+            : currentReviewItem?.accountChoice
+              ? 'Which account is this data for?'
+              : 'One quick question about your data')}</h1>
           <p>
             {currentReviewItem?.unrecognizedPlausible
               ? `Found a column called ${currentReviewItem.header} that is not one of the metrics this app already tracks. Want to add it as a custom metric?`
               : currentReviewItem?.resolveWindow
                 ? 'Which role should this column have in your account? Choose the tracked window or ignore it.'
-                : `What should we do with ${currentReviewItem?.header || 'this column'}?`}
+                : currentReviewItem?.accountChoice
+                  ? 'Your files are scanned and safe. Pick a saved account below (or set up a new one) and the import resumes right where it paused — no re-upload needed.'
+                  : `What should we do with ${currentReviewItem?.header || 'this column'}?`}
           </p>
 
           <div className="import-question-card">
-            <strong>{currentReviewItem?.header || 'Review this column'}</strong>
+            {currentReviewItem?.accountChoice ? (
+              <>
+                <strong>{savedAccountNames.length ? 'Pick a saved account' : 'Name this account'}</strong>
+                <input
+                  type="text"
+                  list="import-account-options"
+                  placeholder={savedAccountNames.length ? 'Type or pick an account…' : 'New account name…'}
+                  value={accountChoice}
+                  onChange={(event) => setAccountChoice(event.target.value)}
+                />
+                <datalist id="import-account-options">
+                  {savedAccountNames.map((name) => <option key={name} value={name} />)}
+                </datalist>
+                <button
+                  type="button"
+                  disabled={!accountChoice.trim()}
+                  onClick={() => resumeWithAccount(accountChoice.trim())}
+                >
+                  Import for this account
+                </button>
+                <button type="button" onClick={() => onOpenSetup?.()}>
+                  Set up a new account
+                </button>
+              </>
+            ) : (
+              <strong>{currentReviewItem?.header || 'Review this column'}</strong>
+            )}
 
             {currentReviewItem?.unrecognizedPlausible ? (
               <>

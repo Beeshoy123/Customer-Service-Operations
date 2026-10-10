@@ -185,8 +185,22 @@ const targetFor = (profile: AccountProfile, key: string): number => {
   return TARGETS[key];
 };
 
+// Defensive merge for profiles that predate sections added later (e.g. a
+// hand-written or old saved profile without `resolveRate`, `sales`, `credit`,
+// …). Missing top-level sections fall back to the defaults so downstream code
+// like `active.resolveRate.shortTerm` can never crash on a partial profile.
+// Full-shape profiles are returned untouched (identity preserved).
+const withDefaultSections = (profile: AccountProfile): AccountProfile => {
+  const requiredKeys = Object.keys(DEFAULT_ACCOUNT_PROFILE) as Array<keyof AccountProfile>;
+  const missing = requiredKeys.filter((k) => profile[k] === undefined || profile[k] === null);
+  if (!missing.length) return profile;
+  const patched: any = { ...profile };
+  for (const k of missing) patched[k] = (DEFAULT_ACCOUNT_PROFILE as any)[k];
+  return patched as AccountProfile;
+};
+
 export const applyAccountProfile = (profile: AccountProfile | null | undefined): AccountProfile => {
-  const active = profile || DEFAULT_ACCOUNT_PROFILE;
+  const active = withDefaultSections(profile || DEFAULT_ACCOUNT_PROFILE);
   ACTIVE_ACCOUNT_PROFILE = active;
 
   for (const key of Object.keys(TARGETS)) {

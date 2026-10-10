@@ -116,8 +116,41 @@ export default function App() {
     // always win, and non-metric toggles like `trajectory` are never touched.
     useCallback((fieldsWithData) => {
       setVisibleCols(prev => computeAutoHiddenVisibleCols(prev, fieldsWithData));
+    }, []),
+    // Account auto-detection: a confident header match sets the account with
+    // no user interaction; a miss leaves it unset so the wizard asks instead.
+    useCallback((detected) => {
+      setAccountName(detected);
+      setAccountNameInput(detected);
+      hydrateRepeatOffenderMetrics(detected);
+    }, []),
+    // Detection failed: nothing to do here beyond scrolling the paused card
+    // into view. The landing UI renders the "Select Account" card from
+    // mappingReview and resumes via dashData.resumePendingImport.
+    useCallback(() => {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }, [])
   );
+
+  // Detection-fallback answer from ImportLanding: set the account the user
+  // chose, then resume the paused import with the already-scanned files.
+  // `resumePendingImport` reads pendingAutomaticFiles through a closure, so
+  // it must be called from an effect AFTER accountName has propagated into
+  // useDashboardData's deps — calling it inline would re-run the import with
+  // the stale (empty) account and pause on detection failure forever.
+  const pendingResumeAccountRef = useRef<string | null>(null);
+  const handleAccountSelectedForImport = useCallback((name: string) => {
+    pendingResumeAccountRef.current = name;
+    setAccountName(name);
+    setAccountNameInput(name);
+    hydrateRepeatOffenderMetrics(name);
+  }, []);
+  useEffect(() => {
+    if (pendingResumeAccountRef.current && dashData.resumePendingImport) {
+      pendingResumeAccountRef.current = null;
+      void dashData.resumePendingImport();
+    }
+  }, [accountName, dashData]);
   const resetToLanding = useCallback(() => {
     dashData.resetDashboard();
     setAccountName('');
@@ -266,7 +299,6 @@ export default function App() {
 
   const normalizedAccountName = accountName.trim();
   const hasAccountName = normalizedAccountName.length > 0;
-  const accountOptions = useMemo(() => ['Verizon Consumer', ...listAccountNames()], []);
 
   const ctxValue = useMemo(
     () => ({ dashData, metrics, aiTools, uiState, uiHandlers, accountName: normalizedAccountName, resetToLanding }),
@@ -344,15 +376,12 @@ export default function App() {
         <div style={{ minHeight: '100vh', background: '#0b0b0a', padding: '24px', boxSizing: 'border-box' }}>
           <ImportLanding
             accountName={normalizedAccountName}
-            accountOptions={accountOptions}
-            onAccountNameChange={(name) => {
-              setAccountName(name);
-              hydrateRepeatOffenderMetrics(name);
-            }}
             uploadStatus={dashData.uploadStatus}
             onFiles={(files) => dashData.handleAutomaticImport(files)}
             mappingReview={dashData.mappingReview}
             onContinueImport={dashData.continueAutomaticImport}
+            onAccountSelected={handleAccountSelectedForImport}
+            onOpenSetup={() => setAccountNameInput('')}
             rateMergeStyle={dashData.rateMergeStyle}
             onRateMergeStyleChange={dashData.setRateMergeStyle}
           />

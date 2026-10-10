@@ -109,6 +109,9 @@ export type ImportSummary = {
 export type ImportResult = ImportSummary & {
   rows: NormalizedRow[];
   mappingDiagnostics?: MappingDiagnostic[];
+  /** Only populated on dryRun header scans (account auto-detection): every
+   * distinct column header seen across all files/sheets, in first-seen order. */
+  headers?: string[];
 };
 
 export type MappingDiagnostic = {
@@ -126,6 +129,10 @@ export type MappingDiagnostic = {
   choiceGroup?: string;
   choiceOptions?: string[];
   choiceQuestion?: string;
+  /** Special review item injected when account auto-detection fails: the
+   * landing card asks which saved account this data belongs to (or to run
+   * setup for a new one). Never a real column — no fake __account__ header. */
+  accountChoice?: boolean;
   unrecognizedPlausible?: boolean;
   fingerprint?: ColumnFingerprint;
   // Present only when the same header appeared in multiple files/sheets during

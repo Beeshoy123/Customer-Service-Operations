@@ -502,5 +502,7 @@ export const runImportService = async (files: File[], options: ImportOptions = {
     errors,
     sources: sourceSummary,
     mappingDiagnostics,
+    // Dry-run header scan (account auto-detection) needs the raw header names.
+    ...(options.dryRun ? { headers: [...new Set(mappingDiagnostics.map((d) => d.header))] } : {}),
   } as ImportResult;
 };

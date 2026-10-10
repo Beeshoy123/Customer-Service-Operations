@@ -54,6 +54,10 @@ export const useDashboardDataState = (persistedState: any, accountName: string, 
   const [mappingReview, setMappingReview] = useState<MappingDiagnostic[]>([]);
   const [pendingAutomaticImport, setPendingAutomaticImport] = useState<any>(null);
   const [pendingAutomaticFiles, setPendingAutomaticFiles] = useState<File[]>([]);
+  // Set when account auto-detection fails during an upload: the landing view
+  // shows a "which account?" card (never a fake __account__ mapping row) and
+  // resumes the paused import once answered.
+  const [awaitingAccountChoice, setAwaitingAccountChoice] = useState(false);
   const [rateMergeStyle, setRateMergeStyleState] = useState(() => loadRateMergeStyle(accountName));
   const importAbortControllerRef = useRef(null);
   const onImportColumnsScanRef = useRef(onImportColumnsScan);
@@ -120,6 +124,7 @@ export const useDashboardDataState = (persistedState: any, accountName: string, 
     mappingReview, setMappingReview,
     pendingAutomaticImport, setPendingAutomaticImport,
     pendingAutomaticFiles, setPendingAutomaticFiles,
+    awaitingAccountChoice, setAwaitingAccountChoice,
     rateMergeStyle, setRateMergeStyleState, setRateMergeStyle,
     openImportPreview, closeImportPreview,
     importAbortControllerRef,
@@ -132,7 +137,7 @@ export const useDashboardDataState = (persistedState: any, accountName: string, 
     selectedMonth, selectedMonthChosen,
     agents, supervisors, oamName, historicalData, hasUploadedData,
     uploadStatus, batchImportSummary, importPreview, mappingReview,
-    pendingAutomaticImport, pendingAutomaticFiles, rateMergeStyle,
+    pendingAutomaticImport, pendingAutomaticFiles, awaitingAccountChoice, rateMergeStyle,
     loadedMonths,
   ]);
 };

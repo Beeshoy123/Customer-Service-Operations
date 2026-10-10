@@ -14,7 +14,7 @@
 // (d)-batch callbacks (applyBatchImport, processFile) as parameters from the
 // hooks.ts orchestrator — neither extracted module ever imports the other.
 
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { applyAccountProfile, DEFAULT_ACCOUNT_PROFILE } from './config';
 import { getResolveWindowField, RESOLVE_WINDOW_FIELDS } from './import/importPolicy';
 // S5: de-barrelled — direct module paths replace the ./import barrel.
@@ -24,7 +24,7 @@ import { runImportService } from './import/importService';
 import { selectSheetsWithDetails } from './import/sheetSelector';
 import { detectFileType } from './import/fileTypeDetector';
 import { detectAccountFromData } from './import/accountDetector';
-import { loadAccountProfile, saveAccountProfile } from '../accountSetup/account-profile-storage';
+import { listAccountNames, loadAccountProfile, saveAccountProfile } from '../accountSetup/account-profile-storage';
 
 // ─── Mapping-review & account-profile helpers ──────────────────────────────
 const resolveWindowReviewItems = (diagnostics: any, accountProfile: any) => {
@@ -208,10 +208,15 @@ export interface UploadFlowDeps {
   setPendingAutomaticImport: (value: any) => void;
   setPendingAutomaticFiles: (value: any) => void;
   setMappingReview: (value: any) => void;
+  pendingAutomaticFiles: File[];
+  setAwaitingAccountChoice: (value: boolean) => void;
+  awaitingAccountChoice: boolean;
   applyBatchImport: any;
   processFile: any;
-  // Auto-detection fallback: called when the data could not be matched to any
-  // saved account, so the UI can ask for the account inside the wizard.
+  // Auto-detection callbacks: called when the data was matched to a saved
+  // account (so App can set it), or when detection failed and the UI should
+  // ask for the account inside the wizard instead of blocking the upload.
+  onAccountDetected?: (accountName: string) => void;
   onRequestAccountSelection?: () => void;
 }
 
@@ -221,8 +226,16 @@ export const useUploadFlow = (deps: UploadFlowDeps) => {
     pendingAutomaticImport, importAbortControllerRef, openImportPreview,
     setUploadStatus, setBatchImportSummary, setPendingAutomaticImport,
     setPendingAutomaticFiles, setMappingReview, scheduleStatusClear,
-    applyBatchImport, processFile, onRequestAccountSelection,
+    applyBatchImport, processFile, onAccountDetected, onRequestAccountSelection,
   } = deps;
+
+  // Mirror of pendingAutomaticFiles for the resume path (see
+  // resumePendingImport): state read through a closure can be one render
+  // stale when App's effect fires right after the account is chosen.
+  const pendingAutomaticFilesRef = useRef<File[]>(deps.pendingAutomaticFiles);
+  useEffect(() => {
+    pendingAutomaticFilesRef.current = deps.pendingAutomaticFiles;
+  }, [deps.pendingAutomaticFiles]);
 
   const handleMultipleFiles = useCallback(
     async (files: any) => {
@@ -406,7 +419,6 @@ export const useUploadFlow = (deps: UploadFlowDeps) => {
       // columns. If detection fails, onRequestAccountSelection surfaces the
       // question inside the existing wizard instead of blocking the upload.
       let effectiveAccountName = accountName;
-      let detectedFiles = false;
       if (!effectiveAccountName) {
         try {
           const scan = await runImportService(filesToImport, {
@@ -416,29 +428,74 @@ export const useUploadFlow = (deps: UploadFlowDeps) => {
             forceWorker: true,
           });
           const names = [
-            ...(scan.mappingDiagnostics || []).map((item: any) => item.header),
-            ...(scan.sourceSummary || []).flatMap((source: any) => [source.fileName, source.sheetName]),
+            ...(scan.mappingDiagnostics || []).map((item) => item.header),
+            ...(scan.headers || []),
           ];
+          // Remember every recognized column name for the account we import
+          // under, so detection has a growing fingerprint to match against on
+          // future uploads (this is what matchedColumns feeds in
+          // accountDetector). Runs for both detected and already-selected
+          // accounts; harmless no-op when nothing new was recognized.
+          const rememberScan = (targetName: string) => {
+            if (!targetName) return;
+            try {
+              const profile: any = JSON.parse(JSON.stringify(loadAccountProfile(targetName) || DEFAULT_ACCOUNT_PROFILE));
+              profile.accountName = targetName;
+              let changed = false;
+              for (const h of names) {
+                const key = String(h || '').trim().toLowerCase();
+                if (key.length < 3) continue;
+                const alreadyKnown = Object.keys(profile).some((k) => {
+                  const cols = profile[k]?.data?.matchedColumns;
+                  return Array.isArray(cols) && cols.includes(key);
+                });
+                if (alreadyKnown) continue;
+                // Append to the first section that keeps a matchedColumns list
+                // (same shape accountDetector.collectMatchedColumns reads).
+                for (const k of Object.keys(profile)) {
+                  const sec = profile[k];
+                  if (sec && typeof sec === 'object' && sec.data && Array.isArray(sec.data.matchedColumns)) {
+                    sec.data.matchedColumns.push(key);
+                    changed = true;
+                    break;
+                  }
+                }
+              }
+              if (changed) saveAccountProfile(profile);
+            } catch { /* non-critical: fingerprint memory only */ }
+          };
           const detected = detectAccountFromData(names);
           if (detected) {
             effectiveAccountName = detected;
             onAccountDetected?.(detected);
+            rememberScan(detected);
             setUploadStatus({
               type: 'info',
               message: `Recognized account "${detected}" from the data in your files.`,
               progress: 5,
             });
           } else {
-            detectedFiles = true;
+            // Detection failed: pause before importing and ask ONLY for the
+            // account (no fake __account__ mapping row — that leaked into the
+            // column wizard as "What should we do with __account__?"). The
+            // landing card's answer resumes the import with these same files.
+            const savedNames = listAccountNames();
+            // Clear any stale mapping review from a previous scan before
+            // pausing (the resume path re-runs the full import, which sets
+            // its own wizard items afterwards).
+            setMappingReview([]);
             setPendingAutomaticFiles(filesToImport);
             setMappingReview([{
-              fileName: filesToImport[0]?.name || 'uploaded files',
+              accountChoice: true,
+              fileName: '',
               sheetName: '',
-              header: '__account__',
+              header: 'account',
               mappedField: null,
-              confidence: 'low',
-              unrecognizedPlausible: false,
-            }] as any);
+              confidence: 'low' as const,
+              choiceQuestion: savedNames.length
+                ? 'I could not recognize this data as any account I know yet. Which account are these files for?'
+                : 'I could not recognize this data and there are no saved accounts yet. Set up the first account to continue.',
+            }]);
             setUploadStatus(null);
             onRequestAccountSelection?.();
             return;
@@ -484,7 +541,7 @@ export const useUploadFlow = (deps: UploadFlowDeps) => {
           // preview) on phones. The worker returns already mapped/validated/
           // merged rows, so the renderer only receives the final result.
           forceWorker: true,
-          rateMergeStyle: loadAccountProfile(accountName)?.calculationStyles?.rateMergeStyle || rateMergeStyle,
+          rateMergeStyle: loadAccountProfile(effectiveAccountName)?.calculationStyles?.rateMergeStyle || rateMergeStyle,
           onProgress: (progress: any) => {
             setUploadStatus({
               type: 'info',
@@ -549,8 +606,8 @@ export const useUploadFlow = (deps: UploadFlowDeps) => {
           return;
         }
         if (Object.keys(effectiveMappingOverrides).length > 0) {
-          saveResolveWindowChoices(accountName, diagnostics, effectiveMappingOverrides);
-          saveCustomerExperienceChoice(accountName, diagnostics, effectiveMappingOverrides);
+          saveResolveWindowChoices(effectiveAccountName, diagnostics, effectiveMappingOverrides);
+          saveCustomerExperienceChoice(effectiveAccountName, diagnostics, effectiveMappingOverrides);
         }
         setUploadStatus({
           type: 'info',
@@ -578,8 +635,24 @@ export const useUploadFlow = (deps: UploadFlowDeps) => {
         }
       }
     },
-    [accountName, accountProfile, applyBatchImport, hasSavedAccountProfile, importAbortControllerRef, rateMergeStyle, setBatchImportSummary, setMappingReview, setPendingAutomaticFiles, setPendingAutomaticImport, setUploadStatus, scheduleStatusClear]
+    [accountName, accountProfile, applyBatchImport, hasSavedAccountProfile, importAbortControllerRef, onAccountDetected, onRequestAccountSelection, rateMergeStyle, setBatchImportSummary, setMappingReview, setPendingAutomaticFiles, setPendingAutomaticImport, setUploadStatus, scheduleStatusClear]
   );
+
+  // Detection-fallback resume: the import was paused before parsing because
+  // the headers matched no saved account. The landing card's answer sets the
+  // account upstream (App), then calls this to re-run the full import with
+  // the SAME files that were already scanned — no re-upload needed.
+  // Reads pendingAutomaticFiles through a ref on purpose: App invokes this
+  // from an effect right after setAccountName, and a closure-captured state
+  // value from the pre-pause render would see an empty list and silently
+  // no-op (the old bug: picking an account did nothing).
+  const resumePendingImport = useCallback(async () => {
+    const files = [...(pendingAutomaticFilesRef.current || [])];
+    if (!files.length) return;
+    setPendingAutomaticFiles([]);
+    setMappingReview([]);
+    await handleAutomaticImport(files);
+  }, [handleAutomaticImport, setPendingAutomaticFiles, setMappingReview]);
 
   const continueAutomaticImport = useCallback(
     async (mappingOverrides: any = {}, customMetricAnswers: any = {}) => {
@@ -688,6 +761,7 @@ export const useUploadFlow = (deps: UploadFlowDeps) => {
     handleMultipleFiles,
     handleAutomaticImport,
     continueAutomaticImport,
+    resumePendingImport,
     handleAutomaticFileUpload,
     handleFileUpload,
     handleFileDrop,
