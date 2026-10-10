@@ -52,6 +52,7 @@ export interface BatchImportDeps {
   setSelectedDate: (value: any) => void;
   setActiveTimeframe: (value: any) => void;
   setUploadStatus: (value: any) => void;
+  scheduleStatusClear: (ms?: number) => void;
   setBatchImportSummary: (value: any) => void;
   openImportPreview: (payload: any) => void;
   closeImportPreview: () => void;
@@ -62,7 +63,7 @@ export const useBatchImport = (deps: BatchImportDeps) => {
     agents, supervisors, historicalData, batchImportSummary, importPreview,
     importAbortControllerRef, onImportColumnsScanRef,
     setAgents, setSupervisors, setHistoricalData, setHasUploadedData,
-    setSelectedDate, setActiveTimeframe, setUploadStatus, setBatchImportSummary,
+    setSelectedDate, setActiveTimeframe, setUploadStatus, scheduleStatusClear, setBatchImportSummary,
     openImportPreview, closeImportPreview,
   } = deps;
 
@@ -70,7 +71,7 @@ export const useBatchImport = (deps: BatchImportDeps) => {
     const summary = explicitSummary || batchImportSummary;
     if (!summary || !summary.rows?.length) {
       setUploadStatus({ type: 'error', message: 'There is no valid batch import ready to apply.' });
-      setTimeout(() => setUploadStatus(null), 4000);
+      scheduleStatusClear(4000);
       return;
     }
 
@@ -87,7 +88,7 @@ export const useBatchImport = (deps: BatchImportDeps) => {
 
     if (!rowsToApply.length) {
       setUploadStatus({ type: 'error', message: 'No selected sheets have usable rows to apply.' });
-      setTimeout(() => setUploadStatus(null), 4000);
+      scheduleStatusClear(4000);
       return;
     }
 
@@ -225,8 +226,8 @@ export const useBatchImport = (deps: BatchImportDeps) => {
     setSelectedDate(firstDate || DEFAULT_DATE);
     setActiveTimeframe('monthly');
     setUploadStatus({ type: 'success', message: `Applied ${rowsToApply.length} imported rows from the selected sheets.` });
-    setTimeout(() => setUploadStatus(null), 5000);
-  }, [agents, batchImportSummary, historicalData, onImportColumnsScanRef, setActiveTimeframe, setAgents, setHasUploadedData, setHistoricalData, setSelectedDate, setSupervisors, setUploadStatus, supervisors]);
+    scheduleStatusClear(5000);
+  }, [agents, batchImportSummary, historicalData, onImportColumnsScanRef, setActiveTimeframe, setAgents, setHasUploadedData, setHistoricalData, setSelectedDate, setSupervisors, setUploadStatus, scheduleStatusClear, supervisors]);
 
   const confirmImportPreview = useCallback(
     async (config: any) => {
@@ -317,7 +318,7 @@ export const useBatchImport = (deps: BatchImportDeps) => {
             type: 'error',
             message: 'No valid rows found after validation. Please check column mappings.',
           });
-          setTimeout(() => setUploadStatus(null), 5000);
+          scheduleStatusClear(5000);
           closeImportPreview();
           return;
         }
@@ -350,10 +351,10 @@ export const useBatchImport = (deps: BatchImportDeps) => {
           type: 'error',
           message: 'Failed to process and import the sheets.',
         });
-        setTimeout(() => setUploadStatus(null), 5000);
+        scheduleStatusClear(5000);
       }
     },
-    [applyBatchImport, closeImportPreview, importPreview, setBatchImportSummary, setUploadStatus]
+    [applyBatchImport, closeImportPreview, importPreview, setBatchImportSummary, setUploadStatus, scheduleStatusClear]
   );
 
   const processFile = useCallback(
@@ -377,7 +378,7 @@ export const useBatchImport = (deps: BatchImportDeps) => {
             progress: 100,
             cancelAction: null,
           });
-          setTimeout(() => setUploadStatus(null), 2000);
+          scheduleStatusClear(2000);
         };
 
         setUploadStatus({
@@ -418,7 +419,7 @@ export const useBatchImport = (deps: BatchImportDeps) => {
 
           if ((!filteredSheets || filteredSheets.length === 0) && combinedSkipped.length === 0) {
             setUploadStatus({ type: 'error', message: 'No usable data sheets detected in the workbook.' });
-            setTimeout(() => setUploadStatus(null), 5000);
+            scheduleStatusClear(5000);
             return;
           }
 
@@ -436,7 +437,7 @@ export const useBatchImport = (deps: BatchImportDeps) => {
             type: 'error',
             message: 'The workbook could not be processed. Please check the file format.',
           });
-          setTimeout(() => setUploadStatus(null), 5000);
+          scheduleStatusClear(5000);
         } finally {
           if (importAbortControllerRef.current?.signal === controller.signal) {
             importAbortControllerRef.current = null;
@@ -472,7 +473,7 @@ export const useBatchImport = (deps: BatchImportDeps) => {
             type: 'error',
             message: 'The file could not be processed. Please check the file format.',
           });
-          setTimeout(() => setUploadStatus(null), 5000);
+          scheduleStatusClear(5000);
         }
         return;
       }
@@ -481,9 +482,9 @@ export const useBatchImport = (deps: BatchImportDeps) => {
         type: 'error',
         message: `Unsupported file format: ${file.name}. Please upload CSV, TSV, TXT, or Excel files.`,
       });
-      setTimeout(() => setUploadStatus(null), 5000);
+      scheduleStatusClear(5000);
     },
-    [importAbortControllerRef, openImportPreview, setUploadStatus]
+    [importAbortControllerRef, openImportPreview, setUploadStatus, scheduleStatusClear]
   );
 
   return {

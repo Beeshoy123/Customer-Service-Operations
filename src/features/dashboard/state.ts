@@ -6,7 +6,7 @@
 // ⚠️ STANDING RULE — DO NOT FIX MAPPING BUGS IN THIS FILE. Mapping/alias fixes
 // belong in importPolicy.ts (FIELD_ALIASES), nowhere else.
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DEFAULT_DATE, DEFAULT_MANAGER_NAME, applyAccountProfile } from './config';
 import { ALL_MONTHS, collectLoadedMonths } from './helpers';
 import { loadAccountProfile, loadRateMergeStyle, saveRateMergeStyle } from '../accountSetup/account-profile-storage';
@@ -59,6 +59,19 @@ export const useDashboardDataState = (persistedState: any, accountName: string, 
   const onImportColumnsScanRef = useRef(onImportColumnsScan);
   onImportColumnsScanRef.current = onImportColumnsScan; // keep ref in sync (same pattern as aiResetRef in App.tsx)
 
+  // S2 — one toast timer, one owner. Replaces the 16 hand-rolled
+  // `setTimeout(() => setUploadStatus(null), N)` sites that leaked setState
+  // calls past unmount. Keep each call site's existing duration exactly;
+  // do not normalize them.
+  const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleStatusClear = useCallback((ms = 5000) => {
+    if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
+    statusTimerRef.current = setTimeout(() => setUploadStatus(null), ms);
+  }, []);
+  useEffect(() => () => {
+    if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
+  }, []);
+
   const loadedMonths = useMemo(() => collectLoadedMonths(historicalData), [historicalData]);
 
   // Thin import-preview wrappers — live here (not in hooks.ts) so the setter
@@ -98,7 +111,7 @@ export const useDashboardDataState = (persistedState: any, accountName: string, 
     oamName, setOamName,
     historicalData, setHistoricalData,
     hasUploadedData, setHasUploadedData,
-    uploadStatus, setUploadStatus,
+    uploadStatus, setUploadStatus, scheduleStatusClear,
     batchImportSummary, setBatchImportSummary,
     importPreview, setImportPreview,
     mappingReview, setMappingReview,

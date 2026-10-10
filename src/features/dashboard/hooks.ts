@@ -5,7 +5,7 @@
 // applyBatchImport is correct and generic. See recommendations.md §"STANDING
 // RULE" and the top-of-file banner in importPolicy.ts for the full checklist.
 
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CHART_COLORS,
   METRIC_CONFIG,
@@ -67,7 +67,7 @@ export const useDashboardData = (onDataReset = null, accountName = '', onImportC
     oamName, setOamName,
     historicalData, setHistoricalData,
     hasUploadedData, setHasUploadedData,
-    uploadStatus, setUploadStatus,
+    uploadStatus, setUploadStatus, scheduleStatusClear,
     batchImportSummary, setBatchImportSummary,
     importPreview, setImportPreview,
     mappingReview, setMappingReview,
@@ -114,7 +114,7 @@ export const useDashboardData = (onDataReset = null, accountName = '', onImportC
     agents, supervisors, historicalData, batchImportSummary, importPreview,
     importAbortControllerRef, onImportColumnsScanRef,
     setAgents, setSupervisors, setHistoricalData, setHasUploadedData,
-    setSelectedDate, setActiveTimeframe, setUploadStatus, setBatchImportSummary,
+    setSelectedDate, setActiveTimeframe, setUploadStatus, scheduleStatusClear, setBatchImportSummary,
     openImportPreview, closeImportPreview,
   });
 
@@ -132,7 +132,7 @@ export const useDashboardData = (onDataReset = null, accountName = '', onImportC
     accountName, accountProfile, hasSavedAccountProfile, rateMergeStyle,
     pendingAutomaticImport, importAbortControllerRef, openImportPreview,
     setUploadStatus, setBatchImportSummary, setPendingAutomaticImport,
-    setPendingAutomaticFiles, setMappingReview,
+    setPendingAutomaticFiles, setMappingReview, scheduleStatusClear,
     applyBatchImport, processFile,
   });
 
@@ -254,7 +254,34 @@ export const AI_INITIAL = {
   loadingApprentice: false,
   dowReport: null,
   loadingDow: false,
+  askAiQuery: '',
+  askAiResponse: null,
+  askAiLoading: false,
 };
+
+// Compact the context we send to the model so prompts stay within budget.
+const slimAgents = (list) => (Array.isArray(list) ? list : []).map((a) => ({
+  name: a?.name, supervisor: a?.supervisor, ccms: a?.ccms,
+  phoneAdds: a?.phoneAdds, vhi: a?.vhi, aht: a?.aht, hold: a?.hold,
+  dpc: a?.dpc, occ: a?.occ, csat: a?.csat, sales: a?.sales, handoffs: a?.handoffs,
+}));
+
+const slimSupervisors = (stats) => (Array.isArray(stats) ? stats : []).map((s) => ({
+  name: s?.name, agentCount: s?.agentCount, trajectory: s?.trajectory, trend: s?.trend ?? null,
+}));
+
+const buildDashboardContext = (vars) => JSON.stringify({
+  oamName: vars.oamName,
+  activeTimeframe: vars.activeTimeframe,
+  selectedDate: vars.selectedDate,
+  selectedWeek: vars.selectedWeek,
+  selectedDow: vars.selectedDow,
+  activeLeaderData: vars.activeLeaderData,
+  mtdLeaderData: vars.mtdLeaderData,
+  supervisorStats: slimSupervisors(vars.supervisorStats),
+  agents: slimAgents(vars.agents),
+  supervisors: vars.supervisors,
+}, null, 1);
 
 export const useAiTools = ({
   agents,
@@ -272,6 +299,7 @@ export const useAiTools = ({
   runChartMetric,
   runChartData,
   allActiveDates,
+  dowData,
 }) => {
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -285,28 +313,105 @@ export const useAiTools = ({
   const [loadingApprentice, setLoadingApprentice] = useState(false);
   const [dowReport, setDowReport] = useState(null);
   const [loadingDow, setLoadingDow] = useState(false);
+  const [askAiQuery, setAskAiQuery] = useState('');
+  const [askAiResponse, setAskAiResponse] = useState(null);
+  const [askAiLoading, setAskAiLoading] = useState(false);
 
+  // Keep the latest values in a ref so every generate* callback below can be
+  // referentially stable (empty deps). Consumers list these callbacks in
+  // their own effect dependency arrays — an unstable identity would re-fire
+  // those effects on every keystroke and hammer the AI endpoint.
+  const varsRef = useRef({
+    agents, supervisors, oamName, historicalData, selectedDate, activeTimeframe,
+    selectedWeek, selectedDow, getAgentDataForTimeframe, activeLeaderData,
+    mtdLeaderData, supervisorStats, runChartMetric, runChartData, allActiveDates, dowData,
+  });
   useEffect(() => {
-    if (!agents.length) return;
-    const systemPrompt = `You are a performance coach...`;
-    const input = JSON.stringify({
-      oamName,
-      activeTimeframe,
-      selectedDate,
-      selectedWeek,
-      selectedDow,
-      activeLeaderData,
-      mtdLeaderData,
-      supervisorStats,
-      runChartMetric,
-      runChartData,
-      allActiveDates,
-      agents,
-      supervisors,
-    }, null, 2);
+    varsRef.current = {
+      agents, supervisors, oamName, historicalData, selectedDate, activeTimeframe,
+      selectedWeek, selectedDow, getAgentDataForTimeframe, activeLeaderData,
+      mtdLeaderData, supervisorStats, runChartMetric, runChartData, allActiveDates, dowData,
+    };
+  }, [agents, supervisors, oamName, historicalData, selectedDate, activeTimeframe, selectedWeek, selectedDow, getAgentDataForTimeframe, activeLeaderData, mtdLeaderData, supervisorStats, runChartMetric, runChartData, allActiveDates, dowData]);
 
-    executeGeminiAction(input, systemPrompt, setReport, setLoading, 'Unable to generate report.');
-  }, [agents, supervisors, oamName, historicalData, selectedDate, activeTimeframe, selectedWeek, selectedDow, getAgentDataForTimeframe, activeLeaderData, mtdLeaderData, supervisorStats, runChartMetric, runChartData, allActiveDates]);
+  // Clear every generated report (used when the modal closes or data resets,
+  // so stale analyses never survive an upload / account switch).
+  const resetAiStates = useCallback(() => {
+    setReport(null);
+    setTeamReport(null);
+    setChartActionPlan(null);
+    setCorrelationReport(null);
+    setApprenticeReport(null);
+    setDowReport(null);
+    setAskAiQuery('');
+    setAskAiResponse(null);
+  }, []);
+
+  // Floor Analysis tab → Unified Strategy Report (whole floor view).
+  const generateTeamReport = useCallback(() => {
+    const v = varsRef.current;
+    if (!v.agents?.length) return;
+    const systemPrompt = `${PERSONA} Produce a UNIFIED STRATEGY REPORT for the whole floor: overall trajectory, top wins, biggest risks per supervisor team, and 3 concrete next actions for the OAM. Use simple everyday English.`;
+    executeGeminiAction(buildDashboardContext(v), systemPrompt, setTeamReport, setLoadingTeam, 'Unable to generate team report.');
+  }, []);
+
+  // Supervisor modal → per-team expert report.
+  const generateExpertReport = useCallback((supObj) => {
+    const v = varsRef.current;
+    if (!supObj) return;
+    const systemPrompt = `${PERSONA} Write an EXPERT SUPERVISOR REPORT for "${supObj.name}". Cover team performance vs targets, standouts, concerns, and a coaching plan for the next week. Use simple everyday English.`;
+    const context = JSON.stringify({ supObj, timeframe: v.activeTimeframe, selectedDate: v.selectedDate, agents: slimAgents(v.agents) }, null, 1);
+    executeGeminiAction(context, systemPrompt, setReport, setLoading, 'Unable to generate supervisor report.');
+  }, []);
+
+  // Trends tab heatmap → targeted action plan for the selected metric.
+  const generateChartActionPlan = useCallback(() => {
+    const v = varsRef.current;
+    if (!v.runChartData?.length) return;
+    const systemPrompt = `${PERSONA} You receive a heatmap of daily "${v.runChartMetric}" performance. Identify the weakest days/segments and write a TARGETED ACTION PLAN: root-cause hypotheses plus specific interventions, owners and deadlines. Use simple everyday English.`;
+    const context = JSON.stringify({ metric: v.runChartMetric, dates: v.allActiveDates, runChartData: v.runChartData, leaderData: v.activeLeaderData }, null, 1);
+    executeGeminiAction(context, systemPrompt, setChartActionPlan, setLoadingChartActionPlan, 'Unable to generate action plan.');
+  }, []);
+
+  // Correlation tab report.
+  const generateCorrelationReport = useCallback(() => {
+    const v = varsRef.current;
+    if (!v.agents?.length) return;
+    const systemPrompt = `${PERSONA} Analyze CORRELATIONS between floor metrics (e.g. AHT vs Sales, Hold vs CSat). Call out the strongest positive/negative relationships, likely causes, and what the OAM should change. Use simple everyday English.`;
+    executeGeminiAction(buildDashboardContext(v), systemPrompt, setCorrelationReport, setLoadingCorrelation, 'Unable to generate correlation report.');
+  }, []);
+
+  // Apprentice tab comparison report (group A vs group B).
+  const generateApprenticeReport = useCallback((viewMode, dataA, dataB, titleA, titleB) => {
+    const systemPrompt = `${PERSONA} Compare two teams ("${titleA}" vs "${titleB}") in ${viewMode || 'default'} view mode. Highlight who leads on each metric, gaps that matter, and one concrete coaching takeaway per team. Use simple everyday English.`;
+    const context = JSON.stringify({ viewMode, titleA, titleB, dataA, dataB }, null, 1);
+    executeGeminiAction(context, systemPrompt, setApprenticeReport, setLoadingApprentice, 'Unable to generate apprentice report.');
+  }, []);
+
+  // Day-of-week tab report.
+  const generateDowReport = useCallback((dowInput) => {
+    const v = varsRef.current;
+    const systemPrompt = `${PERSONA} Analyze DAY-OF-WEEK performance patterns. Identify the strongest and weakest days, probable drivers (volume, staffing, intent mix) and a schedule/coverage recommendation. Use simple everyday English.`;
+    const context = JSON.stringify({ dowData: dowInput ?? v.dowData, oamName: v.oamName, activeLeaderData: v.activeLeaderData }, null, 1);
+    executeGeminiAction(context, systemPrompt, setDowReport, setLoadingDow, 'Unable to generate day-of-week report.');
+  }, []);
+
+  // Mirror the query into a ref so handleAskAiSubmit stays referentially stable.
+  const askAiQueryRef = useRef('');
+  useEffect(() => { askAiQueryRef.current = askAiQuery; }, [askAiQuery]);
+
+  // Data Assistant modal → free-form question answering over the dashboard.
+  // Accepts an optional preset question (smart chip); otherwise uses the input.
+  const handleAskAiSubmit = useCallback((presetQuestion) => {
+    const v = varsRef.current;
+    const q = (typeof presetQuestion === 'string' && presetQuestion.trim())
+      ? presetQuestion
+      : askAiQueryRef.current;
+    if (!q || !q.trim()) return;
+    const systemPrompt = `${PERSONA} You are a DATA ASSISTANT with access to the dashboard context below. Answer the user's question strictly from this data; if the data cannot answer it, say so. Use simple everyday English.`;
+    const context = `QUESTION: ${q}\n\nDASHBOARD CONTEXT:\n${buildDashboardContext(v)}`;
+    executeGeminiAction(context, systemPrompt, setAskAiResponse, setAskAiLoading, 'Unable to answer right now. Please try again.');
+  }, []);
 
   return {
     report,
@@ -322,5 +427,17 @@ export const useAiTools = ({
     loadingApprentice,
     dowReport,
     loadingDow,
+    askAiQuery,
+    setAskAiQuery,
+    askAiResponse,
+    askAiLoading,
+    handleAskAiSubmit,
+    generateTeamReport,
+    generateExpertReport,
+    generateChartActionPlan,
+    generateCorrelationReport,
+    generateApprenticeReport,
+    generateDowReport,
+    resetAiStates,
   };
 };

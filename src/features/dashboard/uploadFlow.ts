@@ -203,6 +203,7 @@ export interface UploadFlowDeps {
   importAbortControllerRef: any;
   openImportPreview: (payload: any) => void;
   setUploadStatus: (value: any) => void;
+  scheduleStatusClear: (ms?: number) => void;
   setBatchImportSummary: (value: any) => void;
   setPendingAutomaticImport: (value: any) => void;
   setPendingAutomaticFiles: (value: any) => void;
@@ -216,7 +217,7 @@ export const useUploadFlow = (deps: UploadFlowDeps) => {
     accountName, accountProfile, hasSavedAccountProfile, rateMergeStyle,
     pendingAutomaticImport, importAbortControllerRef, openImportPreview,
     setUploadStatus, setBatchImportSummary, setPendingAutomaticImport,
-    setPendingAutomaticFiles, setMappingReview,
+    setPendingAutomaticFiles, setMappingReview, scheduleStatusClear,
     applyBatchImport, processFile,
   } = deps;
 
@@ -259,7 +260,7 @@ export const useUploadFlow = (deps: UploadFlowDeps) => {
           progress: 100,
           cancelAction: null,
         });
-        setTimeout(() => setUploadStatus(null), 2000);
+        scheduleStatusClear(2000);
       };
 
       const emitBatchProgress = (fileIndex: any, filePercent: any, fileName: any) => {
@@ -361,7 +362,7 @@ export const useUploadFlow = (deps: UploadFlowDeps) => {
           type: 'error',
           message: 'The batch files could not be processed. Please check the file set.',
         });
-        setTimeout(() => setUploadStatus(null), 5000);
+        scheduleStatusClear(5000);
         return;
       } finally {
         if (importAbortControllerRef.current?.signal === controller.signal) {
@@ -377,7 +378,7 @@ export const useUploadFlow = (deps: UploadFlowDeps) => {
       if (combinedSheets.length === 0 && combinedSkipped.length === 0) {
         setUploadStatus(null);
         setUploadStatus({ type: 'error', message: 'No usable sheets detected across the selected files.' });
-        setTimeout(() => setUploadStatus(null), 5000);
+        scheduleStatusClear(5000);
         return;
       }
 
@@ -388,7 +389,7 @@ export const useUploadFlow = (deps: UploadFlowDeps) => {
       });
       setUploadStatus(null);
     },
-    [importAbortControllerRef, openImportPreview, setUploadStatus]
+    [importAbortControllerRef, openImportPreview, setUploadStatus, scheduleStatusClear]
   );
 
   const handleAutomaticImport = useCallback(
@@ -499,7 +500,7 @@ export const useUploadFlow = (deps: UploadFlowDeps) => {
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') {
           setUploadStatus({ type: 'info', message: 'Import cancelled.' });
-          setTimeout(() => setUploadStatus(null), 2000);
+          scheduleStatusClear(2000);
           return;
         }
 
@@ -508,14 +509,14 @@ export const useUploadFlow = (deps: UploadFlowDeps) => {
           type: 'error',
           message: error instanceof Error ? error.message : 'The files could not be imported.',
         });
-        setTimeout(() => setUploadStatus(null), 6000);
+        scheduleStatusClear(6000);
       } finally {
         if (importAbortControllerRef.current?.signal === controller.signal) {
           importAbortControllerRef.current = null;
         }
       }
     },
-    [accountName, accountProfile, applyBatchImport, hasSavedAccountProfile, importAbortControllerRef, rateMergeStyle, setBatchImportSummary, setMappingReview, setPendingAutomaticFiles, setPendingAutomaticImport, setUploadStatus]
+    [accountName, accountProfile, applyBatchImport, hasSavedAccountProfile, importAbortControllerRef, rateMergeStyle, setBatchImportSummary, setMappingReview, setPendingAutomaticFiles, setPendingAutomaticImport, setUploadStatus, scheduleStatusClear]
   );
 
   const continueAutomaticImport = useCallback(
@@ -550,10 +551,10 @@ export const useUploadFlow = (deps: UploadFlowDeps) => {
           type: 'error',
           message: error instanceof Error ? error.message : 'The files could not be imported.',
         });
-        setTimeout(() => setUploadStatus(null), 6000);
+        scheduleStatusClear(6000);
       }
     },
-    [accountName, applyBatchImport, pendingAutomaticImport, setMappingReview, setPendingAutomaticFiles, setPendingAutomaticImport, setUploadStatus]
+    [accountName, applyBatchImport, pendingAutomaticImport, setMappingReview, setPendingAutomaticFiles, setPendingAutomaticImport, setUploadStatus, scheduleStatusClear]
   );
 
   const handleAutomaticFileUpload = useCallback(
