@@ -118,6 +118,28 @@ The rest of the pipeline (`schemaNormalizer.ts`, `importService.ts`, `helpers.ts
 
 ---
 
+## Status Snapshot — re-verified against code on 2026-10-11
+
+Quick index of what is actually done vs open (each claim below was re-checked against the working tree, not copied from old notes):
+
+**DONE / verified in current code:**
+- Import account-picker regression + VZ→Verizon Consumer alias (see "FIXED 2026-10-11" entry below).
+- **Chronic Offenders tab** (new feature, 2026-10-11): `chronicOffenders.ts` (3+ consecutive failed-month streak detection, summary stats) + full UI in `FloorOffendersTab.tsx` (KPI cards, sortable/filtered table, monthly-trend badges, coaching action buttons) + 9 unit tests. Replaces the former "coming soon" placeholder.
+- S1 (a–e), S2, S5, S7.1, S8, S9, S10, Phase 2 — all landed (details in their sections).
+- **C4 (member-completeness half):** `useAiTools` now returns all 24 consumed members. Typed-context + guard-test halves still open (see C4 status note).
+- **S13, S14, S19, S21, S22** — resolved in current code (marked ✅ inline in the S13–S23 table; several had silently been fixed by earlier refactors without the doc being updated).
+
+**OPEN (not done — the remaining backlog):**
+- **C1 (P0):** browser → Anthropic direct calls, no backend/auth. Still exactly as audited.
+- **C4 remainder (P0):** replace `createContext<any>` with a typed `DashboardContextValue`; add `aiToolsShape.test.ts` subset guard.
+- **C2 (P1):** Gemini naming over the Anthropic endpoint — 31 `gemini` hits remain (rename unblocked now that C4's member half landed).
+- **C3 remainder (P1):** `helpers.ts` coverage beyond hand-offs (`calculateBonus`, `calculateWeightedVSF`, `calculateTrend`, `agentMatchesSearch`, name formatters) and removal of `@ts-nocheck` from helpers/metrics/hooks/config/emptyColumns.
+- **S3** (context memo never hits — keystroke re-renders), **S4** (ImportPreviewModal/MainModal split), **S6** (localStorage namespaces), **S7.3**, **S11**, **S12**.
+- **S15, S16, S17, S18, S20, S23** — opportunistic batch; none done (S17 re-verified: MTD/Daily card JSX still duplicated in `MainStatsRow.tsx`).
+- **U1–U6** — entire UX section untouched, plus the whole Design Gap Analysis section.
+
+---
+
 ## Critical
 
 ### Import account-picker regression — FIXED 2026-10-11 (verified e2e)
@@ -140,7 +162,11 @@ Fix order: **C4 first** (it is the only one a user hits today), then C1, then C2
 
 ---
 
-### C4 — `useAiTools` returns 13 of the 24 members the app calls · **P0**
+### C4 — `useAiTools` returns 13 of the 24 members the app calls · **P0** · ⚠️ **PARTIALLY FIXED 2026-10-11 (re-verified against current code)**
+
+> **Status update (2026-10-11).** The *missing-member* half of this bug is **fixed**: `useAiTools` now lives in `hooks.ts:316+` and its return object exposes **all 24** members the app consumes — verified by diffing the returned keys against every `aiTools.*` access across `src/` (24 consumed, 24 present, zero undefined call sites). Failure modes 1–4 from below no longer reproduce.
+> **Still open:** (a) `DashboardContext = createContext<any>(null)` (`hooks.ts:46`) — the contract is still enforced by nothing; (b) no `aiToolsShape.test.ts` guard test exists. Both remain P0 follow-ups per the original spec. Everything below is the original audit record.
+
 
 **Evidence.** `useAiTools` (`src/features/dashboard/hooks.ts:1419–1486`) is 68 lines and its return object (`:1471–1486`) exposes exactly **13** members: `report`, `loading`, `teamReport`, `loadingTeam`, `chartActionPlan`, `loadingChartActionPlan`, `setChartActionPlan`, `correlationReport`, `loadingCorrelation`, `apprenticeReport`, `loadingApprentice`, `dowReport`, `loadingDow`.
 
@@ -206,7 +232,10 @@ Today that request is inert because it 401s. **The moment anyone "fixes" the 401
 
 ---
 
-### C2 — Gemini-named UI over an Anthropic endpoint · **P1**
+### C2 — Gemini-named UI over an Anthropic endpoint · **P1** · ❌ **OPEN (re-verified 2026-10-11)**
+
+> **Status update (2026-10-11).** Still fully open: `grep -rin "gemini" src` → **31 hits**, including `executeGeminiAction` (`hooks.ts:223`, calling `api.anthropic.com` at `:236`), `GeminiLoader` (`shared.tsx`) and `.gemini-btn`. Note the ordering constraint in the plan ("after C1 and C4 land") is now satisfied for C4's member-completeness half, so this rename can proceed. Original audit record below.
+
 
 **Evidence.** A half-finished provider migration left the old brand in the code while the endpoint changed:
 
@@ -224,7 +253,10 @@ Today that request is inert because it 401s. **The moment anyone "fixes" the 401
 
 ---
 
-### C3 — 244 lines of untested business math in a `@ts-nocheck` file · **P1**
+### C3 — 244 lines of untested business math in a `@ts-nocheck` file · **P1** · ⚠️ **PARTIALLY DONE 2026-10-11 (re-verified against current code)**
+
+> **Status update (2026-10-11).** `helpers.test.ts` now exists but covers only the **hand-offs rate contract**: 8 tests over `aggregateRecords` + `aggregateTeamMetrics`. Still untested per this audit: `calculateBonus`, `calculateWeightedVSF`, `calculateTrend`, `agentMatchesSearch`, `formatName`, `shortenManagerName`. `helpers.ts` still starts with `// @ts-nocheck` (as do `metrics.ts`, `hooks.ts`, `config.ts`, `emptyColumns.ts`). Steps 4–5 of the plan below remain open; step 1 is ~30% delivered. Everything below is the original audit record.
+
 
 **Evidence.** `src/features/dashboard/helpers.ts` is 358 lines, starts with `// @ts-nocheck` (`:1`), and exports 15 functions. Only **6 are covered** by `monthSelection.test.ts` (11 tests): `normalizeDate`, `getWeekNumber`, `dowFromDateStr`, `matchesSelectedMonth`, `collectLoadedMonths`, `monthLabel` — all date/month helpers.
 
@@ -787,16 +819,16 @@ Then convert `account-profile-storage.ts` (raw `localStorage` today) and `hooks.
 
 | # | Finding | Verified evidence | Severity |
 |---|---|---|---|
-| **S13** | `searchedOams` computed 3× in 3 files | `FloorRosterTab.tsx:36`, `TopNavbar.tsx:27`, `metrics.ts:254` — byte-identical one-liner | MEDIUM |
-| **S14** | `liveSupObj` computed in the modal render body | `MainModal.tsx:115` (inside JSX) — `supAgentsList` was already fixed into a `useMemo` at `:69` | LOW |
+| **S13** | `searchedOams` computed 3× in 3 files | ✅ **DONE 2026-10-11 (verified):** computed once in `metrics.ts:46` inside a `useMemo` and shared with the consumers — the inline duplicates in `FloorRosterTab.tsx` / `TopNavbar.tsx` are gone. Deviation from plan: shared via the metrics memo rather than a new `helpers.resolveSearchedOams`. | ~~`FloorRosterTab.tsx:36`, `TopNavbar.tsx:27`, `metrics.ts:254`~~ (original evidence) | MEDIUM |
+| **S14** | `liveSupObj` computed in the modal render body | ✅ **DONE 2026-10-11 (verified):** now a `useMemo` at `MainModal.tsx:116`. | ~~`MainModal.tsx:115` (inside JSX)~~ | LOW |
 | **S15** | 154 inline `style={{}}` objects | `grep -rho "style={{" src --include=*.tsx` → 154 (backlog said 41) | LOW |
 | **S16** | 62 inline arrow handlers in JSX | spread over 17 files; `ImportPreviewModal.tsx` 12, `MainModal.tsx` 8 (backlog said 47) | LOW |
 | **S17** | MTD and Daily metric cards duplicate their JSX | `MainStatsRow.tsx:16` (`.card-mtd`) vs `:58` (`.card-daily`) — ~40 duplicated lines | LOW |
 | **S18** | 21 conditional `className={… ? … : …}` chains | across the tab/modal/chrome files (backlog: "reduces readability without clsx") | LOW |
-| **S19** | `supBurnoutList` filtered inside a JSX IIFE | `MainModal.tsx:267` — re-filters `metrics.orgBurnoutList` on every modal render | MEDIUM |
-| **S20** | `COL_DEFINITIONS` referenced 23× across 8 files | `FloorRosterTab` 5, `MainModal` 6, `FloorDowTab` 3, `FloorBurnoutTab` 2, `menus` 2, `config` 3, `emptyColumns` 1, `metrics` 1 (backlog said 14) | LOW |
-| **S21** | `Object.keys(uiState.visibleCols)` called 4× in one render body | `FloorRosterTab.tsx` — exactly 4, as reported | LOW |
-| **S22** | `getWeekNumber` recomputed in a nested loop, uncached | `metrics.ts:295` — inside `finalDates.forEach(week) → dates.forEach(date)`, i.e. O(weeks × dates) string parses per recompute | MEDIUM |
+| **S19** | `supBurnoutList` filtered inside a JSX IIFE | ✅ **DONE 2026-10-11 (verified):** now a `useMemo` at `MainModal.tsx:107`. | ~~`MainModal.tsx:267`~~ | MEDIUM |
+| **S20** | `COL_DEFINITIONS` referenced 23× across 8 files | `FloorRosterTab` 5, `MainModal` 6, `FloorDowTab` 3, `FloorBurnoutTab` 2, `menus` 2, `config` 3, `emptyColumns` 1, `metrics` 1 (backlog said 14) — re-verified 2026-10-11: still 8 files. **OPEN** | LOW |
+| **S21** | `Object.keys(uiState.visibleCols)` called 4× in one render body | ✅ **DONE / RESOLVED 2026-10-11 (verified):** `grep -c "Object.keys(uiState.visibleCols)" FloorRosterTab.tsx` → **0**; the component now reads `uiState.visibleCols[col.stateKey]` directly per column. | ~~`FloorRosterTab.tsx`~~ | LOW |
+| **S22** | `getWeekNumber` recomputed in a nested loop, uncached | ✅ **DONE 2026-10-11 (verified):** `metrics.ts:302–305` builds a single `weekBuckets` Map per recompute instead of calling `getWeekNumber` per (week × date) pair. | ~~`metrics.ts:295`~~ | MEDIUM |
 | **S23** | `runChartData` rebuilds its date set from scratch | `metrics.ts:240–246` — iterates every value of `historicalData` on each recompute | LOW |
 
 **Precisely what to do.** All eleven are render-path work with no behavior change, and they are independent of each other and of S1–S12:
