@@ -1,5 +1,5 @@
 // Extracted from App.tsx (Phase 3 move-only refactor) — behavior must stay identical.
-import { FormattedText, GeminiLoader } from '../../../../components/shared';
+import { FormattedText, GeminiLoader, CopyReportButton } from '../../../../components/shared';
 import { useDashboard } from '../../hooks';
 import { useEffect } from 'react';
 
@@ -19,7 +19,7 @@ export const FloorCorrelationTab = () => {
             <h3 className="text-xl font-extrabold flex items-center gap-2 mb-1 text-slate-900"><span>🎯</span> Integrity Match-ups</h3>
             <p className="text-sm text-slate-500 m-0">Pre-built risk profiles mapping behavioral trade-offs. The AI actively scans the raw data to surface the strongest hidden links.</p>
           </div>
-          {aiTools.correlationReport && <button className="gemini-btn btn-alt px-3 py-1.5 text-xs" onClick={() => navigator.clipboard.writeText(aiTools.correlationReport)}>Copy</button>}
+          {aiTools.correlationReport && <CopyReportButton text={aiTools.correlationReport} />}
         </div>
 
 

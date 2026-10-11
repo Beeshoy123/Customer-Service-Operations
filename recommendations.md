@@ -125,7 +125,8 @@ Quick index of what is actually done vs open (each claim below was re-checked ag
 **DONE / verified in current code:**
 - Import account-picker regression + VZ→Verizon Consumer alias (see "FIXED 2026-10-11" entry below).
 - **Chronic Offenders tab** (new feature, 2026-10-11): `chronicOffenders.ts` (3+ consecutive failed-month streak detection, summary stats) + full UI in `FloorOffendersTab.tsx` (KPI cards, sortable/filtered table, monthly-trend badges, coaching action buttons) + 9 unit tests. Replaces the former "coming soon" placeholder.
-- S1 (a–e), S2, S5, S7.1, S8, S9, S10, Phase 2 — all landed (details in their sections).
+- S1 (a–e), S2, S5, S7.1, S8, S9, S10, S12, Phase 2 — all landed (details in their sections).
+- **S12 ✅ LANDED 2026-10-11:** `CopyReportButton` added to `src/components/shared.tsx` (idle → "Copied ✓" → reset after 1.5 s; on clipboard rejection shows "Copy failed — select the text manually"); replaced all 5 inline `navigator.clipboard.writeText` buttons (Analysis/Correlation/DOW/Apprentice tabs + Action Plan modal). Verified by `e2e_s12_render.py` (6/6 incl. real clipboard write + forced-failure path).
 - **S4** (ImportPreviewModal split → `previewState.ts` + `ManageMemoryModal.tsx`) and **S6** (unified `storage.ts` safeStorage facade + `storageKeys` registry; zero direct `localStorage` access outside the facade) — both landed 2026-10-11.
 - **C4 (member-completeness half):** `useAiTools` now returns all 24 consumed members. Typed-context + guard-test halves still open (see C4 status note).
 - **S13, S14, S19, S21, S22** — resolved in current code (marked ✅ inline in the S13–S23 table; several had silently been fixed by earlier refactors without the doc being updated).
@@ -135,7 +136,7 @@ Quick index of what is actually done vs open (each claim below was re-checked ag
 - **C4 remainder (P0):** replace `createContext<any>` with a typed `DashboardContextValue`; add `aiToolsShape.test.ts` subset guard.
 - **C2 (P1):** Gemini naming over the Anthropic endpoint — 31 `gemini` hits remain (rename unblocked now that C4's member half landed).
 - **C3 remainder (P1):** `helpers.ts` coverage beyond hand-offs (`calculateBonus`, `calculateWeightedVSF`, `calculateTrend`, `agentMatchesSearch`, name formatters) and removal of `@ts-nocheck` from helpers/metrics/hooks/config/emptyColumns.
-- **S3** (context memo never hits — keystroke re-renders), **S7.3**, **S11**, **S12**. *(S4 landed 2026-10-11; S6 landed 2026-10-11 — see their sections.)*
+- **S3** (context memo never hits — keystroke re-renders), **S7.3**, **S11**. *(S4 landed 2026-10-11; S6 landed 2026-10-11; S12 landed 2026-10-11 — see their sections.)*
 - **S15, S16, S17, S18, S20, S23** — opportunistic batch; none done (S17 re-verified: MTD/Daily card JSX still duplicated in `MainStatsRow.tsx`).
 - **U1–U6** — entire UX section untouched, plus the whole Design Gap Analysis section.
 
@@ -352,7 +353,7 @@ Then: preview returns HTTP 200 with no HMR errors, and **every touched module re
 |---|---|---|
 | 1 | ~~**S5** (delete 6 dead files), **S10** (specifiers), **S8** (`asyncUtils`), **S9** (debug logs)~~ ✅ **done 2026-10-10** | Zero-risk mechanical work; grep proves S5, tests prove the rest |
 | 2 | ~~**S7.1** (duplicate `normalizeHeader`)~~ ✅ **done 2026-10-10** | 15 minutes, byte-identical, proven by 60 existing tests |
-| 3 | **S2** (`scheduleStatusClear`), **S12** (copy button) | Small, self-contained, both visible in the UI so verify by hand |
+| 3 | ~~**S2** (`scheduleStatusClear`)~~ ✅ done, ~~**S12** (copy button)~~ ✅ done 2026-10-11 | Small, self-contained, both visible in the UI so verify by hand |
 | 4 | ~~**S6** (storage module)~~ ✅ **done 2026-10-11**, **S11** (`buildAccountProfile`) | Touch persisted data; both need a manual round trip |
 | 5 | **S4** (ImportPreviewModal split) | Move-only; collect **S15/S16** inline while the file is open |
 | 6 | **S1** (`useDashboardData`, steps a→b→e→c→d as five commits) | Biggest win, five separately revertible commits |
@@ -622,7 +623,9 @@ Then `grep -rn "from './import'" src` must return **zero** hits before the file 
 
 **Verification.** `tsc -b` 0, 194/194, preview 200, and a full import → account-profile save → reload round trip in the browser (this object is persisted, so a silent shape change is the risk).
 
-#### S12 — Copy-to-clipboard button duplicated in 4 tabs · **LOW (duplication)**
+#### S12 — Copy-to-clipboard button duplicated in 4 tabs · **LOW (duplication)** · ✅ **LANDED 2026-10-11**
+
+> **Outcome (2026-10-11).** `CopyReportButton` implemented in `src/components/shared.tsx` exactly per spec below (label prop, 1.5 s reset, failure message) and swapped into all **5** sites — the 4 tab buttons plus the Action Plan modal's "📋 Copy Action Plan" (`chartActionPlanModal.tsx:33`), which the audit missed but shares the same unguarded pattern. `grep navigator.clipboard src/**/*.tsx` now returns only the single guarded call inside the component. The reset timer is ref-owned and cleared on unmount (S2 rule). Not typed explicitly as the spec suggested — `shared.tsx` is `@ts-nocheck`, so annotations would be dead weight until C3 removes the suppression. Gate: tsc 0 · 257/258 tests (1 pre-existing worker-glob failure) · lint 0 errors / 106 warnings · vite build ok · all 6 touched modules 200 via dev server · e2e render test 6/6 (`e2e_s12_render.py`).
 
 **Evidence.** Identical `navigator.clipboard.writeText(aiTools.X)` + `.gemini-btn btn-alt` button in `FloorAnalysisTab.tsx`, `FloorApprenticeTab.tsx:157`, `FloorCorrelationTab.tsx:22`, `FloorDowTab.tsx:24`. None of the four handles clipboard-permission failure, so a denied permission is silent.
 
@@ -808,7 +811,7 @@ Then convert `account-profile-storage.ts` (raw `localStorage` today) and `hooks.
 | 2 | ~~S10 specifiers, S8 asyncUtils, S9 debug logs~~ ✅ **done 2026-10-10** | ~1 h | none | mechanical; each verified by the existing 194 tests |
 | 3 | ~~S7.1 (remove duplicate `normalizeHeader`)~~ ✅ **done 2026-10-10** | ~15 min | none | byte-identical, proven by 60 existing tests |
 | 4 | S2 `scheduleStatusClear` | ~1 h | low | removes 16 sites and a real unmount leak; visible in the UI, so verify by hand |
-| 5 | S12 copy button | ~1 h | low | small, self-contained |
+| 5 | ~~S12 copy button~~ ✅ **done 2026-10-11** | ~1 h | low | small, self-contained |
 | 6 | ~~S6 storage module~~ ✅ **done 2026-10-11** | ~2 h | medium | no key renames; touches 3 files, all with existing test coverage |
 | 7 | S4 ImportPreviewModal split | ~4 h | low | move-only; expect the warning count to drop |
 | 8 | S1 `useDashboardData` split (a→b→e→c→d) | ~1 day | low | the biggest win, but move-only and gated by the origin-diff audit |

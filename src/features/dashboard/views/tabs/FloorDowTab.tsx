@@ -1,5 +1,5 @@
 // Extracted from App.tsx (Phase 3 move-only refactor) — behavior must stay identical.
-import { FormattedText, GeminiLoader, MetricCell } from '../../../../components/shared';
+import { FormattedText, GeminiLoader, MetricCell, CopyReportButton } from '../../../../components/shared';
 import { COL_DEFINITIONS, getDynamicTarget } from '../../config';
 import { useDashboard } from '../../hooks';
 import { useEffect } from 'react';
@@ -21,7 +21,7 @@ export const FloorDowTab = () => {
             <h3 className="text-xl font-extrabold flex items-center gap-2 mb-1 text-slate-900"><span>📅</span> Day-of-the-Week (DoW) Analysis</h3>
             <p className="text-sm text-slate-500 m-0">Aggregate performance based on historical day to identify systemic vulnerabilities.</p>
           </div>
-          {aiTools.dowReport && <button className="gemini-btn btn-alt px-3 py-1.5 text-xs" onClick={() => navigator.clipboard.writeText(aiTools.dowReport)}>Copy</button>}
+          {aiTools.dowReport && <CopyReportButton text={aiTools.dowReport} />}
         </div>
 
 

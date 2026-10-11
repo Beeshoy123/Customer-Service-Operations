@@ -2,6 +2,7 @@
 // ============================================================================
 // FILE STRUCTURE:
 // ├── Loading Spinner Component
+// ├── Copy Report Button (S12)
 // ├── Formatted Text Renderer
 // ├── Sub-Metric Card Component
 // ├── Donut Gauge Chart
@@ -10,8 +11,45 @@
 // └── Performance Heatmap Grid
 // ============================================================================
 
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { getDynamicTarget, METRIC_CONFIG } from '../features/dashboard/config';
+
+// ─── Copy Report Button (S12) ─────────────────────────────────────
+// Replaces the 4 duplicated inline `navigator.clipboard.writeText(...)` copy
+// buttons (Analysis / Apprentice / Correlation / DOW tabs) plus the Action
+// Plan modal's copy button. None of the originals handled clipboard failure,
+// so a denied permission was silent — this version surfaces an error state.
+export const CopyReportButton = ({ text, label = 'Copy', className = 'gemini-btn btn-alt px-3 py-1.5 text-xs' }) => {
+  // 'idle' | 'copied' | 'error'
+  const [copyState, setCopyState] = useState('idle');
+  const resetTimerRef = useRef(null);
+
+  useEffect(() => () => {
+    if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+  }, []);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(String(text ?? ''));
+      setCopyState('copied');
+    } catch {
+      setCopyState('error');
+    }
+    if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+    resetTimerRef.current = setTimeout(() => setCopyState('idle'), 1500);
+  };
+
+  return (
+    <button
+      type="button"
+      className={className}
+      onClick={handleCopy}
+      title={copyState === 'error' ? 'Clipboard unavailable — select the text manually' : label}
+    >
+      {copyState === 'copied' ? 'Copied ✓' : copyState === 'error' ? 'Copy failed — select the text manually' : label}
+    </button>
+  );
+};
 
 // ─── Loading Spinner Component ──────────────────────────────────────
 export const GeminiLoader = ({ message = 'Cooking it up...', color = '#3b82f6', icon = '✨' }) => (

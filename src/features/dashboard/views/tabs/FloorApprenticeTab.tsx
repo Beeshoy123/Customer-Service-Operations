@@ -1,5 +1,5 @@
 // Extracted from App.tsx (Phase 3 move-only refactor) — behavior must stay identical.
-import { FormattedText, GeminiLoader } from '../../../../components/shared';
+import { FormattedText, GeminiLoader, CopyReportButton } from '../../../../components/shared';
 import { METRIC_CONFIG, getDynamicTarget } from '../../config';
 import { aggregateTeamMetrics } from '../../helpers';
 import { useDashboard } from '../../hooks';
@@ -154,7 +154,7 @@ export const FloorApprenticeTab = () => {
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
              <div className="p-5 px-6 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
                 <h3 className="text-lg font-extrabold flex items-center gap-2 m-0 text-slate-900"><span>🤖</span> AI Impact Analysis</h3>
-                <button className="gemini-btn btn-alt px-3 py-1.5 text-xs" onClick={() => navigator.clipboard.writeText(aiTools.apprenticeReport)}>Copy</button>
+                <CopyReportButton text={aiTools.apprenticeReport} />
              </div>
              <div className="report-body text-[1.05rem] leading-relaxed m-0 p-6 px-8">
                <FormattedText text={aiTools.apprenticeReport} linkedEntities={uiState.linkedEntities} onEntityClick={uiHandlers.handleAiLinkClick} />
