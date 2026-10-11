@@ -124,6 +124,7 @@ Quick index of what is actually done vs open (each claim below was re-checked ag
 
 **DONE / verified in current code:**
 - Import account-picker regression + VZ→Verizon Consumer alias (see "FIXED 2026-10-11" entry below).
+- **First-run seed account (2026-10-12):** `listAccountNames()` now idempotently seeds a default "Verizon Consumer" profile (`ensureSeedAccount()` in `account-profile-storage.ts`), so the import account-picker and the VZ alias detection work on a fresh browser with zero saved accounts. Guarded by 4 new tests in `account-profile-storage.test.ts`.
 - **Chronic Offenders tab** (new feature, 2026-10-11): `chronicOffenders.ts` (3+ consecutive failed-month streak detection, summary stats) + full UI in `FloorOffendersTab.tsx` (KPI cards, sortable/filtered table, monthly-trend badges, coaching action buttons) + 9 unit tests. Replaces the former "coming soon" placeholder.
 - S1 (a–e), S2, S5, S7.1, S8, S9, S10, S12, Phase 2 — all landed (details in their sections).
 - **S12 ✅ LANDED 2026-10-11:** `CopyReportButton` added to `src/components/shared.tsx` (idle → "Copied ✓" → reset after 1.5 s; on clipboard rejection shows "Copy failed — select the text manually"); replaced all 5 inline `navigator.clipboard.writeText` buttons (Analysis/Correlation/DOW/Apprentice tabs + Action Plan modal). Verified by `e2e_s12_render.py` (6/6 incl. real clipboard write + forced-failure path).

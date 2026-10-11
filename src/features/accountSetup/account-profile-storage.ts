@@ -10,6 +10,7 @@
 // crashing the caller. Key VALUES are unchanged (no migration exists).
 
 import type { AccountProfile } from './account-profile-schema';
+import { DEFAULT_ACCOUNT_PROFILE } from '../dashboard/config';
 import { safeStorage, storageKeys } from '../dashboard/storage';
 
 // Prefix form kept for listAccountNames()'s scan; must stay in sync with
@@ -38,6 +39,7 @@ export function saveAccountProfile(profile: AccountProfile): void {
 
 /** Lists every account name that has a saved profile, for a settings/switcher UI. */
 export function listAccountNames(): string[] {
+  ensureSeedAccount(); // first-run fix: the default account must exist in the picker
   const names: string[] = [];
   for (let i = 0; i < safeStorage.length; i++) {
     const key = safeStorage.key(i);
@@ -46,6 +48,37 @@ export function listAccountNames(): string[] {
     }
   }
   return names;
+}
+
+// ---------------------------------------------------------------------------
+// First-run seed account
+// ---------------------------------------------------------------------------
+
+/** Display name of the built-in default account, as it appears in the picker. */
+export const SEED_ACCOUNT_NAME = 'Verizon Consumer';
+
+let seedAttempted = false;
+
+/**
+ * Seeds the default "Verizon Consumer" profile into storage on first use, so
+ * the account picker and the VZ alias detection work before any wizard run.
+ * Idempotent: does nothing when a profile with that name already exists
+ * (user-created or wizard-saved), never overwrites existing data, and only
+ * attempts once per page load. Safe to call from any read path.
+ */
+export function ensureSeedAccount(): void {
+  if (seedAttempted) return;
+  seedAttempted = true;
+  try {
+    if (loadAccountProfile(SEED_ACCOUNT_NAME)) return;
+    saveAccountProfile({
+      ...DEFAULT_ACCOUNT_PROFILE,
+      accountName: SEED_ACCOUNT_NAME,
+      createdAt: new Date().toISOString(),
+    });
+  } catch {
+    // Storage unavailable in the worst way — the picker simply stays empty.
+  }
 }
 
 export type AccountRateMergeStyle = 'arithmetic-average' | 'weighted-by-counts';
