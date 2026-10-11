@@ -126,6 +126,7 @@ Quick index of what is actually done vs open (each claim below was re-checked ag
 - Import account-picker regression + VZ→Verizon Consumer alias (see "FIXED 2026-10-11" entry below).
 - **Chronic Offenders tab** (new feature, 2026-10-11): `chronicOffenders.ts` (3+ consecutive failed-month streak detection, summary stats) + full UI in `FloorOffendersTab.tsx` (KPI cards, sortable/filtered table, monthly-trend badges, coaching action buttons) + 9 unit tests. Replaces the former "coming soon" placeholder.
 - S1 (a–e), S2, S5, S7.1, S8, S9, S10, Phase 2 — all landed (details in their sections).
+- **S4** (ImportPreviewModal split → `previewState.ts` + `ManageMemoryModal.tsx`) and **S6** (unified `storage.ts` safeStorage facade + `storageKeys` registry; zero direct `localStorage` access outside the facade) — both landed 2026-10-11.
 - **C4 (member-completeness half):** `useAiTools` now returns all 24 consumed members. Typed-context + guard-test halves still open (see C4 status note).
 - **S13, S14, S19, S21, S22** — resolved in current code (marked ✅ inline in the S13–S23 table; several had silently been fixed by earlier refactors without the doc being updated).
 
@@ -134,7 +135,7 @@ Quick index of what is actually done vs open (each claim below was re-checked ag
 - **C4 remainder (P0):** replace `createContext<any>` with a typed `DashboardContextValue`; add `aiToolsShape.test.ts` subset guard.
 - **C2 (P1):** Gemini naming over the Anthropic endpoint — 31 `gemini` hits remain (rename unblocked now that C4's member half landed).
 - **C3 remainder (P1):** `helpers.ts` coverage beyond hand-offs (`calculateBonus`, `calculateWeightedVSF`, `calculateTrend`, `agentMatchesSearch`, name formatters) and removal of `@ts-nocheck` from helpers/metrics/hooks/config/emptyColumns.
-- **S3** (context memo never hits — keystroke re-renders), **S4** (ImportPreviewModal/MainModal split), **S6** (localStorage namespaces), **S7.3**, **S11**, **S12**.
+- **S3** (context memo never hits — keystroke re-renders), **S7.3**, **S11**, **S12**. *(S4 landed 2026-10-11; S6 landed 2026-10-11 — see their sections.)*
 - **S15, S16, S17, S18, S20, S23** — opportunistic batch; none done (S17 re-verified: MTD/Daily card JSX still duplicated in `MainStatsRow.tsx`).
 - **U1–U6** — entire UX section untouched, plus the whole Design Gap Analysis section.
 
@@ -352,7 +353,7 @@ Then: preview returns HTTP 200 with no HMR errors, and **every touched module re
 | 1 | ~~**S5** (delete 6 dead files), **S10** (specifiers), **S8** (`asyncUtils`), **S9** (debug logs)~~ ✅ **done 2026-10-10** | Zero-risk mechanical work; grep proves S5, tests prove the rest |
 | 2 | ~~**S7.1** (duplicate `normalizeHeader`)~~ ✅ **done 2026-10-10** | 15 minutes, byte-identical, proven by 60 existing tests |
 | 3 | **S2** (`scheduleStatusClear`), **S12** (copy button) | Small, self-contained, both visible in the UI so verify by hand |
-| 4 | **S6** (storage module), **S11** (`buildAccountProfile`) | Touch persisted data; both need a manual round trip |
+| 4 | ~~**S6** (storage module)~~ ✅ **done 2026-10-11**, **S11** (`buildAccountProfile`) | Touch persisted data; both need a manual round trip |
 | 5 | **S4** (ImportPreviewModal split) | Move-only; collect **S15/S16** inline while the file is open |
 | 6 | **S1** (`useDashboardData`, steps a→b→e→c→d as five commits) | Biggest win, five separately revertible commits |
 | 7 | **S13, S19, S21, S22** (render-path hot spots) | Each is a `useMemo`; land together, measure together |
@@ -493,6 +494,9 @@ Then replace all 16 sites with `scheduleStatusClear(2000 | 4000 | 5000 | 6000)` 
 
 #### S4 — `ImportPreviewModal.tsx`: 1,858 lines, ~1,278 of them one component · **HIGH (structure)**
 
+> ✅ **LANDED 2026-10-11 (move-only).** Three extractions per the file map below: helpers+`LocalSheetState` → `import/previewState.ts`, `ManageMemoryModal` → `import/ManageMemoryModal.tsx`, main component stays in `ImportPreviewModal.tsx`. The 14 tests were re-pointed (`./ImportPreviewModal` → `./previewState`), not rewritten. Previously-private helpers consumed by the component body are now exported from `previewState.ts`. The 4 `setState`-in-effect sites were moved untouched as instructed. Step (c) (`useImportPreview.ts`) was not extracted — deferred; the two highest-value move-only splits landed and the file is down to ~1,350 lines. Gates: tsc 0 · tests 257/258 (known worker-glob failure only) · oxlint 0 errors (106 warnings) · vite build ok.
+
+
 **Evidence.** Layout of `src/features/dashboard/import/ImportPreviewModal.tsx`: pure helpers `1–390` (well-factored, 14 tests) · `ManageMemoryModal` `397–568` (172 lines) · **`ImportPreviewModal` `580–1858` (1,278 lines)** with 11 `useState`, 6 `useEffect` (4 of which call `setState` synchronously — the source of the 9 `set-state-in-effect` warnings), 5 `useMemo`, 1 `useCallback`, and a large JSX body.
 
 **Precisely what to do** — three move-only extractions into the same folder (keep the `.tsx` for components, `.ts` for logic — do not create a new feature folder, and do not touch `importPolicy.ts`):
@@ -542,6 +546,9 @@ Then `grep -rn "from './import'" src` must return **zero** hits before the file 
 **Verification.** `tsc -b` 0, 194/194 (the import pipeline is covered by 10 of the 12 test suites), lint ≤123, preview 200, and `/src/features/dashboard/hooks.ts` returns 200 through the dev server — it is `@ts-nocheck`, so that request is the only thing that proves the de-barrelling resolves.
 
 #### S6 — Four incompatible `localStorage` namespaces, no migration path · **MEDIUM (data risk)**
+
+> ✅ **LANDED 2026-10-11.** Created `src/features/dashboard/storage.ts` (`safeStorage` facade — the mappingMemory shim lifted verbatim: window.localStorage → globalThis.localStorage → shared in-memory fallback, every read/write try/catch-wrapped so SecurityError/quota can never crash a caller — plus the `storageKeys` registry) and `src/features/dashboard/storageMemory.ts` (generic `Map<string,string>` backing store; this resolved the spec inconsistency flagged in the S1(b) note — mappingMemory's old store was `{version, entries}`-shaped and could not satisfy `Pick<Storage, …>`, so a string→string fallback was written instead of moving it). Converted all three consumers: `account-profile-storage.ts` (was raw localStorage), `persistence.ts` (was try/catch + console.warn), `mappingMemory.ts` (now sources its key from `storageKeys.mappingMemory` and uses the facade). **No key renamed** — all five values are byte-identical to production. Gates: `grep -rn "localStorage\." src --include=*.ts --include=*.tsx` excluding tests → **0 hits**; tsc 0 · tests 257/258 (known worker-glob failure only) · oxlint 0 errors / 106 warnings · vite build ok · mappingMemory.test.ts (13) and emptyColumns/monthSelection suites pass unchanged against their `globalThis.localStorage` mocks.
+
 
 **Evidence.** Keys are hardcoded string literals in three files, with three different safety strategies:
 
@@ -802,7 +809,7 @@ Then convert `account-profile-storage.ts` (raw `localStorage` today) and `hooks.
 | 3 | ~~S7.1 (remove duplicate `normalizeHeader`)~~ ✅ **done 2026-10-10** | ~15 min | none | byte-identical, proven by 60 existing tests |
 | 4 | S2 `scheduleStatusClear` | ~1 h | low | removes 16 sites and a real unmount leak; visible in the UI, so verify by hand |
 | 5 | S12 copy button | ~1 h | low | small, self-contained |
-| 6 | S6 storage module | ~2 h | medium | no key renames; touches 3 files, all with existing test coverage |
+| 6 | ~~S6 storage module~~ ✅ **done 2026-10-11** | ~2 h | medium | no key renames; touches 3 files, all with existing test coverage |
 | 7 | S4 ImportPreviewModal split | ~4 h | low | move-only; expect the warning count to drop |
 | 8 | S1 `useDashboardData` split (a→b→e→c→d) | ~1 day | low | the biggest win, but move-only and gated by the origin-diff audit |
 | 9 | **S3 memoize hook returns** | ~3 h | **medium** | the largest runtime win, but a wrong dep list causes *stale* data, not a crash — do it after the extractions so the diff is small and the render counter is easy to reason about |

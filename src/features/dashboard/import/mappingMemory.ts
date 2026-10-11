@@ -1,3 +1,5 @@
+import { safeStorage, storageKeys } from '../storage';
+
 export interface MappingMemoryEntry {
   normalizedHeader: string;
   mappedField: string;
@@ -11,28 +13,19 @@ export interface MappingMemoryStore {
   entries: MappingMemoryEntry[];
 }
 
-export const MAPPING_MEMORY_STORAGE_KEY = 'dashboard_column_mapping_memory_v1';
+// S6: the key value is unchanged; it now lives in the shared registry. This
+// alias keeps the existing export (and its test import) working.
+export const MAPPING_MEMORY_STORAGE_KEY = storageKeys.mappingMemory;
 const CURRENT_VERSION = 1;
 
-// In-memory fallback for environments without localStorage or when storage access fails
+// In-memory mirror of the store for environments without localStorage or when
+// storage access fails. The string→string fallback backing store itself moved
+// to ../storageMemory.ts (shared by safeStorage); this typed mirror stays here
+// because mappingMemory's read/write semantics depend on it.
 let inMemoryStore: MappingMemoryStore = {
   version: CURRENT_VERSION,
   entries: [],
 };
-
-function getStorage(): Storage | null {
-  try {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      return window.localStorage;
-    }
-    if (typeof globalThis !== 'undefined' && (globalThis as unknown as { localStorage?: Storage }).localStorage) {
-      return (globalThis as unknown as { localStorage: Storage }).localStorage;
-    }
-  } catch {
-    // Storage access may throw SecurityError in restricted iframes / private browsing
-  }
-  return null;
-}
 
 /**
  * Normalizes a header for storage and comparison in memory.
@@ -51,13 +44,12 @@ export function normalizeHeaderForMemory(header: string): string {
  * Reads the memory store from localStorage or fallback memory.
  */
 function readStore(): MappingMemoryStore {
-  const storage = getStorage();
-  if (!storage) {
+  const raw = safeStorage.getItem(MAPPING_MEMORY_STORAGE_KEY);
+  if (raw === null) {
     return inMemoryStore;
   }
 
   try {
-    const raw = storage.getItem(MAPPING_MEMORY_STORAGE_KEY);
     if (!raw) {
       return { version: CURRENT_VERSION, entries: [] };
     }
@@ -86,11 +78,8 @@ function readStore(): MappingMemoryStore {
  */
 function writeStore(store: MappingMemoryStore): void {
   inMemoryStore = store;
-  const storage = getStorage();
-  if (!storage) return;
-
   try {
-    storage.setItem(MAPPING_MEMORY_STORAGE_KEY, JSON.stringify(store));
+    safeStorage.setItem(MAPPING_MEMORY_STORAGE_KEY, JSON.stringify(store));
   } catch (error) {
     console.warn('[mappingMemory] Failed to persist memory store:', error);
   }
@@ -222,13 +211,10 @@ export function clearMemory(): void {
     entries: [],
   };
   writeStore(emptyStore);
-  const storage = getStorage();
-  if (storage) {
-    try {
-      storage.removeItem(MAPPING_MEMORY_STORAGE_KEY);
-    } catch {
-      // ignore
-    }
+  try {
+    safeStorage.removeItem(MAPPING_MEMORY_STORAGE_KEY);
+  } catch {
+    // ignore
   }
 }
 

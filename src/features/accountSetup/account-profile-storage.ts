@@ -1,13 +1,20 @@
 // account-profile-storage.ts
 //
-// Reads and writes the persisted account profiles for each account to localStorage,
-// while keeping the calculation preferences that are still part of the existing
+// Reads and writes the persisted account profiles for each account, while
+// keeping the calculation preferences that are still part of the existing
 // dashboard pipeline and are not being retired here.
+//
+// S6 (recommendations.md): all persistence goes through the shared `safeStorage`
+// facade and the `storageKeys` registry — no direct localStorage access here
+// anymore, so SecurityError / quota failures fall back to memory instead of
+// crashing the caller. Key VALUES are unchanged (no migration exists).
 
 import type { AccountProfile } from './account-profile-schema';
+import { safeStorage, storageKeys } from '../dashboard/storage';
 
+// Prefix form kept for listAccountNames()'s scan; must stay in sync with
+// storageKeys.accountProfile below.
 const PROFILE_KEY_PREFIX = 'cs-ops:account-profile:';
-const CALCULATION_STYLE_KEY_PREFIX = 'cs-ops:calculation-style:';
 
 function safeParse<T>(raw: string | null): T | null {
   if (!raw) return null;
@@ -20,20 +27,20 @@ function safeParse<T>(raw: string | null): T | null {
 
 /** Loads a previously-saved profile for this account, or null if none exists yet. */
 export function loadAccountProfile(accountName: string): AccountProfile | null {
-  return safeParse<AccountProfile>(localStorage.getItem(PROFILE_KEY_PREFIX + accountName));
+  return safeParse<AccountProfile>(safeStorage.getItem(storageKeys.accountProfile(accountName)));
 }
 
 /** Saves (or overwrites) the profile for this account, stamping the update time. */
 export function saveAccountProfile(profile: AccountProfile): void {
   const withTimestamp: AccountProfile = { ...profile, updatedAt: new Date().toISOString() };
-  localStorage.setItem(PROFILE_KEY_PREFIX + profile.accountName, JSON.stringify(withTimestamp));
+  safeStorage.setItem(storageKeys.accountProfile(profile.accountName), JSON.stringify(withTimestamp));
 }
 
 /** Lists every account name that has a saved profile, for a settings/switcher UI. */
 export function listAccountNames(): string[] {
   const names: string[] = [];
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
+  for (let i = 0; i < safeStorage.length; i++) {
+    const key = safeStorage.key(i);
     if (key?.startsWith(PROFILE_KEY_PREFIX)) {
       names.push(key.slice(PROFILE_KEY_PREFIX.length));
     }
@@ -44,10 +51,10 @@ export function listAccountNames(): string[] {
 export type AccountRateMergeStyle = 'arithmetic-average' | 'weighted-by-counts';
 
 export function loadRateMergeStyle(accountName: string): AccountRateMergeStyle {
-  const value = localStorage.getItem(CALCULATION_STYLE_KEY_PREFIX + accountName);
+  const value = safeStorage.getItem(storageKeys.calculationStyle(accountName));
   return value === 'weighted-by-counts' ? value : 'arithmetic-average';
 }
 
 export function saveRateMergeStyle(accountName: string, style: AccountRateMergeStyle): void {
-  localStorage.setItem(CALCULATION_STYLE_KEY_PREFIX + accountName, style);
+  safeStorage.setItem(storageKeys.calculationStyle(accountName), style);
 }

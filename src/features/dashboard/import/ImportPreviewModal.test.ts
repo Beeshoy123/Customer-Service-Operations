@@ -5,7 +5,7 @@ import {
   getCanonicalFieldLabel,
   findMatchingSheets,
   applyMappingsToSheets,
-} from './ImportPreviewModal';
+} from './previewState';
 import { rememberMapping, clearMemory, getAllLearnedMappings, forgetMapping } from './mappingMemory';
 import type { SheetTable } from './types';
 

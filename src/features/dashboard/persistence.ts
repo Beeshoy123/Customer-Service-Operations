@@ -9,20 +9,23 @@
 import { useCallback, useEffect } from 'react';
 import { DEFAULT_DATE } from './config';
 import { ALL_MONTHS } from './helpers';
+// S6: all localStorage access goes through the shared safeStorage facade + key
+// registry (./storage). Key VALUES are unchanged — there is no migration code.
+import { safeStorage, storageKeys } from './storage';
 
 // ─── Local Storage Persistence Helpers ──────────────────────────────────────
-const DASHBOARD_STORAGE_KEY = 'customer-service-dashboard-state-v1';
+const DASHBOARD_STORAGE_KEY = storageKeys.dashboardState;
 // Split in two so selection changes (month/timeframe switches) never
 // re-stringify the multi-MB history payload — audit finding #1 (month-switch
 // localStorage jank). DASHBOARD_STORAGE_KEY holds the heavy data; the tiny
 // view key below holds only the timeframe/date/month selections.
-const DASHBOARD_VIEW_STORAGE_KEY = 'customer-service-dashboard-view-v1';
+const DASHBOARD_VIEW_STORAGE_KEY = storageKeys.dashboardView;
 
 export const readPersistedDashboardState = () => {
   if (typeof window === 'undefined') return null;
 
   try {
-    const raw = window.localStorage.getItem(DASHBOARD_STORAGE_KEY);
+    const raw = safeStorage.getItem(DASHBOARD_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object') return null;
@@ -31,7 +34,7 @@ export const readPersistedDashboardState = () => {
     // them inside the main key — those still work as a fallback, and fresh
     // view-key values always win when present.
     try {
-      const rawView = window.localStorage.getItem(DASHBOARD_VIEW_STORAGE_KEY);
+      const rawView = safeStorage.getItem(DASHBOARD_VIEW_STORAGE_KEY);
       if (rawView) {
         const parsedView = JSON.parse(rawView);
         if (parsedView && typeof parsedView === 'object') {
@@ -122,8 +125,8 @@ export const useDashboardPersistence = (
     setSelectedMonthChosen(false);
 
     if (typeof window !== 'undefined') {
-      window.localStorage.removeItem(DASHBOARD_STORAGE_KEY);
-      window.localStorage.removeItem(DASHBOARD_VIEW_STORAGE_KEY);
+      safeStorage.removeItem(DASHBOARD_STORAGE_KEY);
+      safeStorage.removeItem(DASHBOARD_VIEW_STORAGE_KEY);
     }
     onDataReset?.();
   }, [
@@ -150,7 +153,7 @@ export const useDashboardPersistence = (
         historicalData,
         hasUploadedData,
       };
-      window.localStorage.setItem(DASHBOARD_STORAGE_KEY, JSON.stringify(payload));
+      safeStorage.setItem(DASHBOARD_STORAGE_KEY, JSON.stringify(payload));
     } catch (error) {
       console.warn('Failed to persist dashboard state:', error);
     }
@@ -170,7 +173,7 @@ export const useDashboardPersistence = (
         selectedMonth,
         selectedMonthChosen,
       };
-      window.localStorage.setItem(DASHBOARD_VIEW_STORAGE_KEY, JSON.stringify(payload));
+      safeStorage.setItem(DASHBOARD_VIEW_STORAGE_KEY, JSON.stringify(payload));
     } catch (error) {
       console.warn('Failed to persist dashboard view state:', error);
     }
