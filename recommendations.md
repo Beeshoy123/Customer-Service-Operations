@@ -128,6 +128,7 @@ Quick index of what is actually done vs open (each claim below was re-checked ag
 - S1 (a–e), S2, S5, S7.1, S8, S9, S10, S12, Phase 2 — all landed (details in their sections).
 - **S12 ✅ LANDED 2026-10-11:** `CopyReportButton` added to `src/components/shared.tsx` (idle → "Copied ✓" → reset after 1.5 s; on clipboard rejection shows "Copy failed — select the text manually"); replaced all 5 inline `navigator.clipboard.writeText` buttons (Analysis/Correlation/DOW/Apprentice tabs + Action Plan modal). Verified by `e2e_s12_render.py` (6/6 incl. real clipboard write + forced-failure path).
 - **S4** (ImportPreviewModal split → `previewState.ts` + `ManageMemoryModal.tsx`) and **S6** (unified `storage.ts` safeStorage facade + `storageKeys` registry; zero direct `localStorage` access outside the facade) — both landed 2026-10-11.
+- **S11** (`buildAccountProfile` single source of truth → `accountSetup/account-profile-builder.ts`, audited move-only, 7 guard tests) and **S3** (memoized hook returns) — landed 2026-10-12. *(S12 landed 2026-10-11.)*
 - **C4 (member-completeness half):** `useAiTools` now returns all 24 consumed members. Typed-context + guard-test halves still open (see C4 status note).
 - **S13, S14, S19, S21, S22** — resolved in current code (marked ✅ inline in the S13–S23 table; several had silently been fixed by earlier refactors without the doc being updated).
 
@@ -136,7 +137,7 @@ Quick index of what is actually done vs open (each claim below was re-checked ag
 - **C4 remainder (P0):** replace `createContext<any>` with a typed `DashboardContextValue`; add `aiToolsShape.test.ts` subset guard.
 - **C2 (P1):** Gemini naming over the Anthropic endpoint — 31 `gemini` hits remain (rename unblocked now that C4's member half landed).
 - **C3 remainder (P1):** `helpers.ts` coverage beyond hand-offs (`calculateBonus`, `calculateWeightedVSF`, `calculateTrend`, `agentMatchesSearch`, name formatters) and removal of `@ts-nocheck` from helpers/metrics/hooks/config/emptyColumns.
-- **S3** (context memo never hits — keystroke re-renders), **S7.3**, **S11**. *(S4 landed 2026-10-11; S6 landed 2026-10-11; S12 landed 2026-10-11 — see their sections.)*
+- **S7.3** (unify Excel serial thresholds — behavioral, write boundary tests first). *(S3, S4, S6, S11, S12 landed — see their sections.)*
 - **S15, S16, S17, S18, S20, S23** — opportunistic batch; none done (S17 re-verified: MTD/Daily card JSX still duplicated in `MainStatsRow.tsx`).
 - **U1–U6** — entire UX section untouched, plus the whole Design Gap Analysis section.
 
@@ -354,7 +355,7 @@ Then: preview returns HTTP 200 with no HMR errors, and **every touched module re
 | 1 | ~~**S5** (delete 6 dead files), **S10** (specifiers), **S8** (`asyncUtils`), **S9** (debug logs)~~ ✅ **done 2026-10-10** | Zero-risk mechanical work; grep proves S5, tests prove the rest |
 | 2 | ~~**S7.1** (duplicate `normalizeHeader`)~~ ✅ **done 2026-10-10** | 15 minutes, byte-identical, proven by 60 existing tests |
 | 3 | ~~**S2** (`scheduleStatusClear`)~~ ✅ done, ~~**S12** (copy button)~~ ✅ done 2026-10-11 | Small, self-contained, both visible in the UI so verify by hand |
-| 4 | ~~**S6** (storage module)~~ ✅ **done 2026-10-11**, **S11** (`buildAccountProfile`) | Touch persisted data; both need a manual round trip |
+| 4 | ~~**S6** (storage module)~~ ✅ **done 2026-10-11**, ~~**S11** (`buildAccountProfile`)~~ ✅ **done 2026-10-12** | Touch persisted data; both landed with automated proof (facade grep / parity harness) |
 | 5 | **S4** (ImportPreviewModal split) | Move-only; collect **S15/S16** inline while the file is open |
 | 6 | **S1** (`useDashboardData`, steps a→b→e→c→d as five commits) | Biggest win, five separately revertible commits |
 | 7 | **S13, S19, S21, S22** (render-path hot spots) | Each is a `useMemo`; land together, measure together |
@@ -615,7 +616,9 @@ Then `grep -rn "from './import'" src` must return **zero** hits before the file 
 
 **Verification.** `tsc -b` 0, 194/194 (the 10 sites are all in tested modules), lint unchanged.
 
-#### S11 — `AccountProfile` shape defined twice · **MEDIUM (data contract)**
+#### S11 — `AccountProfile` shape defined twice · **MEDIUM (data contract)** · ✅ **LANDED 2026-10-12**
+
+> **Outcome (2026-10-12).** Full 74-line audit done before moving, per this item's implementation note. Verdict: **every line is object assembly from already-resolved values — none is column-mapping/alias policy**, so nothing belongs in `importPolicy.ts` and the STANDING RULE banner was added to the new file instead. The *inferences* that look like policy (window label, VTT messages, credit calcStyle) are all made upstream in `previewState.buildAdditionalMetricDraft`, which stays in the import layer; the builder only consumes their resolved output. One judgment call recorded honestly: the hardcoded fallbacks inside the builder (`'2 hour'`/`'3 day'` window defaults, `'frequency'` credit default, sales-line resets) are profile-shape defaults — they moved with the builder rather than being smeared into `importPolicy.ts`, because they are not header/mapping logic at all. Builder placed at `src/features/accountSetup/account-profile-builder.ts` (a sibling module beside its schema, not inside the 240-line schema file, keeping the schema pure types); `previewState.ts` re-exports it so the modal's import path is unchanged. Parity-proven: a differential harness ran old-vs-new over 7 cases (all 11 metrics, blank-name fallback, defaults) — JSON-identical modulo `createdAt`. New `account-profile-builder.test.ts` (7 tests) locks the output contract. Gate: tsc 0 · 264/265 tests (1 pre-existing worker-glob failure) · lint 0 errors / 106 warnings · vite build ok · all touched modules 200 via dev server. Manual persisted-profile round trip still recommended as belt-and-braces (the parity harness plus 7 contract tests cover the shape).
 
 **Evidence.** `src/features/accountSetup/account-profile-schema.ts` (235 lines, 17 exports) is the schema; `buildAccountProfile` at `ImportPreviewModal.tsx:201–274` (74 lines) constructs the object inline in the modal. A persisted, schema-versioned object with two sources of truth.
 
@@ -816,7 +819,7 @@ Then convert `account-profile-storage.ts` (raw `localStorage` today) and `hooks.
 | 7 | S4 ImportPreviewModal split | ~4 h | low | move-only; expect the warning count to drop |
 | 8 | S1 `useDashboardData` split (a→b→e→c→d) | ~1 day | low | the biggest win, but move-only and gated by the origin-diff audit |
 | 9 | **S3 memoize hook returns** | ~3 h | **medium** | the largest runtime win, but a wrong dep list causes *stale* data, not a crash — do it after the extractions so the diff is small and the render counter is easy to reason about |
-| 10 | S11 `buildAccountProfile` | ~2 h | medium | persisted shape; needs a manual round trip |
+| 10 | ~~S11 `buildAccountProfile`~~ ✅ **done 2026-10-12** | ~2 h | medium | persisted shape; parity-harness + 7 contract tests instead of manual round trip |
 | 11 | S7.3 (unify Excel serial thresholds) | ~2 h | medium | **behavioral** — write the 7 new boundary tests first, then decide |
 
 **Explicitly out of scope for S1–S12** (already known, unchanged, and each needs its own decision): the `if (false && !hasAccountName)` dead gate at `App.tsx:245` that makes the ~70-line account-setup screen unreachable; the ref-write-during-render at `App.tsx:173` and `hooks.ts:1447`; 53 `no-unused-vars`; and the `window.tailwind` shim at `App.tsx:57–60` — a global set for a Tailwind that is not installed, whose 189 hand-rolled substitute classes now live in `src/styles/dashboard.css` (Phase 2 above relocated them — they remain hand-rolled by design, per the step 2 decision).
