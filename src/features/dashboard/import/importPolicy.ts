@@ -1395,24 +1395,14 @@ export const findCanonicalField = (
 };
 
 
-// Excel's serial date epoch: days are counted from 1899-12-30 (not 1899-12-31)
-// because Excel perpetuates the Lotus 1-2-3 leap-year-1900 bug where serial 60
-// represents the fictional 1900-02-29. Serials above 60 are all one day ahead of
-// what you'd get from 1899-12-31, so 1899-12-30 is the correct JS epoch to use.
-const EXCEL_EPOCH_MS = Date.UTC(1899, 11, 30); // 1899-12-30 UTC
-
-// Plausible range for real-world Excel date serials:
-//   1 → 1900-01-01,  60000 → 2064-03-05
-// Values outside this range are rejected rather than passed to new Date() as a
-// bare string, which would silently produce astronomical-year nonsense.
-// KNOWN DIVERGENCE (S7): columnFingerprinter.ts uses EXCEL_SERIAL_MIN = 35000
-// for *classification* (avoid calling ordinary 1–4 digit integers dates), while
-// this file's MIN = 1 governs *conversion* once a value is already deemed
-// date-like. Consequence: a serial in 1–34999 is converted to a date here but
-// is NOT classified as date-like there. Intentional; unifying is a behavioral
-// change that needs its own test pass (see recommendations.md §S7).
-const EXCEL_SERIAL_MIN = 1;
-const EXCEL_SERIAL_MAX = 60000;
+// S7.3 (2026-10-12): the Excel serial epoch + conversion bounds that used to
+// live here (MIN = 1 / MAX = 60000) now have a single owner, ./excelSerialRange,
+// where they sit NEXT TO the fingerprinter's stricter classification floor and
+// carry distinct names — the old "KNOWN DIVERGENCE" note (two same-named
+// constants with different values across two files) is resolved by co-location
+// plus a classify⊆convert parity test, not by moving any threshold.
+// Conversion semantics for values reaching this path are unchanged.
+import { isExcelDateSerial, excelSerialToIsoDate } from './excelSerialRange';
 
 const convertDateLike = (value: string): string | null => {
   const trimmed = value.trim();
@@ -1424,11 +1414,9 @@ const convertDateLike = (value: string): string | null => {
   // through to `new Date("45383")`, which JavaScript parses as the year 45383.
   if (/^\d+(\.\d+)?$/.test(trimmed)) {
     const serial = Number(trimmed);
-    if (serial >= EXCEL_SERIAL_MIN && serial <= EXCEL_SERIAL_MAX) {
+    if (isExcelDateSerial(serial)) {
       // Integer part = whole days; fractional part = time-of-day (ignored here).
-      const days = Math.floor(serial);
-      const d = new Date(EXCEL_EPOCH_MS + days * 86400000);
-      return d.toISOString().slice(0, 10);
+      return excelSerialToIsoDate(serial);
     }
     // Numeric but outside plausible serial range — do NOT pass to new Date().
     return null;

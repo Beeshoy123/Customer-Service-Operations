@@ -25,6 +25,15 @@ describe('columnFingerprinter (Step 1 — Value Pattern Fingerprinting)', () => 
       assert.equal(isDateLikeString('45383'), true);
       assert.equal(isDateLikeString('45383.5'), true);
 
+      // S7.3 boundary cases — bounds now come from the shared excelSerialRange
+      // (classify floor UNCHANGED at 35000; the digit-count guard was folded
+      // into the range check). These lock every edge of both thresholds.
+      assert.equal(isDateLikeString('35000'), true, 'classify floor inclusive (~1995-10-28)');
+      assert.equal(isDateLikeString('34999'), false, 'just below classify floor is not a date');
+      assert.equal(isDateLikeString('60000'), true, 'MAX inclusive (~2064-04-08)');
+      assert.equal(isDateLikeString('60001'), false, 'just above MAX is not a date');
+      assert.equal(isDateLikeString('35000.5'), true, 'fractional time-of-day inside range still classifies');
+
       // Bare numbers that MUST NOT be classified as date-like
       assert.equal(isDateLikeString('100'), false, '100 calls is not a date');
       assert.equal(isDateLikeString('150'), false, '150 calls is not a date');
@@ -32,6 +41,8 @@ describe('columnFingerprinter (Step 1 — Value Pattern Fingerprinting)', () => 
       assert.equal(isDateLikeString('0'), false, '0 is not a date');
       assert.equal(isDateLikeString('12'), false, '12 is not a date');
       assert.equal(isDateLikeString('100234'), false, '6-digit employee id is not a date');
+      assert.equal(isDateLikeString('99999'), false, '5-digit above MAX is not a date');
+      assert.equal(isDateLikeString('-45383'), false, 'negative serial is not a date');
       assert.equal(isDateLikeString(''), false);
     });
 

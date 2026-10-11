@@ -23,17 +23,16 @@ export interface ColumnStats {
   maxStringLength: number | null;
 }
 
-// Plausible Excel serial dates for business data:
-// 35000 is ~1995-10-23, 60000 is ~2064-03-05.
-// Bare numbers outside this range or fewer than 5 digits (e.g. 100, 150, 300)
-// are ordinary integers (calls, durations), NOT Excel date serials.
-// KNOWN DIVERGENCE (S7): importPolicy.ts uses EXCEL_SERIAL_MIN = 1 for
-// *conversion* of values already deemed date-like; this stricter MIN = 35000
-// governs *classification* only. Serials in 1–34999 therefore convert as dates
-// in importPolicy but are not fingerprinted as date-like here. Intentional;
-// see recommendations.md §S7 before changing either constant.
-const EXCEL_SERIAL_MIN = 35000;
-const EXCEL_SERIAL_MAX = 60000;
+// ── S7.3 unification (2026-10-12) ────────────────────────────────────────────
+// The Excel serial bounds used to be re-declared HERE under the same names
+// importPolicy.ts uses, but with different values (this file: MIN=35000 for
+// classification; importPolicy: MIN=1 for conversion). Both roles now live in
+// ./excelSerialRange with DISTINCT names (EXCEL_SERIAL_MIN vs
+// EXCEL_SERIAL_CLASSIFY_MIN) and a parity test locking classify ⊆ convert.
+// No threshold changed; behavior is identical except that the old "exactly 5
+// digits" regex is now expressed as the (equivalent-for-business-data) range
+// check below — see excelSerialRange.test.ts for the equivalence proof.
+import { isClassifiableDateSerial } from './excelSerialRange';
 
 /**
  * Checks whether a raw cell string looks like a date.
@@ -42,10 +41,13 @@ const EXCEL_SERIAL_MAX = 60000;
 export function isDateLikeString(trimmed: string): boolean {
   if (!trimmed) return false;
 
-  // 1. Excel serial numbers: must be a 5-digit number in plausible date range
-  if (/^\d{5}(\.\d+)?$/.test(trimmed)) {
-    const serial = Number(trimmed);
-    return serial >= EXCEL_SERIAL_MIN && serial <= EXCEL_SERIAL_MAX;
+  // 1. Excel serial numbers: bare integer inside the shared classification
+  //    range [35000..60000] (owned by excelSerialRange.ts). Equivalent to the
+  //    old "5 digits AND 35000<=n<=60000" rule for every input that can reach
+  //    this branch: <35000 has <=4 digits or fails the floor; >60000 needs >=5
+  //    digits, so the digit-count guard and the range floor subsume it.
+  if (/^\d+(\.\d+)?$/.test(trimmed)) {
+    return isClassifiableDateSerial(Number(trimmed));
   }
 
   // Reject other bare numbers to avoid JS Date.parse("300") interpreting as year 300 AD

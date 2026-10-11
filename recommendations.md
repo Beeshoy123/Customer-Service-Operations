@@ -129,6 +129,7 @@ Quick index of what is actually done vs open (each claim below was re-checked ag
 - **S12 ✅ LANDED 2026-10-11:** `CopyReportButton` added to `src/components/shared.tsx` (idle → "Copied ✓" → reset after 1.5 s; on clipboard rejection shows "Copy failed — select the text manually"); replaced all 5 inline `navigator.clipboard.writeText` buttons (Analysis/Correlation/DOW/Apprentice tabs + Action Plan modal). Verified by `e2e_s12_render.py` (6/6 incl. real clipboard write + forced-failure path).
 - **S4** (ImportPreviewModal split → `previewState.ts` + `ManageMemoryModal.tsx`) and **S6** (unified `storage.ts` safeStorage facade + `storageKeys` registry; zero direct `localStorage` access outside the facade) — both landed 2026-10-11.
 - **S11** (`buildAccountProfile` single source of truth → `accountSetup/account-profile-builder.ts`, audited move-only, 7 guard tests) and **S3** (memoized hook returns) — landed 2026-10-12. *(S12 landed 2026-10-11.)*
+- **S7.3** (Excel serial constants unified under one owner `import/excelSerialRange.ts` with role-distinct names; boundary tests written first; threshold values deliberately unchanged) — landed 2026-10-12.
 - **C4 (member-completeness half):** `useAiTools` now returns all 24 consumed members. Typed-context + guard-test halves still open (see C4 status note).
 - **S13, S14, S19, S21, S22** — resolved in current code (marked ✅ inline in the S13–S23 table; several had silently been fixed by earlier refactors without the doc being updated).
 
@@ -137,7 +138,7 @@ Quick index of what is actually done vs open (each claim below was re-checked ag
 - **C4 remainder (P0):** replace `createContext<any>` with a typed `DashboardContextValue`; add `aiToolsShape.test.ts` subset guard.
 - **C2 (P1):** Gemini naming over the Anthropic endpoint — 31 `gemini` hits remain (rename unblocked now that C4's member half landed).
 - **C3 remainder (P1):** `helpers.ts` coverage beyond hand-offs (`calculateBonus`, `calculateWeightedVSF`, `calculateTrend`, `agentMatchesSearch`, name formatters) and removal of `@ts-nocheck` from helpers/metrics/hooks/config/emptyColumns.
-- **S7.3** (unify Excel serial thresholds — behavioral, write boundary tests first). *(S3, S4, S6, S11, S12 landed — see their sections.)*
+*(S3, S4, S6, S7.3, S11, S12 landed 2026-10-11/12 — see their sections.)*
 - **S15, S16, S17, S18, S20, S23** — opportunistic batch; none done (S17 re-verified: MTD/Daily card JSX still duplicated in `MainStatsRow.tsx`).
 - **U1–U6** — entire UX section untouched, plus the whole Design Gap Analysis section.
 
@@ -571,18 +572,19 @@ Then `grep -rn "from './import'" src` must return **zero** hits before the file 
 > ✅ **LANDED 2026-10-10** (steps 1–3 as specified; step 3 explicitly *not* unified). Details:
 > - **Step 1 done:** the byte-identical private `normalizeHeader` copy in `schemaNormalizer.ts` was deleted; the file now imports the single owner's export from `importPolicy.ts`. Zero behavior change — proven by all importPolicy (42) + schemaNormalizer tests passing unchanged.
 > - **Step 2 done:** `ImportPreviewModal.tsx` sheet-signature helper left alone, with a NOTE comment marking it as a different contract (lowercases already-normalized field names) so nobody "unifies" it later.
-> - **Step 3 done as specified:** constants NOT changed. Both `EXCEL_SERIAL_MIN` sites (`importPolicy.ts` = 1 for conversion, `columnFingerprinter.ts` = 35000 for classification) now cross-reference each other with a KNOWN DIVERGENCE comment describing the 1–34999 window. Unification remains open work (see roadmap item 11 / S7.3) and requires writing boundary tests for serials 1, 10000, 34999, 35000, 45383, 60000, 60001 **before** touching either constant.
-> - Gates: `tsc -b` 0 · tests 248/249 (the 1 failure pre-exists — worker `.ts` glob issue under bare tsx, unrelated) · oxlint 0 errors · vite build ok · dev server 200 · headless render clean.
+> - **Step 3 done as specified at the time:** constants NOT changed; both sites gained cross-referencing KNOWN DIVERGENCE comments. Superseded by S7.3 below.
+
+> ✅ **S7.3 LANDED 2026-10-12.** The two same-named, differently-valued constants are no longer duplicated. New leaf module `import/excelSerialRange.ts` (zero imports — it sits below every layer of the import/ folder's acyclic list, which is why neither consumer could own the shared constant without creating a cycle: `importPolicy.ts` already imports from `columnFingerprinter.ts`) is now the single owner of `EXCEL_EPOCH_MS`, `EXCEL_SERIAL_MIN/MAX` (conversion role, 1–60000), `EXCEL_SERIAL_CLASSIFY_MIN` (classification role, 35000) and the predicates `isExcelDateSerial` / `isClassifiableDateSerial` + `excelSerialToIsoDate`. **Deliberate decision recorded in the module header: neither threshold value moved** — the divergence was genuinely intentional (convert-after-header-match vs classify-bare-values), so the fix is that one file now owns both numbers with their roles named, killing the "same name, different meaning" trap. The 1–34999 window therefore still behaves exactly as before, by design. Boundary tests were written **first**, per this item's own precondition: `excelSerialRange.test.ts` covers serials 1, 10000, 34999, 35000, 45383, 60000, 60001 plus the parity invariant *every classifiable serial must also be convertible* (classify ⊆ convert), and `columnFingerprinter.test.ts` / `importPolicy.ts` call-sites were re-pointed to the shared predicates. Gates: `tsc -b` 0 · full suite 269/270 (the 1 failure is the known pre-existing worker `.ts`-glob issue under bare tsx, unchanged) · oxlint 0 errors / 106 warnings · vite build ok.
 
 **Evidence.**
 - `importPolicy.ts:565` `export const normalizeHeader` and `schemaNormalizer.ts:11` `const normalizeHeader` are **byte-identical implementations** (same two camelCase regexes, lowercase, strip non-alphanumerics) — pure duplication inside the exact domain the STANDING RULE governs.
 - `ImportPreviewModal.tsx:336` adds a third, weaker variant (`.map(m => m.normalized.toLowerCase().trim())`) for sheet matching.
-- `EXCEL_SERIAL_MIN` is `1` at `importPolicy.ts:1267` but `35000` at `columnFingerprinter.ts:30` (with `MAX = 60000` in both). Both carry explanatory comments and the divergence is *arguably intentional* (convert-vs-classify), but it means a 5-digit serial in 1–34999 is converted to a date by the policy and is **not** classified as date-like by the fingerprinter — and neither file reveals the other.
+- ~~`EXCEL_SERIAL_MIN` is `1` at `importPolicy.ts:1267` but `35000` at `columnFingerprinter.ts:30`~~ — **resolved by S7.3 (2026-10-12):** both numbers now live in one owner (`excelSerialRange.ts`) under distinct names (`EXCEL_SERIAL_MIN` for conversion, `EXCEL_SERIAL_CLASSIFY_MIN` for classification); values unchanged by design.
 
 **Precisely what to do.**
 1. In `schemaNormalizer.ts`, delete the private copy and import the exported one from `./importPolicy` — **zero behavior change, byte-identical function**. Add a one-line comment pointing at `importPolicy` as the single owner of header normalization.
 2. Leave `ImportPreviewModal.tsx:336` alone (it normalizes already-normalized field names — different input, different contract). Add a comment saying so, so the next reader does not "fix" it.
-3. For the thresholds: **do not unify them in this step.** Instead, cross-reference the two constants in comments and record the known divergence window in this file. Unifying is a *behavioral* change to date detection and needs its own test pass (importPolicy has 42 tests; add cases for serials 1, 10000, 34999, 35000, 45383, 60000, 60001 to `importPolicy.test.ts` **before** touching either constant).
+3. ~~For the thresholds: do not unify them in this step — cross-reference + record divergence.~~ ✅ **Done beyond this by S7.3 (2026-10-12):** boundary tests for serials 1, 10000, 34999, 35000, 45383, 60000, 60001 were written first (`excelSerialRange.test.ts`), then both constants moved to a single owner under role-distinct names. The two values themselves were deliberately NOT changed — see the S7.3 LANDED note above for why.
 
 **Verification.** `tsc -b` 0, 194/194 — all 42 `importPolicy` tests and 18 `columnFingerprinter` tests must pass unchanged, which is what proves step 1 was byte-identical.
 
@@ -820,7 +822,7 @@ Then convert `account-profile-storage.ts` (raw `localStorage` today) and `hooks.
 | 8 | S1 `useDashboardData` split (a→b→e→c→d) | ~1 day | low | the biggest win, but move-only and gated by the origin-diff audit |
 | 9 | **S3 memoize hook returns** | ~3 h | **medium** | the largest runtime win, but a wrong dep list causes *stale* data, not a crash — do it after the extractions so the diff is small and the render counter is easy to reason about |
 | 10 | ~~S11 `buildAccountProfile`~~ ✅ **done 2026-10-12** | ~2 h | medium | persisted shape; parity-harness + 7 contract tests instead of manual round trip |
-| 11 | S7.3 (unify Excel serial thresholds) | ~2 h | medium | **behavioral** — write the 7 new boundary tests first, then decide |
+| 11 | ~~S7.3 (unify Excel serial thresholds)~~ ✅ **done 2026-10-12** | ~2 h | medium | boundary tests written first as required; both constants moved to one owner (`excelSerialRange.ts`) with role-distinct names — values deliberately unchanged |
 
 **Explicitly out of scope for S1–S12** (already known, unchanged, and each needs its own decision): the `if (false && !hasAccountName)` dead gate at `App.tsx:245` that makes the ~70-line account-setup screen unreachable; the ref-write-during-render at `App.tsx:173` and `hooks.ts:1447`; 53 `no-unused-vars`; and the `window.tailwind` shim at `App.tsx:57–60` — a global set for a Tailwind that is not installed, whose 189 hand-rolled substitute classes now live in `src/styles/dashboard.css` (Phase 2 above relocated them — they remain hand-rolled by design, per the step 2 decision).
 
