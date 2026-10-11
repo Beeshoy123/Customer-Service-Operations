@@ -104,12 +104,12 @@ export const ManageMemoryModal: React.FC<ManageMemoryModalProps> = ({
         {/* Table Body */}
         <div className="ipm-memory-body">
           {entries.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8', fontSize: '0.8rem' }}>
-              <span style={{ fontSize: '1.8rem', display: 'block', marginBottom: '8px' }}>💡</span>
+            <div className="ipm-memory-empty">
+              <span className="ipm-memory-empty-icon">💡</span>
               No learned mappings yet. Whenever you manually map a column in the preview modal, it will be remembered here!
             </div>
           ) : filteredEntries.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '32px 0', color: '#94a3b8', fontSize: '0.8rem' }}>
+            <div className="ipm-memory-empty-filtered">
               No mappings match &quot;{filterText}&quot;.
             </div>
           ) : (
@@ -118,46 +118,38 @@ export const ManageMemoryModal: React.FC<ManageMemoryModalProps> = ({
                 <tr>
                   <th>Header</th>
                   <th>Mapped Field</th>
-                  <th style={{ textAlign: 'center' }}>Uses</th>
+                  <th className="ipm-th-center">Uses</th>
                   <th>Last Seen</th>
-                  <th style={{ textAlign: 'right' }}>Action</th>
+                  <th className="ipm-th-right">Action</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredEntries.map((item) => (
                   <tr key={`${item.normalizedHeader}-${item.scope || 'global'}`}>
                     <td>
-                      <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#0f172a' }}>
+                      <span className="ipm-memory-header-cell">
                         {item.normalizedHeader}
                       </span>
                       {item.scope && (
-                        <span className="ipm-pattern-badge" style={{ marginLeft: '6px' }}>
+                        <span className="ipm-pattern-badge ipm-memory-badge-offset">
                           {item.scope}
                         </span>
                       )}
                     </td>
                     <td>
-                      <span style={{ fontWeight: 600 }}>{getCanonicalFieldLabel(item.mappedField)}</span>{' '}
-                      <span style={{ color: '#94a3b8', fontFamily: 'monospace', fontSize: '0.7rem' }}>({item.mappedField})</span>
+                      <span className="ipm-memory-field-name">{getCanonicalFieldLabel(item.mappedField)}</span>{' '}
+                      <span className="ipm-memory-field-key">({item.mappedField})</span>
                     </td>
-                    <td style={{ textAlign: 'center', fontFamily: 'monospace', color: '#64748b' }}>
+                    <td className="ipm-memory-uses">
                       {item.count}
                     </td>
-                    <td style={{ color: '#64748b', fontSize: '0.75rem' }}>
+                    <td className="ipm-memory-lastseen">
                       {item.lastSeen || '—'}
                     </td>
-                    <td style={{ textAlign: 'right' }}>
+                    <td className="ipm-memory-action-cell">
                       <button
                         onClick={() => handleDelete(item.normalizedHeader, item.scope)}
-                        style={{
-                          fontSize: '0.75rem',
-                          color: '#e11d48',
-                          background: 'transparent',
-                          border: 'none',
-                          cursor: 'pointer',
-                          padding: '4px 8px',
-                          borderRadius: '4px'
-                        }}
+                        className="ipm-memory-delete-btn"
                         title="Forget this mapping"
                       >
                         🗑️ Delete
@@ -171,14 +163,13 @@ export const ManageMemoryModal: React.FC<ManageMemoryModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 20px', borderTop: '1px solid #e2e8f0', backgroundColor: '#f8fafc' }}>
-          <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+        <div className="ipm-memory-footer">
+          <span className="ipm-memory-count">
             {entries.length} total mapping{entries.length === 1 ? '' : 's'} stored
           </span>
           <button
             onClick={onClose}
-            className="ipm-btn-cancel"
-            style={{ padding: '6px 14px' }}
+            className="ipm-btn-cancel ipm-memory-close-btn"
           >
             Close
           </button>

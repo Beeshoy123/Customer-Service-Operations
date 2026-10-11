@@ -717,3 +717,89 @@
   padding: 16px 20px;
 }
 
+/* ============================================================
+   S15 (2026-10-12): classes extracted from inline style={{}} objects.
+   Static styles only — conditional/dynamic values stay inline by design.
+   Namespaced ipm-* like the rest of this sheet.
+   ============================================================ */
+
+/* --- tabs --- */
+.ipm-tab-count { font-size: 0.7rem; opacity: 0.7; font-family: monospace; }
+.ipm-workbook-count { font-size: 0.7rem; color: #94a3b8; font-weight: normal; }
+.ipm-tabs-row { display: flex; align-items: center; gap: 4px; }
+
+/* --- skipped banner --- */
+.ipm-skipped-list { display: flex; flex-direction: column; gap: 8px; }
+.ipm-skipped-item-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ipm-skipped-name { font-weight: 700; color: #0f172a; }
+.ipm-skipped-wb { font-size: 0.7rem; color: #64748b; font-family: monospace; }
+.ipm-skipped-dot { color: #94a3b8; }
+.ipm-skipped-reason { font-size: 0.75rem; color: #92400e; font-style: italic; }
+.ipm-skipped-norows { font-size: 0.72rem; color: #94a3b8; font-style: italic; }
+
+/* --- empty state --- */
+.ipm-empty-state { padding: 48px 24px; text-align: center; background-color: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0; }
+.ipm-empty-state-icon { font-size: 2rem; margin-bottom: 8px; }
+.ipm-empty-state-title { margin: 0 0 6px 0; font-size: 1rem; font-weight: 700; color: #0f172a; }
+.ipm-empty-state-desc { margin: 0; font-size: 0.8rem; color: #64748b; max-width: 440px; margin-inline: auto; }
+.ipm-empty-state-strong { color: #2563eb; }
+
+/* --- section headings --- */
+.ipm-section-wb { color: #64748b; font-weight: 500; }
+.ipm-section-sheet { color: #2563eb; }
+
+/* --- granularity row --- */
+.ipm-granularity-select { flex: 1 1 320px; max-width: 460px; }
+.ipm-manual-override { font-size: 0.75rem; color: #2563eb; font-weight: 600; }
+
+/* --- mapping toolbar --- */
+.ipm-toolbar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ipm-mapped-counter { font-size: 0.78rem; color: #64748b; font-family: monospace; font-weight: 600; }
+.ipm-toast-dismiss { margin-left: auto; background: transparent; border: none; cursor: pointer; color: #1e40af; font-size: 0.9rem; }
+.ipm-empty-header { font-style: italic; color: #94a3b8; }
+
+/* --- CX config card --- */
+.ipm-config-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+.ipm-field-label { font-size: 0.8rem; color: #64748b; margin-bottom: 4px; }
+.ipm-field-value { font-size: 1rem; color: #0f172a; }
+.ipm-grid-12 { display: grid; gap: 12px; }
+.ipm-grid-16 { display: grid; gap: 16px; }
+.ipm-hint-text { font-size: 0.85rem; color: #475569; }
+.ipm-target-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ipm-target-label { font-weight: 600; min-width: 90px; }
+.ipm-target-label-strong { font-weight: 700; min-width: 90px; }
+.ipm-target-input { width: 120px; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 8px; }
+.ipm-unit-suffix { color: #64748b; font-size: 0.8rem; }
+.ipm-subsection-title { font-weight: 700; margin-bottom: 8px; }
+.ipm-btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.ipm-scale-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+.ipm-numbered-label { display: grid; gap: 6px; font-size: 0.8rem; color: #475569; }
+.ipm-numbered-input { padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 8px; }
+.ipm-review-strip { margin-top: 12px; padding: 8px 10px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; color: #334155; font-size: 0.78rem; }
+
+/* --- additional metric card --- */
+.ipm-metric-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.ipm-metric-label { font-size: 0.8rem; color: #64748b; }
+.ipm-metric-value { color: #0f172a; }
+.ipm-window-label { display: grid; gap: 6px; margin-bottom: 12px; font-size: 0.8rem; color: #475569; }
+.ipm-block-mt12 { margin-bottom: 12px; }
+.ipm-checkbox-label { display: block; margin-bottom: 6px; color: #475569; }
+.ipm-lower-better-label { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; color: #475569; }
+
+/* --- ManageMemoryModal --- */
+.ipm-memory-empty { text-align: center; padding: 40px 0; color: #94a3b8; font-size: 0.8rem; }
+.ipm-memory-empty-filtered { text-align: center; padding: 32px 0; color: #94a3b8; font-size: 0.8rem; }
+.ipm-memory-empty-icon { font-size: 1.8rem; display: block; margin-bottom: 8px; }
+.ipm-th-center { text-align: center; }
+.ipm-th-right { text-align: right; }
+.ipm-memory-header-cell { font-family: monospace; font-weight: 700; color: #0f172a; }
+.ipm-memory-badge-offset { margin-left: 6px; }
+.ipm-memory-field-name { font-weight: 600; }
+.ipm-memory-field-key { color: #94a3b8; font-family: monospace; font-size: 0.7rem; }
+.ipm-memory-uses { text-align: center; font-family: monospace; color: #64748b; }
+.ipm-memory-lastseen { color: #64748b; font-size: 0.75rem; }
+.ipm-memory-action-cell { text-align: right; }
+.ipm-memory-delete-btn { font-size: 0.75rem; color: #e11d48; background: transparent; border: none; cursor: pointer; padding: 4px 8px; border-radius: 4px; }
+.ipm-memory-footer { display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; border-top: 1px solid #e2e8f0; background-color: #f8fafc; }
+.ipm-memory-count { font-size: 0.78rem; color: #64748b; }
+.ipm-memory-close-btn { padding: 6px 14px; }

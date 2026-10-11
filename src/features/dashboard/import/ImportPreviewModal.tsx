@@ -464,11 +464,11 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
                       >
                         <span>📁</span>
                         <span className="ipm-workbook-name">{group.workbookName}</span>
-                        <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 'normal' }}>
+                        <span className="ipm-workbook-count">
                           ({group.sheets.length})
                         </span>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <div className="ipm-tabs-row">
                         {group.sheets.map(({ sheet, globalIndex }) => {
                           const isActive = globalIndex === activeSheetIndex;
                           const isReady =
@@ -483,7 +483,7 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
                             >
                               <span>{isReady ? '✅' : '⚠️'}</span>
                               <span>{sheet.sheetName}</span>
-                              <span style={{ fontSize: '0.7rem', opacity: 0.7, fontFamily: 'monospace' }}>
+                              <span className="ipm-tab-count">
                                 ({sheet.rowCount.toLocaleString()})
                               </span>
                             </button>
@@ -505,7 +505,7 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
                       >
                         <span>{isReady ? '✅' : '⚠️'}</span>
                         <span>{sheet.sheetName}</span>
-                        <span style={{ fontSize: '0.7rem', opacity: 0.7, fontFamily: 'monospace' }}>
+                        <span className="ipm-tab-count">
                           ({sheet.rowCount.toLocaleString()} rows)
                         </span>
                       </button>
@@ -530,21 +530,21 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
                     Review reasons below or click &ldquo;+ Include Sheet&rdquo; to import
                   </span>
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div className="ipm-skipped-list">
                   {skippedList.map((item, idx) => (
                     <div
                       key={`${item.sheetName}-${idx}`}
                       className="ipm-skipped-item"
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                        <span style={{ fontWeight: 700, color: '#0f172a' }}>{item.sheetName}</span>
+                      <div className="ipm-skipped-item-row">
+                        <span className="ipm-skipped-name">{item.sheetName}</span>
                         {item.workbookName && (
-                          <span style={{ fontSize: '0.7rem', color: '#64748b', fontFamily: 'monospace' }}>
+                          <span className="ipm-skipped-wb">
                             [{item.workbookName}]
                           </span>
                         )}
-                        <span style={{ color: '#94a3b8' }}>•</span>
-                        <span style={{ fontSize: '0.75rem', color: '#92400e', fontStyle: 'italic' }}>
+                        <span className="ipm-skipped-dot">•</span>
+                        <span className="ipm-skipped-reason">
                           {item.reason}
                         </span>
                       </div>
@@ -558,7 +558,7 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
                           + Include Sheet
                         </button>
                       ) : (
-                        <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontStyle: 'italic' }}>
+                        <span className="ipm-skipped-norows">
                           No data rows
                         </span>
                       )}
@@ -569,13 +569,13 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
             )}
 
             {!currentSheet ? (
-              <div style={{ padding: '48px 24px', textAlign: 'center', backgroundColor: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                <div style={{ fontSize: '2rem', marginBottom: '8px' }}>📋</div>
-                <h3 style={{ margin: '0 0 6px 0', fontSize: '1rem', fontWeight: 700, color: '#0f172a' }}>
+              <div className="ipm-empty-state">
+                <div className="ipm-empty-state-icon">📋</div>
+                <h3 className="ipm-empty-state-title">
                   No Sheets Currently Selected
                 </h3>
-                <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748b', maxWidth: '440px', marginInline: 'auto' }}>
-                  No sheets were automatically recognized as operational data. If your workbook contains valid data, click <strong style={{ color: '#2563eb' }}>+ Include Sheet</strong> in the notice above to import and configure that sheet.
+                <p className="ipm-empty-state-desc">
+                  No sheets were automatically recognized as operational data. If your workbook contains valid data, click <strong className="ipm-empty-state-strong">+ Include Sheet</strong> in the notice above to import and configure that sheet.
                 </p>
               </div>
             ) : (
@@ -587,9 +587,9 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
                       <h3 className="ipm-section-title">
                         <span>📊</span> 1. Sheet Data Granularity:{' '}
                         {currentSheet.workbookName && (
-                          <span style={{ color: '#64748b', fontWeight: 500 }}>{currentSheet.workbookName} › </span>
+                          <span className="ipm-section-wb">{currentSheet.workbookName} › </span>
                         )}
-                        <span style={{ color: '#2563eb' }}>{currentSheet.sheetName}</span>
+                        <span className="ipm-section-sheet">{currentSheet.sheetName}</span>
                       </h3>
                       <p className="ipm-section-desc">
                         {currentSheet.granularityReason || 'Determines whether rows are daily summaries or call/ticket-level transactions.'}
@@ -619,8 +619,7 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
                       id="granularity-select"
                       value={currentSheet.selectedGranularity}
                       onChange={(e) => handleGranularityChange(activeSheetIndex, e.target.value)}
-                      className={`ipm-select ${currentSheet.selectedGranularity === 'unknown' ? 'ipm-select-warning' : ''}`}
-                      style={{ flex: '1 1 320px', maxWidth: '460px' }}
+                      className={`ipm-select ipm-granularity-select ${currentSheet.selectedGranularity === 'unknown' ? 'ipm-select-warning' : ''}`}
                     >
                       <option value="aggregate">Aggregate (Daily Summary — ~1 row per agent/day)</option>
                       <option value="transaction">Transaction (Call/Ticket Level — will be aggregated by agent &amp; date)</option>
@@ -632,7 +631,7 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
                     </select>
 
                     {currentSheet.isManuallySet && (
-                      <span style={{ fontSize: '0.75rem', color: '#2563eb', fontWeight: 600 }}>
+                      <span className="ipm-manual-override">
                         Manual override applied
                       </span>
                     )}
@@ -646,17 +645,17 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
                       <h3 className="ipm-section-title">
                         <span>🗺️</span> 2. Column Mapping &amp; Confidence Table:{' '}
                         {currentSheet.workbookName && (
-                          <span style={{ color: '#64748b', fontWeight: 500 }}>{currentSheet.workbookName} › </span>
+                          <span className="ipm-section-wb">{currentSheet.workbookName} › </span>
                         )}
-                        <span style={{ color: '#2563eb' }}>{currentSheet.sheetName}</span>
+                        <span className="ipm-section-sheet">{currentSheet.sheetName}</span>
                       </h3>
                       <p className="ipm-section-desc">
                         Headers matched using multi-signal scoring (header, data patterns, and learned memory). Verify or adjust mappings before importing.
                       </p>
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: '0.78rem', color: '#64748b', fontFamily: 'monospace', fontWeight: 600 }}>
+                    <div className="ipm-toolbar-actions">
+                      <span className="ipm-mapped-counter">
                         {currentSheet.columnMappings.filter((c) => c.mappedField).length} of {currentSheet.columnMappings.length} mapped
                       </span>
 
@@ -700,7 +699,7 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
                       <button
                         type="button"
                         onClick={() => setApplyAllNotice(null)}
-                        style={{ marginLeft: 'auto', background: 'transparent', border: 'none', cursor: 'pointer', color: '#1e40af', fontSize: '0.9rem' }}
+                        className="ipm-toast-dismiss"
                         aria-label="Dismiss"
                       >
                         ✕
@@ -732,7 +731,7 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
                               <td>
                                 <div className="ipm-header-name-cell">
                                   <span className="ipm-col-header-text">
-                                    {col.header || <span style={{ fontStyle: 'italic', color: '#94a3b8' }}>Empty Header</span>}
+                                    {col.header || <span className="ipm-empty-header">Empty Header</span>}
                                   </span>
                                   {col.fingerprint && col.fingerprint !== 'empty' && (
                                     <span
@@ -858,10 +857,10 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
 
                         return (
                           <div key={`${header}-metric1`} className="ipm-config-card">
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                            <div className="ipm-config-head">
                               <div>
-                                <div style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '4px' }}>Matched column</div>
-                                <strong style={{ fontSize: '1rem', color: '#0f172a' }}>{header}</strong>
+                                <div className="ipm-field-label">Matched column</div>
+                                <strong className="ipm-field-value">{header}</strong>
                               </div>
                               <span className="ipm-pattern-badge" title={`Detected value pattern: ${fingerprint}`}>
                                 {readyRate ? 'Ready-made percentage' : `Raw score pattern: ${fingerprint}`}
@@ -869,12 +868,12 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
                             </div>
 
                             {readyRate ? (
-                              <div style={{ display: 'grid', gap: '12px' }}>
-                                <div style={{ fontSize: '0.85rem', color: '#475569' }}>
+                              <div className="ipm-grid-12">
+                                <div className="ipm-hint-text">
                                   This column already looks like a precomputed percentage, so only the target needs confirmation.
                                 </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                  <label style={{ fontWeight: 600, minWidth: '90px' }}>Target</label>
+                                <div className="ipm-target-row">
+                                  <label className="ipm-target-label">Target</label>
                                   <input
                                     type="number"
                                     value={draft.target ?? 0}
@@ -883,16 +882,16 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
                                         target: Number(e.target.value || 0),
                                       })
                                     }
-                                    style={{ width: '120px', padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: '8px' }}
+                                    className="ipm-target-input"
                                   />
-                                  <span style={{ color: '#64748b', fontSize: '0.8rem' }}>%</span>
+                                  <span className="ipm-unit-suffix">%</span>
                                 </div>
                               </div>
                             ) : (
-                              <div style={{ display: 'grid', gap: '16px' }}>
+                              <div className="ipm-grid-16">
                                 <div>
-                                  <div style={{ fontWeight: 700, marginBottom: '8px' }}>1) Calc style</div>
-                                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                  <div className="ipm-subsection-title">1) Calc style</div>
+                                  <div className="ipm-btn-row">
                                     {(['csat-percentage', 'nps'] as const).map((style) => (
                                       <button
                                         key={style}
@@ -926,9 +925,9 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
                                 </div>
 
                                 <div>
-                                  <div style={{ fontWeight: 700, marginBottom: '8px' }}>2) Rating scale and promoter/detractor bands</div>
-                                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px' }}>
-                                    <label style={{ display: 'grid', gap: '6px', fontSize: '0.8rem', color: '#475569' }}>
+                                  <div className="ipm-subsection-title">2) Rating scale and promoter/detractor bands</div>
+                                  <div className="ipm-scale-grid">
+                                    <label className="ipm-numbered-label">
                                       Scale min
                                       <input
                                         type="number"
@@ -949,10 +948,10 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
                                             },
                                           })
                                         }
-                                        style={{ padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: '8px' }}
+                                        className="ipm-numbered-input"
                                       />
                                     </label>
-                                    <label style={{ display: 'grid', gap: '6px', fontSize: '0.8rem', color: '#475569' }}>
+                                    <label className="ipm-numbered-label">
                                       Scale max
                                       <input
                                         type="number"
@@ -973,10 +972,10 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
                                             },
                                           })
                                         }
-                                        style={{ padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: '8px' }}
+                                        className="ipm-numbered-input"
                                       />
                                     </label>
-                                    <label style={{ display: 'grid', gap: '6px', fontSize: '0.8rem', color: '#475569' }}>
+                                    <label className="ipm-numbered-label">
                                       Promoter min
                                       <input
                                         type="number"
@@ -997,10 +996,10 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
                                             },
                                           })
                                         }
-                                        style={{ padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: '8px' }}
+                                        className="ipm-numbered-input"
                                       />
                                     </label>
-                                    <label style={{ display: 'grid', gap: '6px', fontSize: '0.8rem', color: '#475569' }}>
+                                    <label className="ipm-numbered-label">
                                       Promoter max
                                       <input
                                         type="number"
@@ -1021,10 +1020,10 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
                                             },
                                           })
                                         }
-                                        style={{ padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: '8px' }}
+                                        className="ipm-numbered-input"
                                       />
                                     </label>
-                                    <label style={{ display: 'grid', gap: '6px', fontSize: '0.8rem', color: '#475569' }}>
+                                    <label className="ipm-numbered-label">
                                       Detractor min
                                       <input
                                         type="number"
@@ -1045,10 +1044,10 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
                                             },
                                           })
                                         }
-                                        style={{ padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: '8px' }}
+                                        className="ipm-numbered-input"
                                       />
                                     </label>
-                                    <label style={{ display: 'grid', gap: '6px', fontSize: '0.8rem', color: '#475569' }}>
+                                    <label className="ipm-numbered-label">
                                       Detractor max
                                       <input
                                         type="number"
@@ -1069,14 +1068,14 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
                                             },
                                           })
                                         }
-                                        style={{ padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: '8px' }}
+                                        className="ipm-numbered-input"
                                       />
                                     </label>
                                   </div>
                                 </div>
 
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                  <label style={{ fontWeight: 600, minWidth: '90px' }}>Target</label>
+                                <div className="ipm-target-row">
+                                  <label className="ipm-target-label">Target</label>
                                   <input
                                     type="number"
                                     value={draft.target ?? 0}
@@ -1085,14 +1084,14 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
                                         target: Number(e.target.value || 0),
                                       })
                                     }
-                                    style={{ width: '120px', padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: '8px' }}
+                                    className="ipm-target-input"
                                   />
-                                  <span style={{ color: '#64748b', fontSize: '0.8rem' }}>%</span>
+                                  <span className="ipm-unit-suffix">%</span>
                                 </div>
                               </div>
                             )}
 
-                            <div style={{ marginTop: '12px', padding: '8px 10px', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', color: '#334155', fontSize: '0.78rem' }}>
+                            <div className="ipm-review-strip">
                               <strong>Review:</strong>{' '}
                               {draft.data.shape === 'ready-rate'
                                 ? `Ready-rate column with target ${draft.target}%`
@@ -1147,16 +1146,16 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
 
                         return (
                           <div key={key} className="ipm-config-card">
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                            <div className="ipm-metric-head">
                               <div>
-                                <div style={{ fontSize: '0.8rem', color: '#64748b' }}>{label}</div>
-                                <strong style={{ color: '#0f172a' }}>{header}</strong>
+                                <div className="ipm-metric-label">{label}</div>
+                                <strong className="ipm-metric-value">{header}</strong>
                               </div>
                               <span className="ipm-pattern-badge">{readyRate ? 'Ready-made rate' : `Detected: ${analyzeColumnValues(sampleValues).fingerprint}`}</span>
                             </div>
 
                             {(metric === 'resolve2hr' || metric === 'resolve3d') && !draft.windowLabel && (
-                              <label style={{ display: 'grid', gap: '6px', marginBottom: '12px', fontSize: '0.8rem', color: '#475569' }}>
+                              <label className="ipm-window-label">
                                 What window does this column represent?
                                 <select
                                   value={draft.windowLabel ?? ''}
@@ -1173,9 +1172,9 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
                             )}
 
                             {metric === 'credit' && !draft.calcStyle && (
-                              <div style={{ marginBottom: '12px' }}>
-                                <div style={{ fontWeight: 700, marginBottom: '8px' }}>How should Credit be calculated?</div>
-                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                              <div className="ipm-block-mt12">
+                                <div className="ipm-subsection-title">How should Credit be calculated?</div>
+                                <div className="ipm-btn-row">
                                   {(['per-call-average', 'total-amount', 'frequency'] as const).map((style) => (
                                     <button
                                       key={style}
@@ -1191,9 +1190,9 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
                             )}
 
                             {(metric === 'phoneAdds' || metric === 'dataLines' || metric === 'fiber' || metric === 'vhi' || metric === 'hotspot') && (
-                              <div style={{ marginBottom: '12px' }}>
-                                <div style={{ fontWeight: 700, marginBottom: '8px' }}>How should this sales target be expressed?</div>
-                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                              <div className="ipm-block-mt12">
+                                <div className="ipm-subsection-title">How should this sales target be expressed?</div>
+                                <div className="ipm-btn-row">
                                   {(['flat', 'dynamic-per-agent'] as const).map((kind) => (
                                     <button
                                       key={kind}
@@ -1211,12 +1210,12 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
                             )}
 
                             {metric === 'vtt' && (!draft.requiredMessages || draft.requiredMessages.length === 0) && (
-                              <div style={{ marginBottom: '12px' }}>
-                                <div style={{ fontWeight: 700, marginBottom: '8px' }}>Which required message does this column measure?</div>
+                              <div className="ipm-block-mt12">
+                                <div className="ipm-subsection-title">Which required message does this column measure?</div>
                                 {(['view-together', 'terms-and-conditions', 'broadband-facts'] as const).map((message) => {
                                   const checked = draft.requiredMessages?.includes(message) ?? false;
                                   return (
-                                    <label key={message} style={{ display: 'block', marginBottom: '6px', color: '#475569' }}>
+                                    <label key={message} className="ipm-checkbox-label">
                                       <input
                                         type="checkbox"
                                         checked={checked}
@@ -1235,7 +1234,7 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
                             )}
 
                             {metric === 'credit' && draft.calcStyle && (
-                              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', color: '#475569' }}>
+                              <label className="ipm-lower-better-label">
                                 <input
                                   type="checkbox"
                                   checked={draft.lowerIsBetter ?? true}
@@ -1245,8 +1244,8 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
                               </label>
                             )}
 
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                              <label style={{ fontWeight: 700, minWidth: '90px' }}>Target</label>
+                            <div className="ipm-target-row">
+                              <label className="ipm-target-label-strong">Target</label>
                               <input
                                 type="number"
                                 value={draft.target}
@@ -1258,9 +1257,9 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
                                       ? { kind: 'flat', value: Number(e.target.value || 0) }
                                       : undefined,
                                 })}
-                                style={{ width: '120px', padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: '8px' }}
+                                className="ipm-target-input"
                               />
-                              <span style={{ color: '#64748b', fontSize: '0.8rem' }}>{metric === 'phoneAdds' || metric === 'dataLines' || metric === 'fiber' || metric === 'vhi' || metric === 'hotspot' ? 'units' : '%'}</span>
+                              <span className="ipm-unit-suffix">{metric === 'phoneAdds' || metric === 'dataLines' || metric === 'fiber' || metric === 'vhi' || metric === 'hotspot' ? 'units' : '%'}</span>
                             </div>
                           </div>
                         );
