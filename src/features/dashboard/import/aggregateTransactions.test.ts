@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { aggregateTransactions, findPassCountPairs } from './aggregateTransactions';
+import { aggregateTransactions, findPassCountPairs, SUMMED_COUNT_FIELDS } from './aggregateTransactions';
+import { FIELD_ALIASES } from './importPolicy';
 import type { NormalizedRow } from './types';
 
 describe('aggregateTransactions', () => {
@@ -180,3 +181,81 @@ describe('aggregateTransactions', () => {
   });
 });
 
+describe('aggregateTransactions: counts stay counts', () => {
+  const DAY = '2026-01-01';
+  // n rows for one fake agent; `make(i)` returns the field values for row i
+  const rowsFor = (agent: string, n: number, make: (i: number) => Record<string, unknown>): NormalizedRow[] =>
+    Array.from({ length: n }, (_, i) => ({ agentName: agent, date: DAY, ...make(i) }) as NormalizedRow);
+
+  it('resolve flags: 8 of 10 calls -> 8 (not 0.8) for 2hr and 3day', () => {
+    const rows = rowsFor('Alice', 10, (i) => ({
+      resolveTotalContacts2hr: i < 8 ? 1 : 0,
+      resolveTotalContacts3d: i < 9 ? 1 : 0,
+    }));
+    const [r] = aggregateTransactions(rows);
+    assert.equal(r.resolveTotalContacts2hr, 8);
+    assert.equal(r.resolveTotalContacts3d, 9);
+    assert.equal(r.calls, 10);
+  });
+
+  it('handoffs: 2 of 10 calls -> 2 (not 0.2); real zeros stay 0', () => {
+    const [a] = aggregateTransactions(rowsFor('Alice', 10, (i) => ({ handoffsCount: i < 2 ? 1 : 0 })));
+    assert.equal(a.handoffsCount, 2);
+    const [b] = aggregateTransactions(rowsFor('Bob', 10, () => ({ handoffsCount: 0 })));
+    assert.equal(b.handoffsCount, 0);
+  });
+
+  it('every count field in SUMMED_COUNT_FIELDS is summed, not divided by row count', () => {
+    for (const field of SUMMED_COUNT_FIELDS) {
+      const [r] = aggregateTransactions(rowsFor('Alice', 10, (i) => ({ [field]: i < 4 ? 1 : 0 })));
+      assert.equal(r[field], 4, `${field} should be 4`);
+    }
+  });
+
+  it('sums decimal amounts without float noise (creditAmount 2 x 12.5 -> 25)', () => {
+    const [r] = aggregateTransactions(rowsFor('Alice', 10, (i) => ({ creditAmount: i < 2 ? 12.5 : 0 })));
+    assert.equal(r.creditAmount, 25);
+  });
+
+  it('missing values stay null, not 0 (all blank -> null; some blank -> sum of the present ones)', () => {
+    const [allBlank] = aggregateTransactions(rowsFor('Alice', 10, (i) => ({ vttSent: i % 2 ? null : '' })));
+    assert.equal(allBlank.vttSent, null);
+    const [partial] = aggregateTransactions(rowsFor('Bob', 10, (i) => ({ vttSent: i < 4 ? 1 : '' })));
+    assert.equal(partial.vttSent, 4);
+    const [absent] = aggregateTransactions(rowsFor('Cara', 10, () => ({ aht: 100 })));
+    assert.equal(absent.handoffsCount, undefined);
+  });
+
+  it('rate columns pass through unchanged (averaged, not summed)', () => {
+    const [r] = aggregateTransactions(rowsFor('Alice', 10, () => ({ vxs: 90, handoffs: 20, netOcc: 75 })));
+    assert.equal(r.vxs, 90);
+    assert.equal(r.handoffs, 20);
+    assert.equal(r.netOcc, 75);
+  });
+
+  it('per-call averages (aht, hold, dpc) stay averaged', () => {
+    const [r] = aggregateTransactions(rowsFor('Alice', 10, () => ({ aht: 300, hold: 20, dpc: 5 })));
+    assert.equal(r.aht, 300);
+    assert.equal(r.hold, 20);
+    assert.equal(r.dpc, 5);
+  });
+
+  it('two agents are summed separately', () => {
+    const rows = [
+      ...rowsFor('Alice', 10, (i) => ({ handoffsCount: i < 2 ? 1 : 0 })),
+      ...rowsFor('Bob', 10, (i) => ({ handoffsCount: i < 5 ? 1 : 0 })),
+    ];
+    const result = aggregateTransactions(rows);
+    assert.equal(result.find((r) => r.agentName === 'Alice')?.handoffsCount, 2);
+    assert.equal(result.find((r) => r.agentName === 'Bob')?.handoffsCount, 5);
+  });
+
+  it('guard: the count list only holds number fields and never aht/hold/dpc or rates', () => {
+    for (const field of SUMMED_COUNT_FIELDS) {
+      assert.equal(FIELD_ALIASES[field]?.kind, 'number', `${field} must be a number field`);
+    }
+    for (const averaged of ['aht', 'hold', 'dpc', 'vxs', 'handoffs', 'resolve2hr', 'resolve3d']) {
+      assert.equal(SUMMED_COUNT_FIELDS.has(averaged), false, `${averaged} must not be summed`);
+    }
+  });
+});

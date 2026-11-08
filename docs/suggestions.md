@@ -101,7 +101,9 @@ Format: `[ ]` open · `[x]` done. Codes in brackets point to sections below: **B
 - Rule: expected values computed by hand first. If the code disagrees, stop and report a bug. Do not change any threshold, formula or rounding. Today `helpers.test.ts` covers only hand-offs (8 tests) (ran).
 
 ### Step 1: Counts stay counts
-- [ ] `aggregateTransactions` no longer divides count fields by row count (handoffs, resolve 2Hr/3Day, surveys, promoters, etc.) [K1, K2, B5]
+- [x] `aggregateTransactions` no longer divides count fields by row count (handoffs, resolve 2Hr/3Day, surveys, promoters, etc.) [K1, K2, B5]
+- Done 2026-11-08: 18 count fields are now summed (`SUMMED_COUNT_FIELDS`); `aht`, `hold`, `dpc` and all rates stay averaged. Tested at 300K rows in Chromium: 3000 of 3000 agent-days correct (ran).
+- Still open, not part of this step: the 2HR gauge stays empty unless the file has a pass column or a percent column. A count alone does not fill it (ran).
 
 ### Step 2: Merge without losing data
 - [ ] Merge key = agent ID or name + date only; supervisor and location become attributes [K2, B3]

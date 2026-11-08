@@ -152,6 +152,49 @@ const getMostFrequentNonEmpty = (rows: NormalizedRow[], field: string): string |
   return topValue;
 };
 
+// Count fields: the dashboard adds these up across days and agents, so a group of
+// transaction rows must SUM them (8 flagged of 10 calls -> 8, not 0.8).
+// Rates/percents and per-call averages (aht, hold, dpc) are NOT listed here.
+export const SUMMED_COUNT_FIELDS: ReadonlySet<string> = new Set([
+  'resolveTotalContacts',
+  'resolveTotalContacts2hr',
+  'resolveTotalContacts3d',
+  'surveys',
+  'promoters',
+  'handoffsCount',
+  'vttSent',
+  'vttTransacted',
+  'vttEligible',
+  'vttIndicated',
+  'vttAttach',
+  'creditAmount',
+  'creditTransactions',
+  'phoneAdds',
+  'dataLines',
+  'fiber',
+  'hotspot',
+  'vhi',
+]);
+
+// Sum of the non-empty values in the group; null when every value is missing (missing is not 0).
+const computeSumNonNull = (rows: NormalizedRow[], field: string): number | null => {
+  let sum = 0;
+  let hasValid = false;
+
+  for (const row of rows) {
+    const val = row[field];
+    if (val !== null && val !== undefined && val !== '') {
+      const num = typeof val === 'number' ? val : Number(String(val).replace(/[$,%\s]/g, ''));
+      if (!Number.isNaN(num)) {
+        sum += num;
+        hasValid = true;
+      }
+    }
+  }
+
+  return hasValid ? Math.round(sum * 100) / 100 : null;
+};
+
 const computePerCallAverage = (rows: NormalizedRow[], field: string, rowCount: number): number | null => {
   let sum = 0;
   let hasValid = false;
@@ -196,7 +239,8 @@ const computeAverageNonNull = (rows: NormalizedRow[], field: string): number | n
  *
  * Follows FIELD_ALIASES policy kinds:
  * - calls: count of rows in the group (the row itself is the unit)
- * - number fields (e.g. handle time): SUMMED then divided by row count
+ * - count fields (see SUMMED_COUNT_FIELDS, e.g. handoffsCount, resolve flags): SUMMED, never divided
+ * - other number fields (aht, hold, dpc): SUMMED then divided by row count (per-call average)
  * - pass/count pairs (e.g. X_Pass and X_Cnt): sum(pass) / sum(cnt) * 100
  * - text fields (supervisor, oam, location): most frequent non-empty value in the group
  */
@@ -325,20 +369,8 @@ export const aggregateTransactions = (rows: NormalizedRow[]): NormalizedRow[] =>
       } else if (kind === 'date') {
         collapsedRow[field] = getMostFrequentNonEmpty(groupRows, field);
       } else if (kind === 'number') {
-        if (field === 'resolveTotalContacts') {
-          let sum = 0;
-          let hasValid = false;
-          for (const row of groupRows) {
-            const val = row[field];
-            if (val !== null && val !== undefined && val !== '') {
-              const num = Number(val);
-              if (!Number.isNaN(num)) {
-                sum += num;
-                hasValid = true;
-              }
-            }
-          }
-          collapsedRow[field] = hasValid ? sum : null;
+        if (SUMMED_COUNT_FIELDS.has(field)) {
+          collapsedRow[field] = computeSumNonNull(groupRows, field);
         } else {
           collapsedRow[field] = computePerCallAverage(groupRows, field, rowCount);
         }
