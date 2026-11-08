@@ -113,7 +113,7 @@ Format: `[ ]` open · `[x]` done. Codes in brackets point to sections below: **B
 - [ ] Remove invented survey counts (the 5% rule in `helpers.ts`) [X3]
 
 ### Step 3: Dates
-- [ ] `September 2026`, `Sep-26`, `Sep 5, 2026`, `9/2026` parse to the correct date in Cairo time [X1]
+- [x] `September 2026`, `Sep-26`, `Sep 5, 2026`, `9/2026` parse to the correct date in Cairo time [X1]
 - [ ] Sheet name (e.g. "Sep") can supply the month [X1]
 - [ ] Per-file date-format setting (DD/MM vs MM/DD) [X7]
 
@@ -248,7 +248,7 @@ Test used: 2 agents × 10 calls per file.
 
 | Sev | Finding | Evidence |
 |---|---|---|
-| ⛔ | **X1 Month-label dates land in the wrong month in Cairo time.** `September 2026` → **2026-08-31**. `Sep-26` → 2001-09-25. `Sep 5, 2026` → Sep 4. `9/2026` → null. A VOC sheet named "Sep" is never read as the month. | ran |
+| ⛔ | **X1 Month-label dates land in the wrong month in Cairo time.** `September 2026` → **2026-08-31**. `Sep-26` → 2001-09-25. `Sep 5, 2026` → Sep 4. `9/2026` → null. A VOC sheet named "Sep" is never read as the month. **Update:** the date text is now parsed correctly (step 3, change 1, `import/dateText.ts`, 14 tests); the sheet-name part is still open. | ran |
 | 🔴 | **X2 Missing is saved as 0** for calls, AHT, VXS, resolve2hr, resolve3d. A Sales-only file would write VXS 0 and AHT 0. | read |
 | 🔴 | **X3 Invented survey counts.** When only a VXS % exists, `helpers.ts` sets surveys = max(1, round(calls × 5%)), which skews weighted CSAT. | read |
 | 🟡 | **X4** `isOff = calls === 0` drops absent and AUX-only days from rollups. | read |

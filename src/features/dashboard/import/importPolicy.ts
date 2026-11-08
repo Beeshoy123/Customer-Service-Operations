@@ -1403,6 +1403,7 @@ export const findCanonicalField = (
 // plus a classify⊆convert parity test, not by moving any threshold.
 // Conversion semantics for values reaching this path are unchanged.
 import { isExcelDateSerial, excelSerialToIsoDate } from './excelSerialRange';
+import { parseDateText } from './dateText';
 
 const convertDateLike = (value: string): string | null => {
   const trimmed = value.trim();
@@ -1422,68 +1423,11 @@ const convertDateLike = (value: string): string | null => {
     return null;
   }
 
-  // ── Formatted date strings ────────────────────────────────────────────────
-  const directMatches = [
-    /^\d{4}-\d{2}-\d{2}$/,
-    /^\d{2}-\d{2}-\d{4}$/,
-    /^\d{2}\/\d{2}\/\d{4}$/,
-    /^\d{1,2}\/\d{1,2}\/\d{2,4}$/,
-  ];
-
-  if (directMatches.some((pattern) => pattern.test(trimmed))) {
-    const parts = trimmed.split(/[\/\-]/g);
-    const [first, second, third] = parts;
-    const year = third?.length === 2 ? `20${third}` : third;
-
-    if (trimmed.includes('-') && first?.length === 4) {
-      const year = first;
-      const month = Number(second);
-      const day = Number(third);
-      if (year && Number.isInteger(month) && Number.isInteger(day) && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-        return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      }
-      return null;
-    }
-
-    if (trimmed.includes('-') && first?.length !== 4) {
-      const month = Number(second);
-      const day = Number(first);
-      if (year && Number.isInteger(month) && Number.isInteger(day) && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-        return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      }
-      return null;
-    }
-
-    const slashCandidates = [
-      { month: Number(second), day: Number(first) },
-      { month: Number(first), day: Number(second) },
-    ];
-
-    for (const candidate of slashCandidates) {
-      if (
-        year &&
-        Number.isInteger(candidate.month) &&
-        Number.isInteger(candidate.day) &&
-        candidate.month >= 1 &&
-        candidate.month <= 12 &&
-        candidate.day >= 1 &&
-        candidate.day <= 31
-      ) {
-        return `${year}-${String(candidate.month).padStart(2, '0')}-${String(candidate.day).padStart(2, '0')}`;
-      }
-    }
-
-    return null;
-  }
-
-  // ── Last resort: let JS parse unrecognised string formats ─────────────────
-  const parsed = new Date(trimmed);
-  if (!Number.isNaN(parsed.getTime())) {
-    const normalized = parsed.toISOString().slice(0, 10);
-    return normalized;
-  }
-
-  return null;
+  // ── Formatted date strings ─────────────────────────────────────────────
+  // Text dates (numeric, month-name, month-only, with or without a time) are
+  // parsed by ./dateText, which never calls `new Date()` and so cannot shift a
+  // day in Cairo time. Unrecognised text returns null instead of being guessed.
+  return parseDateText(trimmed);
 };
 
 export const normalizeImportedValue = (field: string | null, value: unknown): string | number | null => {
