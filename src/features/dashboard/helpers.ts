@@ -22,6 +22,7 @@
 // never replace or delete an existing calculation unless explicitly requested.
 
 import { getMetricConfig, TARGETS } from './config';
+import { parseDateText } from './import/dateText';
 
 // ─── Types ──────────────────────────────────────────────────────────
 type Num = number | null | undefined;
@@ -383,16 +384,8 @@ export const shortenManagerName = (fullName: string | null | undefined): string 
 // ─── Date & Calendar Helpers ──────────────────────────────────────
 export const normalizeDate = (dStr: string | null | undefined): string | null => {
   if (!dStr) return null;
-  const datePart = dStr.split(' ')[0];
-  const parts = datePart.split(/[-/]/);
-  if (parts.length === 3) {
-    let year: string, month: string, day: string;
-    if (parts[2].length === 4) { month = parts[0]; day = parts[1]; year = parts[2]; }
-    else if (parts[0].length === 4) { year = parts[0]; month = parts[1]; day = parts[2]; }
-    else { return null; }
-    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-  }
-  return null;
+  // One parser for every date (import/dateText.ts): same day/month order as the importer.
+  return parseDateText(dStr);
 };
 
 export const getWeekNumber = (dateStr: string | null | undefined): string => {

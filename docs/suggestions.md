@@ -115,7 +115,7 @@ Format: `[ ]` open · `[x]` done. Codes in brackets point to sections below: **B
 ### Step 3: Dates
 - [x] `September 2026`, `Sep-26`, `Sep 5, 2026`, `9/2026` parse to the correct date in Cairo time [X1]
 - [ ] Sheet name (e.g. "Sep") can supply the month [X1]
-- [ ] Per-file date-format setting (DD/MM vs MM/DD) [X7]
+- [ ] Per-file date-format setting (DD/MM vs MM/DD) [X7]. Done: the order is read from the file's own dates (any `13/09` or `9/13`), default day first, and the importer accepts a user choice (`dateOrder`). Open: the switch in the import preview (mock-up first), and a warning when a file gives no proof
 
 ### Step 4: Storage and privacy
 - [ ] Data lives in IndexedDB, not `localStorage` (no 5 MB cap, no silent loss) [B4]
@@ -254,7 +254,7 @@ Test used: 2 agents × 10 calls per file.
 | 🟡 | **X4** `isOff = calls === 0` drops absent and AUX-only days from rollups. | read |
 | 🟡 | **X5** Trend column compares a period with itself in monthly view, so it always shows "STABLE +0.00%". VXS only. | ran, seen live |
 | 🟡 | **X6** Two offender systems with different rules: Chronic Offenders (3+ months) and Repeated Offenders (2+ consecutive). | read |
-| 🟡 | **X7** Dates default to DD/MM silently, with no per-file setting. | ran |
+| 🟡 | **X7** Dates default to DD/MM silently, with no per-file setting. **Update:** order is now detected per sheet (`import/dateText.ts`, `detectDateOrder`); a sheet with no proof still defaults to DD/MM, and the preview switch is not built yet. | ran |
 | 🟡 | **X8** Repo hygiene: 5 Python scripts, 3 PNGs and `.tmp_test` in the root. README says 8 tabs; there are 9. | ran |
 
 ---

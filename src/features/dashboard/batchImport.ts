@@ -25,7 +25,7 @@ import { parseCsvFileText } from './import/csvParser';
 import { aggregateTransactions } from './import/aggregateTransactions';
 import { validateNormalizedRows } from './import/validation';
 import { mergeNormalizedRows } from './import/mergeData';
-import { normalizeCellValue, normalizeHeaderToField } from './import/schemaNormalizer';
+import { normalizeCellValue, normalizeHeaderToField, resolveSheetDateOrder } from './import/schemaNormalizer';
 import { detectFileType } from './import/fileTypeDetector';
 import { saveAccountProfile } from '../accountSetup/account-profile-storage';
 
@@ -280,13 +280,20 @@ export const useBatchImport = (deps: BatchImportDeps) => {
             }
           }
 
+          // One sheet is read with one day/month order: the user's choice, else
+          // proven by the sheet's own dates (13/09 or 9/13), else day first.
+          const dateOrder = resolveSheetDateOrder(
+            rows,
+            mappedHeaders.map((header: any) => ({ index: header.colIdx, mappedField: header.mappedField })),
+            sheetConfig?.dateOrder,
+          );
           const rawMappedRows = [];
           for (const rawRow of rows) {
             const mappedRow: any = {};
             for (let m = 0; m < mappedHeaders.length; m += 1) {
               const { colIdx, mappedField } = mappedHeaders[m];
               const val = rawRow?.[colIdx];
-              mappedRow[mappedField] = normalizeCellValue(val, mappedField);
+              mappedRow[mappedField] = normalizeCellValue(val, mappedField, { dateOrder });
             }
 
             if (Object.keys(mappedRow).length > 0) {

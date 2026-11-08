@@ -8,7 +8,7 @@ import { parseDelimitedText } from './csvParser';
 import { detectFileType, isSupportedImportType } from './fileTypeDetector';
 import { convertWorkbookToSheets, convertWorkbookToSheetsViaWorker, DEFAULT_LARGE_FILE_SIZE_THRESHOLD } from './workbookLoader';
 import { selectSheets } from './sheetSelector';
-import { mapTableToNormalizedRows, normalizeCellValue, normalizeHeaderToField } from './schemaNormalizer';
+import { mapTableToNormalizedRows, normalizeCellValue, normalizeHeaderToField, resolveSheetDateOrder } from './schemaNormalizer';
 import {
   detectColumnMappingWithConfidence,
   getCustomerExperienceSurveyPreference,
@@ -62,6 +62,8 @@ const parseTextFile = async (file: File, options: ImportOptions = {}): Promise<{
     }
   }
 
+  const dateOrder = resolveSheetDateOrder(rows, mappedHeaders, options.dateOrder);
+
   for (let index = 0; index < rows.length; index += 1) {
     throwIfAborted(options.signal);
 
@@ -73,7 +75,7 @@ const parseTextFile = async (file: File, options: ImportOptions = {}): Promise<{
     const mappedRow: NormalizedRow = {};
     for (let m = 0; m < mappedHeaders.length; m += 1) {
       const { index: colIdx, mappedField } = mappedHeaders[m];
-      mappedRow[mappedField] = normalizeCellValue(row[colIdx], mappedField);
+      mappedRow[mappedField] = normalizeCellValue(row[colIdx], mappedField, { dateOrder });
     }
 
     if (Object.keys(mappedRow).length > 0) {
@@ -211,7 +213,7 @@ const parseWorkbookFile = async (file: File, options: ImportOptions = {}): Promi
     throwIfAborted(options.signal);
 
     const sheet = filteredSheets[sheetIndex];
-    const mappedRows = mapTableToNormalizedRows(sheet, file.name, options.mappingOverrides);
+    const mappedRows = mapTableToNormalizedRows(sheet, file.name, options.mappingOverrides, options.dateOrder);
     const finalRows = detectGranularity(sheet).classification === 'transaction'
       ? aggregateTransactions(mappedRows)
       : mappedRows;

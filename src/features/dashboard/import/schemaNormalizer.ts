@@ -5,7 +5,8 @@
 // does not contain and must not contain any source-system column-name knowledge.
 // See docs/suggestions.md §"STANDING RULE" and the banner in importPolicy.ts.
 
-import { FIELD_ALIASES, FIELD_COMPONENT_GROUPS, normalizeImportedValue, findCanonicalField, findPairedCountField, normalizeHeader } from './importPolicy';
+import { FIELD_ALIASES, FIELD_COMPONENT_GROUPS, normalizeImportedValue, type NormalizeValueOptions, findCanonicalField, findPairedCountField, normalizeHeader } from './importPolicy';
+import { detectDateOrder, type DateOrder } from './dateText';
 import type { NormalizedRow, SheetTable } from './types';
 
 // S7: header normalization is owned solely by importPolicy.ts — `normalizeHeader`
@@ -71,19 +72,45 @@ export const normalizeSheetHeaders = (
   });
 };
 
-export const normalizeCellValue = (value: unknown, fieldName?: string): string | number | null => {
+export const normalizeCellValue = (
+  value: unknown,
+  fieldName?: string,
+  options?: NormalizeValueOptions,
+): string | number | null => {
   if (value === null || value === undefined) return null;
 
   const stringValue = String(value).trim();
   if (stringValue === '') return null;
 
-  return normalizeImportedValue(fieldName ?? null, value);
+  return normalizeImportedValue(fieldName ?? null, value, options);
+};
+
+/**
+ * Decides how one sheet's numeric dates (05/09/2026) are read: a user choice
+ * wins; otherwise the sheet's own values decide (any 13/09 proves day first,
+ * any 9/13 proves month first); otherwise day first, the long-standing default.
+ * Reads every row of every date column, so one file is always read one way.
+ */
+export const resolveSheetDateOrder = (
+  rows: ReadonlyArray<ReadonlyArray<unknown> | null | undefined>,
+  mappedHeaders: ReadonlyArray<{ index: number; mappedField: string }>,
+  userChoice?: DateOrder,
+): DateOrder => {
+  if (userChoice) return userChoice;
+  const dateColumns = mappedHeaders.filter((header) => FIELD_ALIASES[header.mappedField]?.kind === 'date');
+  if (dateColumns.length === 0) return 'dayFirst';
+  const values: unknown[] = [];
+  for (const row of rows) {
+    for (const column of dateColumns) values.push(row?.[column.index]);
+  }
+  return detectDateOrder(values).order;
 };
 
 export const mapTableToNormalizedRows = (
   table: SheetTable,
   fileName: string,
   mappingOverrides: Record<string, string | null> = {},
+  dateOrderChoice?: DateOrder,
 ): NormalizedRow[] => {
   const headers = table.headerRow ?? [];
   if (!headers.length) {
@@ -113,6 +140,7 @@ export const mapTableToNormalizedRows = (
     return [];
   }
 
+  const dateOrder = resolveSheetDateOrder(rows, mappedHeaders, dateOrderChoice);
   const normalizedRows: NormalizedRow[] = [];
 
   for (let r = 0; r < rows.length; r += 1) {
@@ -122,7 +150,7 @@ export const mapTableToNormalizedRows = (
     for (let m = 0; m < mappedHeaders.length; m += 1) {
       const { index, mappedField } = mappedHeaders[m];
       const value = rawRow?.[index];
-      const normalizedValue = normalizeCellValue(value, mappedField);
+      const normalizedValue = normalizeCellValue(value, mappedField, { dateOrder });
       if (normalizedValue !== null && normalizedValue !== undefined && normalizedValue !== '') {
         row[mappedField] = normalizedValue;
       }
@@ -143,6 +171,7 @@ export const mapTableToNormalizedRowsAsync = async (
   fileName: string,
   onProgress?: (processedRows: number, totalRows: number) => void,
   mappingOverrides: Record<string, string | null> = {},
+  dateOrderChoice?: DateOrder,
 ): Promise<NormalizedRow[]> => {
   const headers = table.headerRow ?? [];
   if (!headers.length) return [];
@@ -163,6 +192,7 @@ export const mapTableToNormalizedRowsAsync = async (
 
   if (mappedHeaders.length === 0) return [];
 
+  const dateOrder = resolveSheetDateOrder(rows, mappedHeaders, dateOrderChoice);
   const normalizedRows: NormalizedRow[] = [];
   const yieldEvery = 5000;
   for (let r = 0; r < rows.length; r += 1) {
@@ -171,7 +201,7 @@ export const mapTableToNormalizedRowsAsync = async (
 
     for (let m = 0; m < mappedHeaders.length; m += 1) {
       const { index, mappedField } = mappedHeaders[m];
-      const normalizedValue = normalizeCellValue(rawRow?.[index], mappedField);
+      const normalizedValue = normalizeCellValue(rawRow?.[index], mappedField, { dateOrder });
       if (normalizedValue !== null && normalizedValue !== undefined && normalizedValue !== '') {
         row[mappedField] = normalizedValue;
       }

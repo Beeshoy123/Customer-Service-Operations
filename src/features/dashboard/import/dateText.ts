@@ -10,10 +10,13 @@
 // This module only does string and integer maths. It never calls `new Date()`
 // or `Date.parse()`, so the result is identical in every time zone.
 //
-// Day-first vs month-first: all-numeric dates keep the behaviour importPolicy.ts
-// already had. Slash dates are read day-first (DD/MM) and fall back to
-// month-first only when day-first is impossible (e.g. 9/13/2026). Dash and dot
-// dates are day-first only.
+// Day-first vs month-first (suggestions.md X7): `5/9/2026` is 5 Sep day-first and
+// 9 May month-first. The default is day-first (DD/MM), as before. Slash dates fall
+// back to the other order only when the preferred one is impossible
+// (e.g. 9/13/2026 day-first). Dash and dot dates never fall back.
+// `detectDateOrder` reads the order from the file itself: any value whose first
+// part is above 12 proves day-first, any whose second part is above 12 proves
+// month-first. Only when a file gives no proof does the setting decide.
 //
 // Month-only text (`September 2026`, `Sep-26`, `9/2026`, `2026-09`) becomes the
 // 1st of that month.
@@ -39,6 +42,8 @@ const toIso = (year: number, month: number, day: number): string | null => {
   if (day < 1 || day > daysInMonth(year, month)) return null;
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 };
+
+export type DateOrder = 'dayFirst' | 'monthFirst';
 
 /** 2-digit years mean 20xx (same rule importPolicy.ts always used). */
 const expandYear = (yearText: string): number =>
@@ -94,15 +99,19 @@ const parseMonthNameDate = (text: string): string | null => {
   return null;
 };
 
+/** Trims, then drops a trailing time of day and a leading weekday name. */
+const cleanDateText = (input: string): string =>
+  input.trim().replace(TIME_SUFFIX, '').trim().replace(WEEKDAY_PREFIX, '').trim();
+
+const NUMERIC_THREE_PART = /^(\d{1,2})([-/.])(\d{1,2})\2(\d{2}|\d{4})$/;
+
 /**
  * Converts date text to `YYYY-MM-DD`, or null when the text is not a date
  * we can read with certainty. Unknown formats are NOT guessed.
+ * `order` only matters for all-numeric dates like 05/09/2026.
  */
-export const parseDateText = (input: string): string | null => {
-  let text = input.trim();
-  if (!text) return null;
-
-  text = text.replace(TIME_SUFFIX, '').trim().replace(WEEKDAY_PREFIX, '').trim();
+export const parseDateText = (input: string, order: DateOrder = 'dayFirst'): string | null => {
+  const text = cleanDateText(input);
   if (!text) return null;
 
   // Year first: 2026-09-05, 2026/9/5, 2026.09.05
@@ -118,15 +127,56 @@ export const parseDateText = (input: string): string | null => {
   if (monthYear) return toIso(Number(monthYear[2]), Number(monthYear[1]), 1);
 
   // Three numbers ending in the year: 05/09/2026, 5-9-26, 05.09.2026
-  const dayMonthYear = /^(\d{1,2})([-/.])(\d{1,2})\2(\d{2}|\d{4})$/.exec(text);
-  if (dayMonthYear) {
-    const [, first, separator, second, yearText] = dayMonthYear;
+  const numeric = NUMERIC_THREE_PART.exec(text);
+  if (numeric) {
+    const [, firstText, separator, secondText, yearText] = numeric;
+    const first = Number(firstText);
+    const second = Number(secondText);
     const year = expandYear(yearText);
-    const dayFirst = toIso(year, Number(second), Number(first));
-    if (dayFirst !== null || separator !== '/') return dayFirst;
-    // Slash dates only: month-first is used only when day-first is impossible.
-    return toIso(year, Number(first), Number(second));
+    const preferred = order === 'dayFirst' ? toIso(year, second, first) : toIso(year, first, second);
+    if (preferred !== null || separator !== '/') return preferred;
+    // Slash dates only: the other order is used only when the preferred one is impossible.
+    return order === 'dayFirst' ? toIso(year, first, second) : toIso(year, second, first);
   }
 
   return parseMonthNameDate(text);
+};
+
+export type DateOrderDetection = {
+  /** The order to use: the proven one, otherwise the fallback. */
+  order: DateOrder;
+  /** True only when the file proves exactly one order. */
+  certain: boolean;
+  /** Values with a first part above 12 (can only be day first). */
+  dayFirstProof: number;
+  /** Values with a second part above 12 (can only be month first). */
+  monthFirstProof: number;
+};
+
+/**
+ * Reads the day/month order from the file's own date values.
+ * Only all-numeric dates such as 13/09/2026 or 9/13/26 count as proof.
+ * Month names, ISO dates, serial numbers and non-text values are ignored.
+ * No proof, or proof of both orders (a mixed file), keeps `fallback`.
+ */
+export const detectDateOrder = (
+  values: Iterable<unknown>,
+  fallback: DateOrder = 'dayFirst',
+): DateOrderDetection => {
+  let dayFirstProof = 0;
+  let monthFirstProof = 0;
+
+  for (const value of values) {
+    if (typeof value !== 'string') continue;
+    const match = NUMERIC_THREE_PART.exec(cleanDateText(value));
+    if (!match) continue;
+    const first = Number(match[1]);
+    const second = Number(match[3]);
+    if (first > 12 && second >= 1 && second <= 12) dayFirstProof += 1;
+    else if (second > 12 && first >= 1 && first <= 12) monthFirstProof += 1;
+  }
+
+  const certain = (dayFirstProof > 0) !== (monthFirstProof > 0);
+  const order: DateOrder = certain ? (dayFirstProof > 0 ? 'dayFirst' : 'monthFirst') : fallback;
+  return { order, certain, dayFirstProof, monthFirstProof };
 };

@@ -1403,9 +1403,9 @@ export const findCanonicalField = (
 // plus a classify⊆convert parity test, not by moving any threshold.
 // Conversion semantics for values reaching this path are unchanged.
 import { isExcelDateSerial, excelSerialToIsoDate } from './excelSerialRange';
-import { parseDateText } from './dateText';
+import { parseDateText, type DateOrder } from './dateText';
 
-const convertDateLike = (value: string): string | null => {
+const convertDateLike = (value: string, dateOrder: DateOrder): string | null => {
   const trimmed = value.trim();
   if (!trimmed) return null;
 
@@ -1427,10 +1427,19 @@ const convertDateLike = (value: string): string | null => {
   // Text dates (numeric, month-name, month-only, with or without a time) are
   // parsed by ./dateText, which never calls `new Date()` and so cannot shift a
   // day in Cairo time. Unrecognised text returns null instead of being guessed.
-  return parseDateText(trimmed);
+  return parseDateText(trimmed, dateOrder);
 };
 
-export const normalizeImportedValue = (field: string | null, value: unknown): string | number | null => {
+export type NormalizeValueOptions = {
+  /** How all-numeric dates like 05/09/2026 are read. Default: day first (DD/MM). */
+  dateOrder?: DateOrder;
+};
+
+export const normalizeImportedValue = (
+  field: string | null,
+  value: unknown,
+  options: NormalizeValueOptions = {},
+): string | number | null => {
   if (value === null || value === undefined) return null;
 
   const stringValue = String(value).trim();
@@ -1451,7 +1460,7 @@ export const normalizeImportedValue = (field: string | null, value: unknown): st
   }
 
   if (policy?.kind === 'date') {
-    const dateValue = convertDateLike(stringValue);
+    const dateValue = convertDateLike(stringValue, options.dateOrder ?? 'dayFirst');
     return dateValue;
   }
 

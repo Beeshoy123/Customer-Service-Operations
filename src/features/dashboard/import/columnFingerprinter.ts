@@ -33,6 +33,7 @@ export interface ColumnStats {
 // digits" regex is now expressed as the (equivalent-for-business-data) range
 // check below — see excelSerialRange.test.ts for the equivalence proof.
 import { isClassifiableDateSerial } from './excelSerialRange';
+import { parseDateText } from './dateText';
 
 /**
  * Checks whether a raw cell string looks like a date.
@@ -74,6 +75,15 @@ export function isDateLikeString(trimmed: string): boolean {
       const year = new Date(timestamp).getFullYear();
       return year >= 1990 && year <= 2050;
     }
+  }
+
+  // 4. Month-only labels and other text the shared date parser can read with
+  //    certainty: "September 2026", "Sep-26", "9/2026", "2026-09". Same 1990..2050
+  //    plausibility window as above.
+  const parsed = parseDateText(trimmed);
+  if (parsed) {
+    const year = Number(parsed.slice(0, 4));
+    return year >= 1990 && year <= 2050;
   }
 
   return false;

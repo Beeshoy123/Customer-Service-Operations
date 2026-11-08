@@ -1,4 +1,5 @@
 import type { ColumnFingerprint } from './columnFingerprinter';
+import type { DateOrder } from './dateText';
 
 export type SupportedImportFormat = 'csv' | 'tsv' | 'txt' | 'xlsx' | 'xls' | 'xlsm' | 'unknown';
 
@@ -49,6 +50,8 @@ export type ImportOptions = {
   /** Keep raw sheet rows when the worker result will be opened in the verification preview. */
   includeRawRowsForPreview?: boolean;
   mappingOverrides?: Record<string, string | null>;
+  /** How all-numeric dates (05/09/2026) are read. Unset = detected from the file, else day first. */
+  dateOrder?: DateOrder;
   /** Optional per-field merge strategy overrides for mergeNormalizedRows */
   mergeStrategy?: Record<string, MergeStrategy>;
   /** Account-selected style for combining calculated rate fields across files. */
