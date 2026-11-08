@@ -171,9 +171,9 @@ Show an HTML mock-up and get his OK before building any of this.
 
 ### Step 10: Cleanup (rolling, alongside steps 1–9)
 Remove `@ts-nocheck` [K5], file by file (8 files, 2,529 lines). Best done when a step already edits the file; the UI files get rewritten in step 9, so skip them until then.
-- [ ] `helpers.ts` (do after step 0 tests are green)
-- [ ] `emptyColumns.ts`
-- [ ] `config.ts`
+- [x] `helpers.ts` (do after step 0 tests are green)
+- [x] `emptyColumns.ts`
+- [x] `config.ts`
 - [ ] `metrics.ts`
 - [ ] `hooks.ts`
 - [ ] `components/shared.tsx`

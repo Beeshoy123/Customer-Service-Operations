@@ -67,7 +67,7 @@ describe('monthLabel', () => {
 describe('dowFromDateStr', () => {
   // Regression guard for the `m < 3 ? y - 1 : y` January/February year branch
   // (a typo there was caught by re-read during the Recommendation 5 audit —
-  // helpers.ts is @ts-nocheck, so tests are the only automated safety net).
+  // types cannot catch this arithmetic, so the test is the safety net).
   it('matches JS Date.getDay for every month', () => {
     for (let month = 0; month < 12; month += 1) {
       const iso = `2026-${String(month + 1).padStart(2, '0')}-15`;

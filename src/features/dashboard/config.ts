@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type { AccountProfile, DataLocation, TargetStyle } from '../accountSetup/account-profile-schema';
 // ============================================================================
 // FILE STRUCTURE:
@@ -92,7 +91,19 @@ export const TARGETS = {
   ncw: 10,
 };
 
+export type TargetKey = keyof typeof TARGETS;
+const isTargetKey = (key: string): key is TargetKey => Object.hasOwn(TARGETS, key);
+
 // ─── Metric Display Configurations ──────────────────────────────────────
+export type MetricConfigEntry = {
+  label: string;
+  target: number;
+  format?: string;
+  reverse: boolean;
+  max: number;
+  isInteger?: boolean;
+};
+
 export const METRIC_CONFIG = {
   bonus: { label: 'Bonus Score', target: 100, format: '', reverse: false, max: 120 },
   vxs: { label: 'C-Sat', target: TARGETS.vxs, format: '', reverse: false, max: 100 },
@@ -111,26 +122,42 @@ export const METRIC_CONFIG = {
   creditFreq: { label: 'Credit Freq', target: TARGETS.creditFreq, format: '', reverse: true, max: 20 },
   vhi: { label: 'VHI', target: TARGETS.grossAddsFwa, format: '', reverse: false, max: 20, isInteger: true },
   ncw: { label: 'NCW %', target: TARGETS.ncw, format: '%', reverse: true, max: 100 },
-};
+} satisfies Record<string, MetricConfigEntry>;
+
+const METRIC_CONFIG_BY_KEY: Readonly<Record<string, MetricConfigEntry | undefined>> = METRIC_CONFIG;
+
+/** Lookup by an arbitrary key (e.g. `viewTogether`, which has no entry). */
+export const getMetricConfig = (key: string): MetricConfigEntry | undefined => METRIC_CONFIG_BY_KEY[key];
 
 // ─── Dynamic Target Calculators ──────────────────────────────────────
-export const getDynamicTarget = (key, count = 1) => {
-  const validCount = Math.max(1, count || 1);
-  if (key === 'phoneAdds') {
-    const style = ACTIVE_ACCOUNT_PROFILE.sales.mobile.smartphones.targetStyle;
-    return style.kind === 'dynamic-per-agent' ? Math.ceil(validCount * style.multiplier) : style.value;
-  }
-  return METRIC_CONFIG[key]?.target;
+const phoneAddsTarget = (validCount: number): number => {
+  const style = ACTIVE_ACCOUNT_PROFILE.sales.mobile.smartphones.targetStyle;
+  return style.kind === 'dynamic-per-agent' ? Math.ceil(validCount * style.multiplier) : style.value;
 };
 
-export const getDynamicMax = (key, count = 1) => {
+export const getDynamicTarget = (key: string, count: number | null | undefined = 1): number | undefined => {
   const validCount = Math.max(1, count || 1);
-  if (key === 'phoneAdds') return Math.max(20, Math.ceil(getDynamicTarget(key, validCount) * 1.5));
-  return METRIC_CONFIG[key]?.max || 100;
+  if (key === 'phoneAdds') return phoneAddsTarget(validCount);
+  return getMetricConfig(key)?.target;
+};
+
+export const getDynamicMax = (key: string, count: number | null | undefined = 1): number => {
+  const validCount = Math.max(1, count || 1);
+  if (key === 'phoneAdds') return Math.max(20, Math.ceil(phoneAddsTarget(validCount) * 1.5));
+  return getMetricConfig(key)?.max || 100;
 };
 
 // ─── Column Definitions ──────────────────────────────────────
-export const COL_DEFINITIONS = [
+export type ColDefinition = {
+  key: string;
+  stateKey: string;
+  label: string;
+  format: string;
+  reverse: boolean;
+  isInteger?: boolean;
+};
+
+export const COL_DEFINITIONS: ColDefinition[] = [
   { key: 'vxs', stateKey: 'vxs', label: 'C-Sat', format: '', reverse: false },
   { key: 'resolve2hr', stateKey: 'resolve2hr', label: '2HR', format: '', reverse: false },
   { key: 'phoneAdds', stateKey: 'phoneAdds', label: 'Phone Lines', format: '', reverse: false, isInteger: true },
@@ -156,7 +183,7 @@ export const PERSONA = 'You are a data-driven, direct, and results-oriented perf
 
 export let ACTIVE_ACCOUNT_PROFILE: AccountProfile = DEFAULT_ACCOUNT_PROFILE;
 
-const targetFor = (profile: AccountProfile, key: string): number => {
+const targetFor = (profile: AccountProfile, key: string): number | undefined => {
   if (key === 'vxs') return profile.customerExperience.target;
   if (key === 'resolve2hr') return profile.resolveRate.shortTerm.target;
   if (key === 'resolve3d') return profile.resolveRate.longTerm.target;
@@ -182,7 +209,7 @@ const targetFor = (profile: AccountProfile, key: string): number => {
     : profile.sales.internet.hotspot.targetStyle.multiplier;
   if (key === 'netOcc' || key === 'creditFreq') return profile.credit.target;
   if (key === 'ncw') return profile.ncw.target ?? TARGETS.ncw;
-  return TARGETS[key];
+  return isTargetKey(key) ? TARGETS[key] : undefined;
 };
 
 // Defensive merge for profiles that predate sections added later (e.g. a
@@ -190,13 +217,17 @@ const targetFor = (profile: AccountProfile, key: string): number => {
 // …). Missing top-level sections fall back to the defaults so downstream code
 // like `active.resolveRate.shortTerm` can never crash on a partial profile.
 // Full-shape profiles are returned untouched (identity preserved).
+const setProfileSection = <K extends keyof AccountProfile>(target: AccountProfile, key: K, value: AccountProfile[K]): void => {
+  target[key] = value;
+};
+
 const withDefaultSections = (profile: AccountProfile): AccountProfile => {
   const requiredKeys = Object.keys(DEFAULT_ACCOUNT_PROFILE) as Array<keyof AccountProfile>;
   const missing = requiredKeys.filter((k) => profile[k] === undefined || profile[k] === null);
   if (!missing.length) return profile;
-  const patched: any = { ...profile };
-  for (const k of missing) patched[k] = (DEFAULT_ACCOUNT_PROFILE as any)[k];
-  return patched as AccountProfile;
+  const patched: AccountProfile = { ...profile };
+  for (const k of missing) setProfileSection(patched, k, DEFAULT_ACCOUNT_PROFILE[k]);
+  return patched;
 };
 
 export const applyAccountProfile = (profile: AccountProfile | null | undefined): AccountProfile => {
@@ -204,10 +235,12 @@ export const applyAccountProfile = (profile: AccountProfile | null | undefined):
   ACTIVE_ACCOUNT_PROFILE = active;
 
   for (const key of Object.keys(TARGETS)) {
+    if (!isTargetKey(key)) continue;
     const nextTarget = targetFor(active, key);
     if (typeof nextTarget === 'number') TARGETS[key] = nextTarget;
   }
-  TARGETS.grossAddsFwa = targetFor(active, 'vhi');
+  const vhiTarget = targetFor(active, 'vhi');
+  if (typeof vhiTarget === 'number') TARGETS.grossAddsFwa = vhiTarget;
 
   const labels: Record<string, string> = {
     vxs: active.customerExperience.label || 'C-Sat',

@@ -1,4 +1,3 @@
-// @ts-nocheck
 // ============================================================================
 // FILE STRUCTURE:
 // ├── Agent Search Filter
@@ -22,10 +21,75 @@
 // options selected by AccountProfile. Preserve existing branches for other accounts;
 // never replace or delete an existing calculation unless explicitly requested.
 
-import { METRIC_CONFIG, TARGETS } from './config';
+import { getMetricConfig, TARGETS } from './config';
+
+// ─── Types ──────────────────────────────────────────────────────────
+type Num = number | null | undefined;
+
+/**
+ * One agent-day record, or an already-aggregated result of it. Rows only carry
+ * the fields that were imported, so every field is optional.
+ */
+export interface MetricRecord {
+  isOff?: boolean;
+  activeAgentCount?: number;
+  calls?: Num;
+  surveys?: Num;
+  promoters?: Num;
+  detractors?: Num;
+  vxs?: Num;
+  resolve2hr?: Num;
+  resolve3d?: Num;
+  resolveTotalContacts?: Num;
+  resolveTotalContacts2hr?: Num;
+  resolveTotalContacts3d?: Num;
+  repeats2hr?: number;
+  repeats3d?: number;
+  handoffs?: Num;
+  handoffsCount?: Num;
+  aht?: Num;
+  hold?: Num;
+  dpc?: Num;
+  netOcc?: Num;
+  creditFreq?: Num;
+  viewTogether?: Num;
+  vtt?: Num;
+  vttSent?: Num;
+  vttTransacted?: Num;
+  phoneAdds?: Num;
+  vhi?: Num;
+  ncw?: Num;
+  ncwCount?: number;
+  bonus?: Num;
+}
+
+export interface SearchableAgent {
+  supervisor?: string | null;
+  oam?: string | null;
+  name?: string | null;
+  coding?: string | null;
+  phase?: string | null;
+}
+
+export interface VsfAgentEntry {
+  agent: { name?: string | null; supervisor?: string | null };
+  isOff?: boolean;
+  data?: MetricRecord | null;
+  _vsfWeight?: number;
+  _vsfDefect?: number;
+}
+
+type VsfMetricKey = 'vxs' | 'resolve3d' | 'resolve2hr';
+const isVsfMetricKey = (key: string): key is VsfMetricKey =>
+  key === 'vxs' || key === 'resolve3d' || key === 'resolve2hr';
+
+export interface TrendInput {
+  isOff?: boolean;
+  vxs?: Num;
+}
 
 // ─── Agent Search Filter ──────────────────────────────────────
-export const agentMatchesSearch = (a, queries) => {
+export const agentMatchesSearch = (a: SearchableAgent, queries: readonly string[]): boolean => {
   if (queries.length === 0) return true;
   return queries.some((q) =>
     (a.supervisor && a.supervisor.toLowerCase().includes(q)) ||
@@ -37,7 +101,7 @@ export const agentMatchesSearch = (a, queries) => {
 };
 
 // ─── Bonus Score Calculation ──────────────────────────────────────
-export const calculateBonus = (vxs, r3d, handoffs) => {
+export const calculateBonus = (vxs: Num, r3d: Num, handoffs: Num): number | null => {
   if (vxs == null || r3d == null || handoffs == null) return null;
   const vxsAttain = Math.min(1.2, vxs / TARGETS.vxs);
   const r3dAttain = Math.min(1.2, r3d / TARGETS.resolve3d);
@@ -46,12 +110,12 @@ export const calculateBonus = (vxs, r3d, handoffs) => {
 };
 
 // ─── Record Aggregation ──────────────────────────────────────
-export const aggregateRecords = (records) => {
+export const aggregateRecords = (records: ReadonlyArray<MetricRecord | null | undefined>) => {
   let calls = 0, sumResolveTotalContacts = 0, sumTalkTime = 0, callsWithAht = 0, surveys = 0, promoters = 0;
   let totalResContacts3d = 0, totalRepeats3d = 0, totalResContacts2hr = 0, totalRepeats2hr = 0, ncwCount = 0;
   let sumHandoffsCount = 0, callsWithHandoffs = 0, sumHoldTime = 0, callsWithHold = 0, sumDpcTime = 0, callsWithDpc = 0;
   let sumVtt = 0, callsWithVtt = 0, sumVttSent = 0, sumVttTransacted = 0, sumNetOcc = 0, callsWithNetOcc = 0, sumCreditFreq = 0, callsWithCreditFreq = 0;
-  let sumPhoneAdds = null, sumVhi = null, activeDays = 0;
+  let sumPhoneAdds: number | null = null, sumVhi: number | null = null, activeDays = 0;
 
   records.forEach((d) => {
     if (!d) return;
@@ -135,11 +199,11 @@ export const aggregateRecords = (records) => {
 };
 
 // ─── Team Metric Aggregation ──────────────────────────────────────
-export const aggregateTeamMetrics = (agentDatas) => {
+export const aggregateTeamMetrics = (agentDatas: ReadonlyArray<MetricRecord | null | undefined>) => {
   let totalCalls = 0, totalCallsAht = 0, totalTalkTime = 0, totalPromoters = 0, totalSurveys = 0, sumHandoffs = 0, countHandoffs = 0, totalHandoffsCount = 0, handoffCalls = 0, handoffTransfers = 0;
   let totalResContacts3d = 0, totalRepeats3d = 0, totalResContacts2hr = 0, totalRepeats2hr = 0, totalResolveContacts = 0, totalNcwCount = 0;
   let sumHold = 0, countHold = 0, sumDpc = 0, countDpc = 0, sumVtt = 0, countVtt = 0, sumVttSent = 0, sumVttTransacted = 0, sumNetOcc = 0, countNetOcc = 0, sumCreditFreq = 0, countCreditFreq = 0;
-  let totalPhoneAdds = null, totalVhi = null, totalDetractors = 0, validCount = 0;
+  let totalPhoneAdds: number | null = null, totalVhi: number | null = null, totalDetractors = 0, validCount = 0;
 
   agentDatas.forEach((aData) => {
     if (!aData) return;
@@ -177,10 +241,11 @@ export const aggregateTeamMetrics = (agentDatas) => {
     // never as an unweighted mean of agent percentages — agents differ hugely in
     // call volume, so an unweighted mean misstates the floor-wide rate. Rows that
     // only carry a raw transfer count (no rate) still contribute their counts.
-    if (aData.handoffs != null || (aData.handoffsCount > 0 && calls > 0)) {
+    const handoffsRaw = aData.handoffsCount ?? 0;
+    if (aData.handoffs != null || (handoffsRaw > 0 && calls > 0)) {
       handoffCalls += calls;
-      handoffTransfers += aData.handoffsCount > 0
-        ? aData.handoffsCount
+      handoffTransfers += handoffsRaw > 0
+        ? handoffsRaw
         : (aData.handoffs != null ? (aData.handoffs / 100) * calls : 0);
       if (aData.handoffs != null) { sumHandoffs += aData.handoffs; countHandoffs++; }
     }
@@ -222,32 +287,40 @@ export const aggregateTeamMetrics = (agentDatas) => {
 };
 
 // ─── Weighted Metric Calculation ──────────────────────────────────────
-export const calculateWeightedVSF = (agentsList, metricKey) => {
-  if (!['vxs', 'resolve3d', 'resolve2hr'].includes(metricKey)) return null;
+export const calculateWeightedVSF = (agentsList: ReadonlyArray<VsfAgentEntry | null | undefined>, metricKey: string): string | null => {
+  if (!isVsfMetricKey(metricKey)) return null;
 
-  const validAgents = agentsList.filter((a) => a && !a.isOff && a.data && a.data[metricKey] !== null && a.data[metricKey] !== undefined);
+  const validAgents = agentsList.flatMap((a) => {
+    if (!a || a.isOff || !a.data) return [];
+    const value = a.data[metricKey];
+    if (value === null || value === undefined) return [];
+    return [{ a, data: a.data, value, weight: 0, defect: 0 }];
+  });
   if (validAgents.length < 2) return null;
 
   let totalWeight = 0;
   let totalDefects = 0;
 
-  validAgents.forEach((a) => {
+  validAgents.forEach((row) => {
+    const { a, data } = row;
     let weight = 0;
     let defect = 0;
 
     if (metricKey === 'vxs') {
-      weight = a.data.surveys || 0;
-      defect = a.data.detractors || 0;
+      weight = data.surveys || 0;
+      defect = data.detractors || 0;
     } else if (metricKey === 'resolve3d') {
-      weight = a.data.resolveTotalContacts3d || 0;
-      defect = a.data.repeats3d || 0;
+      weight = data.resolveTotalContacts3d || 0;
+      defect = data.repeats3d || 0;
     } else if (metricKey === 'resolve2hr') {
-      weight = a.data.resolveTotalContacts2hr || 0;
-      defect = a.data.repeats2hr || 0;
+      weight = data.resolveTotalContacts2hr || 0;
+      defect = data.repeats2hr || 0;
     }
 
     totalWeight += weight;
     totalDefects += defect;
+    row.weight = weight;
+    row.defect = defect;
     a._vsfWeight = weight;
     a._vsfDefect = defect;
   });
@@ -255,23 +328,23 @@ export const calculateWeightedVSF = (agentsList, metricKey) => {
   if (totalWeight === 0) return null;
 
   const weightedAveragePct = (1 - totalDefects / totalWeight) * 100;
-  const targetIsReverse = METRIC_CONFIG[metricKey]?.reverse;
+  const targetIsReverse = getMetricConfig(metricKey)?.reverse;
 
   let varianceSum = 0;
-  validAgents.forEach((a) => {
-    const diff = a.data[metricKey] - weightedAveragePct;
+  validAgents.forEach((row) => {
+    const diff = row.value - weightedAveragePct;
     varianceSum += diff * diff;
   });
 
   const stdDev = Math.sqrt(varianceSum / validAgents.length);
   const vsf = (6 * stdDev) / weightedAveragePct;
 
-  validAgents.sort((a, b) => {
-    if (targetIsReverse) return b.data[metricKey] - a.data[metricKey];
-    return a.data[metricKey] - b.data[metricKey];
+  validAgents.sort((x, y) => {
+    if (targetIsReverse) return y.value - x.value;
+    return x.value - y.value;
   });
 
-  const worstOutliers = validAgents.slice(0, 3).map((a) => `[${a.agent.name} (Sup: ${a.agent.supervisor}) -> ${Math.round(a._vsfDefect)} Defects out of ${Math.round(a._vsfWeight)} Volume]`).join(', ');
+  const worstOutliers = validAgents.slice(0, 3).map((row) => `[${row.a.agent.name} (Sup: ${row.a.agent.supervisor}) -> ${Math.round(row.defect)} Defects out of ${Math.round(row.weight)} Volume]`).join(', ');
 
   if (vsf > 1.0) {
     return `VSF is ${vsf.toFixed(2)}. This is an OUTLIER ISSUE. Your action plan MUST target specific bottom-performing individuals for 1-on-1 coaching. The process works, but specific agents are failing. Mathematical Proof: ${worstOutliers}. You must prove your point mathematically by quoting these exact numbers.`;
@@ -281,7 +354,7 @@ export const calculateWeightedVSF = (agentsList, metricKey) => {
 };
 
 // ─── Trend Calculation ──────────────────────────────────────
-export const calculateTrend = (currentData, baselineData) => {
+export const calculateTrend = (currentData: TrendInput | null | undefined, baselineData: TrendInput | null | undefined) => {
   if (!currentData || currentData.isOff || typeof currentData.vxs !== 'number' || !baselineData || typeof baselineData.vxs !== 'number' || isNaN(currentData.vxs)) {
     return { direction: 'stable', label: 'OFF', diff: 0, diffStr: '-' };
   }
@@ -293,14 +366,14 @@ export const calculateTrend = (currentData, baselineData) => {
 };
 
 // ─── Name Formatting Helpers ──────────────────────────────────────
-export const formatName = (fullName) => {
+export const formatName = (fullName: string | null | undefined): string => {
   if (!fullName) return '';
   const parts = fullName.split(',');
   if (parts.length === 2) return `${parts[1].trim()} ${parts[0].trim()}`;
   return fullName.trim();
 };
 
-export const shortenManagerName = (fullName) => {
+export const shortenManagerName = (fullName: string | null | undefined): string | null | undefined => {
   if (!fullName) return fullName;
   const words = fullName.trim().split(/\s+/).filter(Boolean);
   if (words.length <= 2) return fullName.trim();
@@ -308,12 +381,12 @@ export const shortenManagerName = (fullName) => {
 };
 
 // ─── Date & Calendar Helpers ──────────────────────────────────────
-export const normalizeDate = (dStr) => {
+export const normalizeDate = (dStr: string | null | undefined): string | null => {
   if (!dStr) return null;
   const datePart = dStr.split(' ')[0];
   const parts = datePart.split(/[-/]/);
   if (parts.length === 3) {
-    let year, month, day;
+    let year: string, month: string, day: string;
     if (parts[2].length === 4) { month = parts[0]; day = parts[1]; year = parts[2]; }
     else if (parts[0].length === 4) { year = parts[0]; month = parts[1]; day = parts[2]; }
     else { return null; }
@@ -322,7 +395,7 @@ export const normalizeDate = (dStr) => {
   return null;
 };
 
-export const getWeekNumber = (dateStr) => {
+export const getWeekNumber = (dateStr: string | null | undefined): string => {
   if (!dateStr) return 'Week 1';
   const parts = dateStr.split('-');
   if (parts.length !== 3) return 'Week 1';
@@ -334,7 +407,7 @@ export const getWeekNumber = (dateStr) => {
   return 'Week 5';
 };
 
-export const dowFromDateStr = (d) => {
+export const dowFromDateStr = (d: string): number => {
   const y = +d.slice(0, 4), m = +d.slice(5, 7), day = +d.slice(8, 10);
   const t = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4];
   const yr = m < 3 ? y - 1 : y;
@@ -347,10 +420,12 @@ export const dowFromDateStr = (d) => {
 // on the already-loaded per-agent-per-day records — no raw import reprocessing.
 export const ALL_MONTHS = 'all';
 
-export const matchesSelectedMonth = (dateStr, selectedMonth) =>
+export const matchesSelectedMonth = (dateStr: string, selectedMonth: string): boolean =>
   selectedMonth === ALL_MONTHS || String(dateStr).startsWith(selectedMonth);
 
-export const collectLoadedMonths = (historicalData) => {
+export const collectLoadedMonths = (
+  historicalData: Record<string, Record<string, unknown> | null | undefined> | null | undefined,
+): string[] => {
   const months = new Set<string>();
   Object.values(historicalData || {}).forEach((agentDates) => {
     Object.keys(agentDates || {}).forEach((dateStr) => {
@@ -362,7 +437,7 @@ export const collectLoadedMonths = (historicalData) => {
 
 const MONTH_NAME_FORMATTER = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' });
 
-export const monthLabel = (monthKey) => {
+export const monthLabel = (monthKey: string | null | undefined): string => {
   if (monthKey === ALL_MONTHS) return 'All months';
   const [year, month] = String(monthKey || '').split('-');
   const parsed = month && year ? new Date(Number(year), Number(month) - 1, 1) : null;

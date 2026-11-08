@@ -53,8 +53,10 @@ export const FloorOffendersTab = React.memo(() => {
     const targets: Record<string, { target: number; reverse: boolean; label?: string; format?: string }> = {};
     for (const [key, cfg] of Object.entries(METRIC_CONFIG as Record<string, any>)) {
       if (!cfg || !Number.isFinite(cfg.target)) continue;
+      const target = getDynamicTarget(key, 1);
+      if (target === undefined) continue;
       targets[key] = {
-        target: getDynamicTarget(key, 1),
+        target,
         reverse: Boolean(cfg.reverse),
         label: cfg.label,
         format: cfg.format ?? '',

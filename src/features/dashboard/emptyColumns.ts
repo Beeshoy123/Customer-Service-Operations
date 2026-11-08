@@ -1,4 +1,3 @@
-// @ts-nocheck
 // ============================================================================
 // Recommendation 3 — Auto-Hide Empty Metric Columns After Import
 // ============================================================================
@@ -50,8 +49,10 @@ export const METRIC_COLUMN_SOURCES = {
  * Collects the set of row fields that have at least one real (non-null,
  * non-undefined, non-empty-string) value across all rows.
  */
-export const collectFieldsWithData = (rows) => {
-  const fieldsWithData = new Set();
+export const collectFieldsWithData = (
+  rows: ReadonlyArray<Record<string, unknown> | null | undefined> | null | undefined,
+): Set<string> => {
+  const fieldsWithData = new Set<string>();
   for (const row of rows || []) {
     if (!row) continue;
     for (const key of Object.keys(row)) {
@@ -72,11 +73,11 @@ export const collectFieldsWithData = (rows) => {
  * needs to hide, so consumers can skip redundant state updates.
  */
 export const computeAutoHiddenVisibleCols = (
-  visibleCols,
-  fieldsWithData,
-  columnSources = METRIC_COLUMN_SOURCES,
-) => {
-  const data = fieldsWithData instanceof Set ? fieldsWithData : new Set();
+  visibleCols: Record<string, boolean>,
+  fieldsWithData: Set<string> | null | undefined,
+  columnSources: Readonly<Record<string, readonly string[]>> = METRIC_COLUMN_SOURCES,
+): Record<string, boolean> => {
+  const data = fieldsWithData instanceof Set ? fieldsWithData : new Set<string>();
   let next = visibleCols;
   let changed = false;
 

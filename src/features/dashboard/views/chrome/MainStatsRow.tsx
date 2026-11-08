@@ -50,7 +50,7 @@ export const MainStatsRow = React.memo(() => {
               const config = (METRIC_CONFIG as Record<string, any>)[key];
               const val = metrics.mtdLeaderData[key];
               const tgt = getDynamicTarget(key, metrics.mtdLeaderData.activeAgentCount || dashData.agents.length);
-              const isGood = config.reverse ? val <= tgt : val >= tgt;
+              const isGood = tgt === undefined ? false : (config.reverse ? val <= tgt : val >= tgt);
               let displayVal = val === null || val === undefined || isNaN(val) ? '-' : (config.isInteger ? Math.round(val) : Number(val).toFixed(2));
               
               return (
@@ -93,7 +93,7 @@ export const MainStatsRow = React.memo(() => {
               const config = (METRIC_CONFIG as Record<string, any>)[key];
               const val = metrics.activeLeaderData[key];
               const tgt = getDynamicTarget(key, metrics.activeLeaderData.activeAgentCount || dashData.agents.length);
-              const isGood = config.reverse ? val <= tgt : val >= tgt;
+              const isGood = tgt === undefined ? false : (config.reverse ? val <= tgt : val >= tgt);
               let displayVal = val === null || val === undefined || isNaN(val) ? '-' : (config.isInteger ? Math.round(val) : Number(val).toFixed(2));
               return (
                 <div key={key} className="bg-slate-900 border border-slate-800 p-3 rounded-lg flex flex-col">
