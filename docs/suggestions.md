@@ -106,7 +106,7 @@ Format: `[ ]` open · `[x]` done. Codes in brackets point to sections below: **B
 - Still open, not part of this step: the 2HR gauge stays empty unless the file has a pass column or a percent column. A count alone does not fill it (ran).
 
 ### Step 2: Merge without losing data
-- [ ] Merge key = agent ID or name + date only; supervisor and location become attributes [K2, B3]
+- [x] Merge key = agent ID or name + date only; supervisor and location become attributes [K2, B3]. Done in `import/mergeData.ts`: ID if present, else lower-cased name; a name-only row joins an ID only when that name has exactly one ID in the batch. `calls` is still summed across files until the next box.
 - [ ] `calls` is not summed across files for the same agent+day [K2]
 - [ ] `applyBatchImport` merges into the existing day instead of replacing it [B1]
 - [ ] Missing values stay null for calls, AHT, VXS, resolve2hr, resolve3d (not 0) [X2]

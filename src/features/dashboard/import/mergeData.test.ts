@@ -334,3 +334,67 @@ describe('Problem 7: detectDuplicateFiles', () => {
     assert.equal(duplicateWarnings.length, 0);
   });
 });
+
+describe('Step 2: merge key is agent (ID or name) + date only', () => {
+  const D = '2026-10-05';
+
+  it('merges a file with Supervisor and a file without it (2 agents -> 2 rows, not 4)', () => {
+    const voc: NormalizedRow[] = [
+      { agentName: 'Agent One', date: D, supervisor: 'Sup X', calls: 10, sourceFile: 'voc.csv', sourceSheet: 'CSV' },
+      { agentName: 'Agent Two', date: D, supervisor: 'Sup X', calls: 10, sourceFile: 'voc.csv', sourceSheet: 'CSV' },
+    ];
+    const transfer: NormalizedRow[] = [
+      { agentName: 'Agent One', date: D, handoffsCount: 2, sourceFile: 'transfer.csv', sourceSheet: 'CSV' },
+      { agentName: 'Agent Two', date: D, handoffsCount: 1, sourceFile: 'transfer.csv', sourceSheet: 'CSV' },
+    ];
+
+    const merged = mergeNormalizedRows([...voc, ...transfer]);
+    assert.equal(merged.length, 2);
+    const one = merged.find((r) => r.agentName === 'Agent One');
+    assert.equal(one?.supervisor, 'Sup X'); // attribute is kept
+    assert.equal(one?.handoffsCount, 2); // value from the other file is kept
+  });
+
+  it('does not split one agent + day when supervisor or location differ', () => {
+    const merged = mergeNormalizedRows([
+      { agentName: 'Agent One', date: D, supervisor: 'Sup X', location: 'Site A', calls: 10, sourceFile: 'a.csv', sourceSheet: 'CSV' },
+      { agentName: 'Agent One', date: D, supervisor: 'Sup Y', location: 'Site B', aht: 300, sourceFile: 'b.csv', sourceSheet: 'CSV' },
+    ]);
+    assert.equal(merged.length, 1);
+    assert.equal(merged[0].aht, 300);
+  });
+
+  it('matches a row that has an employee ID with a row that has only the name', () => {
+    const merged = mergeNormalizedRows([
+      { agentName: 'Agent One', employeeId: 'E100', date: D, calls: 10, sourceFile: 'a.csv', sourceSheet: 'CSV' },
+      { agentName: 'Agent One', date: D, handoffsCount: 2, sourceFile: 'b.csv', sourceSheet: 'CSV' },
+    ]);
+    assert.equal(merged.length, 1);
+    assert.equal(merged[0].handoffsCount, 2);
+  });
+
+  it('ignores upper/lower case and extra spaces in names', () => {
+    const merged = mergeNormalizedRows([
+      { agentName: 'Agent One', date: D, calls: 10, sourceFile: 'a.csv', sourceSheet: 'CSV' },
+      { agentName: '  AGENT   one ', date: D, handoffsCount: 2, sourceFile: 'b.csv', sourceSheet: 'CSV' },
+    ]);
+    assert.equal(merged.length, 1);
+  });
+
+  it('keeps two different people with the same name apart when their IDs differ', () => {
+    const merged = mergeNormalizedRows([
+      { agentName: 'Agent One', employeeId: 'E100', date: D, aht: 100, sourceFile: 'a.csv', sourceSheet: 'CSV' },
+      { agentName: 'Agent One', employeeId: 'E200', date: D, aht: 200, sourceFile: 'a.csv', sourceSheet: 'CSV' },
+    ]);
+    assert.equal(merged.length, 2);
+  });
+
+  it('does not guess when a name-only row could belong to two different IDs', () => {
+    const merged = mergeNormalizedRows([
+      { agentName: 'Agent One', employeeId: 'E100', date: D, aht: 100, sourceFile: 'a.csv', sourceSheet: 'CSV' },
+      { agentName: 'Agent One', employeeId: 'E200', date: D, aht: 200, sourceFile: 'a.csv', sourceSheet: 'CSV' },
+      { agentName: 'Agent One', date: D, handoffsCount: 2, sourceFile: 'b.csv', sourceSheet: 'CSV' },
+    ]);
+    assert.equal(merged.length, 3);
+  });
+});

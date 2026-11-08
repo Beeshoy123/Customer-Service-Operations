@@ -11,14 +11,39 @@ import type { ImportWarning, MergeOptions, MergeStrategy, NormalizedRow } from '
 // profile-selected options. Existing merge strategies remain active for other accounts
 // and must not be replaced or deleted without explicit instruction.
 
-const getRecordKey = (row: NormalizedRow): string => {
-  const agent = String(row.agentName ?? row.name ?? '').trim();
-  const date = String(row.date ?? '').trim();
-  const supervisor = String(row.supervisor ?? '').trim();
-  const location = String(row.location ?? '').trim();
-  const employeeId = String(row.employeeId ?? '').trim();
+// Merge key = agent (employee ID, else name) + date. Nothing else.
+// Supervisor and location are attributes of the record, not part of the key, so a
+// file without a Supervisor column still merges with one that has it (Step 2).
+const normalizeAgentName = (row: NormalizedRow): string =>
+  String(row.agentName ?? row.name ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
 
-  return `${agent}|${employeeId || 'noid'}|${date}|${supervisor}|${location}`;
+const normalizeEmployeeId = (row: NormalizedRow): string =>
+  String(row.employeeId ?? '').trim().toLowerCase();
+
+// name -> the IDs seen with that name in this batch. A name-only row joins an ID
+// only when the name belongs to exactly one ID (never guess between two people).
+const buildNameToIds = (rows: NormalizedRow[]): Map<string, Set<string>> => {
+  const map = new Map<string, Set<string>>();
+  for (const row of rows) {
+    const id = normalizeEmployeeId(row);
+    const name = normalizeAgentName(row);
+    if (!id || !name) continue;
+    const ids = map.get(name);
+    if (ids) ids.add(id);
+    else map.set(name, new Set([id]));
+  }
+  return map;
+};
+
+const getRecordKey = (row: NormalizedRow, nameToIds: Map<string, Set<string>>): string => {
+  const date = String(row.date ?? '').trim();
+  const id = normalizeEmployeeId(row);
+  if (id) return `id:${id}|${date}`;
+
+  const name = normalizeAgentName(row);
+  const ids = nameToIds.get(name);
+  if (ids && ids.size === 1) return `id:${[...ids][0]}|${date}`;
+  return `name:${name}|${date}`;
 };
 
 const getSourceKey = (row: NormalizedRow): string => {
@@ -198,9 +223,10 @@ export const mergeNormalizedRows = (
 ): NormalizedRow[] => {
   const { mergeStrategy, duplicateSourceHandling = 'dedupe', onWarning } = options;
   const groups = new Map<string, NormalizedRow[]>();
+  const nameToIds = buildNameToIds(rows);
 
   for (const row of rows) {
-    const key = getRecordKey(row);
+    const key = getRecordKey(row, nameToIds);
     const existing = groups.get(key);
     if (existing) {
       existing.push(row);
