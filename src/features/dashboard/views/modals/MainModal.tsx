@@ -5,6 +5,16 @@ import { GeminiLoader, FormattedText, SubMetricCard, MetricCell } from '../../..
 import { useDashboard } from '../../hooks';
 import { monthLabel } from '../../helpers';
 
+// S18: long class strings named once instead of inlined in the JSX.
+const ROSTER_ROW_BASE = 'roster-row transition-all duration-300 hover:-translate-y-1 hover:shadow-md relative z-10';
+const ROSTER_ROW_HIGHLIGHT = 'bg-blue-100 outline outline-2 outline-blue-500 rounded-md z-20';
+const AI_TOOL_BTN_BASE = 'px-3 py-2 rounded-lg font-bold transition-all flex items-center gap-2 text-sm';
+const AI_TOOL_BTN_OFF = 'text-slate-600 hover:bg-slate-200 border border-transparent';
+const SUP_TAB_BTN_BASE = 'px-4 py-2 rounded-lg font-bold text-sm transition-all';
+const SUP_TAB_BTN_OFF = 'text-slate-500 hover:bg-slate-200 border border-transparent';
+const PILL_ON = 'bg-white shadow-sm border border-slate-200 text-slate-900';
+const PILL_ON_DANGER = 'bg-white shadow-sm border border-slate-200 text-red-600';
+
 // ==== AI assistant content ==== 
 // Source: src/App.tsx -> AskAiContent
 // ==== Ask AI modal content ==== 
@@ -178,7 +188,7 @@ const SupervisorModalContent = () => {
                   const visibleColCount = COL_DEFINITIONS.filter(col => uiState.visibleCols[col.stateKey]).length;
                   return (
                   <React.Fragment key={item.agent.ccms}>
-                  <tr className={`roster-row transition-all duration-300 hover:-translate-y-1 hover:shadow-md relative z-10 ${uiState.highlightedAgentId === item.agent.ccms ? 'bg-blue-100 outline outline-2 outline-blue-500 rounded-md z-20' : ''}`}>
+                  <tr className={`${ROSTER_ROW_BASE} ${uiState.highlightedAgentId === item.agent.ccms ? ROSTER_ROW_HIGHLIGHT : ''}`}>
                      <td className="font-semibold p-3 px-6">
                        <div className="flex items-center gap-2">
                          <span>{item.agent.name}</span>
@@ -293,7 +303,7 @@ const SupervisorModalContent = () => {
              <div className="flex flex-wrap gap-2 pb-4 border-b border-slate-200">
                <button 
                  onClick={() => uiHandlers.setActiveSupAiTool('report')} 
-                 className={`px-3 py-2 rounded-lg font-bold transition-all flex items-center gap-2 text-sm ${uiState.activeSupAiTool === 'report' ? 'bg-white shadow-sm border border-slate-200 text-slate-900' : 'text-slate-600 hover:bg-slate-200 border border-transparent'}`}
+                 className={`${AI_TOOL_BTN_BASE} ${uiState.activeSupAiTool === 'report' ? PILL_ON : AI_TOOL_BTN_OFF}`}
                >
                  <span className="text-base">🤖</span> Sup Report
                </button>
@@ -301,7 +311,7 @@ const SupervisorModalContent = () => {
 
                <button 
                  onClick={() => uiHandlers.setActiveSupAiTool('burnout')} 
-                 className={`px-3 py-2 rounded-lg font-bold transition-all flex items-center gap-2 text-sm ${uiState.activeSupAiTool === 'burnout' ? 'bg-white shadow-sm border border-slate-200 text-red-600' : 'text-slate-600 hover:bg-slate-200 border border-transparent'}`}
+                 className={`${AI_TOOL_BTN_BASE} ${uiState.activeSupAiTool === 'burnout' ? PILL_ON_DANGER : AI_TOOL_BTN_OFF}`}
                >
                  <span className="text-base">🧠</span> Behavioral Scan
                </button>
@@ -444,7 +454,7 @@ export const MainModal = React.memo(() => {
               <button 
                 key={tab.id}
                 onClick={() => uiHandlers.setSupTab(tab.id)}
-                className={`px-4 py-2 rounded-lg font-bold text-sm transition-all ${uiState.supTab === tab.id ? 'bg-white shadow-sm border border-slate-200 text-slate-900' : 'text-slate-500 hover:bg-slate-200 border border-transparent'}`}
+                className={`${SUP_TAB_BTN_BASE} ${uiState.supTab === tab.id ? PILL_ON : SUP_TAB_BTN_OFF}`}
               >
                 {tab.label}
               </button>

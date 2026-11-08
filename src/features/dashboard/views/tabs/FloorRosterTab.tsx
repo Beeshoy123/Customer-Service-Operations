@@ -5,6 +5,9 @@ import { COL_DEFINITIONS, getDynamicTarget } from '../../config';
 import { calculateTrend } from '../../helpers';
 import { useDashboard } from '../../hooks';
 
+// S18: the long shared row class, named once.
+const ROSTER_ROW_BASE = 'roster-row transition-all duration-300 hover:-translate-y-1 hover:shadow-md relative z-10';
+
 // ─── Floor Roster Tab ──────────────────────────────────────
 export const FloorRosterTab = () => {
   const { dashData, metrics, aiTools, uiState, uiHandlers } = useDashboard();
@@ -84,7 +87,7 @@ export const FloorRosterTab = () => {
                   return (
                     <tr 
                       key={supObj.name} 
-                      className={`roster-row transition-all duration-300 hover:-translate-y-1 hover:shadow-md relative z-10 ${uiState.selectedSupervisorObj?.name === supObj.name ? 'active' : ''}`}
+                      className={`${ROSTER_ROW_BASE} ${uiState.selectedSupervisorObj?.name === supObj.name ? 'active' : ''}`}
                       style={{ opacity: isOffToday ? 0.6 : 1 }}
                       onClick={() => {
                           if (!isOffToday) {

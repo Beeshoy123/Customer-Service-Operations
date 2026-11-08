@@ -87,6 +87,54 @@ The owner (Beeshoy) is a call-center team leader and a **beginner at coding**. H
 | 8 | 🟢 P2 | **Step 9**: combined view and redesign (includes the UX and design-gap items) | Look and usability; do after the data is right |
 | 9 | 🟢 P3 | **Step 10**: cleanup (`@ts-nocheck`, renames, file splits, root clutter) | Rolling; touch each file when a step already edits it |
 
+### Architecture fix order (the items that came from the old `recommendations.md`)
+
+Most critical first. Codes in bold are the old item numbers; the checklist below uses the same codes. Sizes: S under 1 hour, M a few hours, L a day or more. Evidence: **ran** or **read**. Counts marked "old audit" were not rechecked.
+
+**⛔ Critical: do these first**
+
+| # | Code | What | Why it matters | Fix | Size | Step |
+|---|---|---|---|---|---|---|
+| 1 | **C3** | No tests on the bonus, weighted-satisfaction and trend math | These numbers decide bonuses. `helpers.test.ts` covers only hand-offs. (ran) | Tests only. Compute expected values by hand. Change no formula. If the code disagrees, report a bug. | S | 0 |
+| 2 | **C1** | AI sends dashboard data out | `hooks.ts` posts the roster, supervisors and series to `api.anthropic.com` from the browser. `FloorAnalysisTab`, `FloorCorrelationTab` and `FloorDowTab` each fire it when opened. It fails today only because there is no key. (read) | AI off by default behind a visible switch. Remove the three auto-calls and the browser call. Or delete the AI code if it is not used. | M | 4 |
+
+**🟡 Medium: real risks, small to fix**
+
+| # | Code | What | Why it matters | Fix | Size | Step |
+|---|---|---|---|---|---|---|
+| 3 | **C4** | Dashboard context typed `any` | A missing member is invisible to `tsc`; that is how the old blank-screen crashes happened. All 25 members are fine today. (ran) | A real type for the context, plus a test that fails if a component uses a member the hook doesn't return. | S–M | 10 |
+| 4 | — | Dead `if (false …)` block (`App.tsx` ~line 308) | Hides a ~60-line account-setup screen nobody can reach. (read) | Delete it, or restore it on purpose (his decision). | S | 9 |
+| 5 | — | Ref written during render (`aiResetRef.current = …`, `App.tsx` ~line 224) | Breaks a React rule and can show stale values. (read) | Move the write into an effect or an event handler. | S | 9 |
+| 6 | — | An in-flight import is not aborted when the page closes | A late import can write into state that is gone. Changes visible behavior, so needs his OK. (read) | Abort on unmount. | S | 10 |
+| 7 | **U2** | Hover dimming done in JavaScript (`TopNavbar`, `MainModal`, `FloorBurnoutTab`) | On touch screens the buttons stay dim. (read) | CSS `:hover` and `:focus-visible`; resting state fully visible. | S | 9 |
+
+**🟢 Low: usability and look (all inside Step 9)**
+
+| # | Code | What | Fix | Size |
+|---|---|---|---|---|
+| 8 | **U4** | The comma-search hint is only a placeholder (`FloorHeader.tsx`) | Show the typed terms as removable chips | S |
+| 9 | **U5** | No loading state on the first metric cards | A real "resolving" flag, no fake timer | S |
+| 10 | **S17** | Two identical KPI cards (`MainStatsRow.tsx`) | One component, one briefing hero | M |
+| 11 | **U3** | Red used as a neutral label color in about 10 places (old audit) | Red for problems only | S |
+| 12 | **U6** | Round ◀ ▶ next to rectangular tabs | One button shape | S |
+| 13 | **S15** | 74 inline `style={{}}` blocks (ran) | Move to CSS while rewriting each file | M |
+| 14 | **S16** | Many inline arrow handlers | Name them or lift them while rewriting | M |
+| 15 | **S18** | ✅ Done 2026-11-09: long conditional `className` chains | Named class constants instead of long inline strings | S |
+| 16 | **Design gap** | Beige canvas with dark cards and mixed icons | Dark canvas, mint and gold colors, blue glow (7 ideas below). HTML mock-up first. | L |
+
+**⚪ Cosmetic: only when already editing the file**
+
+| # | Code | What | Fix | Size | Step |
+|---|---|---|---|---|---|
+| 17 | **C2** | "Gemini" names (28 hits in 10 files) | Rename to `executeAiAction`, `AiLoader`, `.ai-btn`; do it with Step 4 if the AI code stays | S | 10 |
+| 18 | **S4c** | `ImportPreviewModal.tsx` is 1,347 lines | Move its state and handlers into a hook. Move only. | M | 10 |
+| 19 | **S20** | `COL_DEFINITIONS` used in 25 places in 8 files | Tidy only when touching them | S | 10 |
+| 20 | **S23** | `runChartData` rebuilds its date list each time (`metrics.ts`) | Only if it measures slow | S | 10 |
+| 21 | **U1** | About 51 emoji-led labels (old audit) | SVG icons, with the Step 9 redesign | M | 9 |
+| 22 | — | About 48 unused CSS classes (old audit) | Delete after confirming they are unused | S | 10 |
+
+Suggested sequence: 1 → 2 → 3, then 4–7 as one small cleanup, then everything in Step 9 together. Tick items in the checklist below as they are done.
+
 ---
 
 ## Checklist: what must change (cross off when done)
@@ -169,7 +217,8 @@ Show an HTML mock-up and get his OK before building any of this.
 - [ ] One button shape in the header (round ◀ ▶ next to rectangular tabs) [U6]
 - [ ] Merge the two offender systems (Chronic 3+ vs Repeated 2+) into one rule set [X6]
 - [ ] Frontend debt: undefined Tailwind-style classes, 74 inline styles, Vite template CSS, dead `if (false …)` block in `App.tsx` (line 308, hides a ~60-line account-setup screen), a ref written during render (`aiResetRef.current = …`, `App.tsx` line 224), unused CSS classes (about 48 per the old audit, recheck)
-- Collect while rewriting these files, do not open a separate pass: 74 inline `style={{}}`, many inline arrow handlers, conditional `className` chains.
+- Collect while rewriting these files, do not open a separate pass: 74 inline `style={{}}` [S15], many inline arrow handlers [S16].
+- [x] Long conditional `className` chains → named class constants [S18] (done 2026-11-09, ahead of Step 9 at his request): 12 long chains in `menus.tsx`, `shared.tsx`, `MainModal.tsx` and `FloorRosterTab.tsx` now use named constants. Class output is identical: live-app crawl of 206 screen states / 76,192 elements, 0 differences before vs after (ran). The 10 short chains (`x${on ? ' active' : ''}` style in `SidebarNav`, `ImportLanding`, `ImportPreviewModal`, `FloorApprenticeTab`, `MainStatsRow`) were left as they are readable.
 
 ### Step 10: Cleanup (rolling, alongside steps 1–9)
 Remove `@ts-nocheck` [K5], file by file (8 files, 2,529 lines). Best done when a step already edits the file; the UI files get rewritten in step 9, so skip them until then.
@@ -256,6 +305,7 @@ Test used: 2 agents × 10 calls per file.
 | 🟡 | **X6** Two offender systems with different rules: Chronic Offenders (3+ months) and Repeated Offenders (2+ consecutive). | read |
 | 🟡 | **X7** Dates default to DD/MM silently, with no per-file setting. **Update:** order is now detected per sheet (`import/dateText.ts`, `detectDateOrder`); a sheet with no proof still defaults to DD/MM, and the preview switch is not built yet. | ran |
 | 🟡 | **X8** Repo hygiene: 5 Python scripts, 3 PNGs and `.tmp_test` in the root. README says 8 tabs; there are 9. | ran |
+| ⛔ | **X9 (new, found 2026-11-09)** In the Chronic Offenders tab, clicking the coaching-plan button throws `TypeError: setUploadStatus is not a function` (`FloorOffendersTab.tsx:106`). The tab reads `setUploadStatus` and `scheduleStatusClear` from the dashboard data, but the hook's returned object does not include them. Same failure class as C4, on `dashData` instead of `aiTools`. Not fixed yet; needs his OK. | ran |
 
 ---
 

@@ -231,6 +231,12 @@ export const MetricCell = ({ value, target, format = '', reverse = false, isOff 
 };
 
 // ─── Pareto Ranking Column ──────────────────────────────────────
+// S18: long class strings named once instead of inlined in the JSX.
+const LIST_ITEM_BASE = 'flex justify-between items-center text-sm border-b border-slate-100 pb-2 last:border-0 last:pb-0';
+const LIST_ITEM_CLICKABLE = 'cursor-pointer hover:bg-slate-50 transition-colors rounded p-1 -mx-1 px-2';
+const TABLE_CELL_BASE = 'p-3 border-b border-slate-200 text-center font-bold';
+const TABLE_CELL_CLICKABLE = 'cursor-pointer hover:bg-slate-100 transition-colors';
+
 export const ParetoColumn = ({ title, icon, data, colorObj, valKey, labelFn, onItemClick }) => (
   <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col gap-3 transition-all duration-300 hover:-translate-y-1 hover:shadow-md">
     <div className="text-sm font-extrabold uppercase mb-2 flex items-center gap-2" style={{ color: colorObj.dark }}>
@@ -240,7 +246,7 @@ export const ParetoColumn = ({ title, icon, data, colorObj, valKey, labelFn, onI
       {data && data.length > 0 ? data.map((item, idx) => (
         <div
           key={item.agent.ccms || idx}
-          className={`flex justify-between items-center text-sm border-b border-slate-100 pb-2 last:border-0 last:pb-0 ${onItemClick ? 'cursor-pointer hover:bg-slate-50 transition-colors rounded p-1 -mx-1 px-2' : ''}`}
+          className={`${LIST_ITEM_BASE} ${onItemClick ? LIST_ITEM_CLICKABLE : ''}`}
           onClick={() => onItemClick && onItemClick(item)}
           title={onItemClick ? 'Click to drill down into Supervisor overview' : ''}
         >
@@ -294,7 +300,7 @@ export const PerformanceHeatmap = ({ activeDates, chartData, metricConfig, baseT
                 return (
                   <td
                     key={d}
-                    className={`p-3 border-b border-slate-200 text-center font-bold ${!isMissing && onCellClick ? 'cursor-pointer hover:bg-slate-100 transition-colors' : ''}`}
+                    className={`${TABLE_CELL_BASE} ${!isMissing && onCellClick ? TABLE_CELL_CLICKABLE : ''}`}
                     style={{ color }}
                     onClick={() => onCellClick && !isMissing && onCellClick(d)}
                     title={!isMissing && onCellClick ? `Click to view Floor Roster for ${d}` : ''}

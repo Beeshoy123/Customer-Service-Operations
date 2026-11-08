@@ -10,6 +10,12 @@ import { COL_DEFINITIONS } from '../features/dashboard/config';
 import { monthLabel } from '../features/dashboard/helpers';
 
 // ─── Timeframe Selection Menu ──────────────────────────────────────
+// Class strings for the four timeframe buttons (S18: named, not inlined 4 times).
+const TIMEFRAME_BTN_BASE = 'flex-1 min-w-[70px] p-2 text-xs rounded-lg cursor-pointer transition-all';
+const TIMEFRAME_BTN_ON = 'bg-slate-700 shadow-sm font-bold text-white border border-slate-600';
+const TIMEFRAME_BTN_OFF = 'bg-slate-900/60 font-semibold text-slate-300 border border-slate-700 hover:bg-slate-800 hover:text-white';
+const timeframeBtnClass = (isActive) => `${TIMEFRAME_BTN_BASE} ${isActive ? TIMEFRAME_BTN_ON : TIMEFRAME_BTN_OFF}`;
+
 export const TimeframeMenu = ({
   activeTimeframe,
   setActiveTimeframe,
@@ -28,19 +34,19 @@ export const TimeframeMenu = ({
     <span className="block text-xs font-extrabold text-slate-300 uppercase mb-3 tracking-wide">Timeframe Filter</span>
     <div className="flex gap-2 mb-4 flex-wrap">
       <button
-        className={`flex-1 min-w-[70px] p-2 text-xs rounded-lg cursor-pointer transition-all ${activeTimeframe === 'monthly' ? 'bg-slate-700 shadow-sm font-bold text-white border border-slate-600' : 'bg-slate-900/60 font-semibold text-slate-300 border border-slate-700 hover:bg-slate-800 hover:text-white'}`}
+        className={timeframeBtnClass(activeTimeframe === 'monthly')}
         onClick={() => { setActiveTimeframe('monthly'); }}
       >Monthly</button>
       <button
-        className={`flex-1 min-w-[70px] p-2 text-xs rounded-lg cursor-pointer transition-all ${activeTimeframe === 'weekly' ? 'bg-slate-700 shadow-sm font-bold text-white border border-slate-600' : 'bg-slate-900/60 font-semibold text-slate-300 border border-slate-700 hover:bg-slate-800 hover:text-white'}`}
+        className={timeframeBtnClass(activeTimeframe === 'weekly')}
         onClick={() => { setActiveTimeframe('weekly'); }}
       >Weekly</button>
       <button
-        className={`flex-1 min-w-[70px] p-2 text-xs rounded-lg cursor-pointer transition-all ${activeTimeframe === 'daily' ? 'bg-slate-700 shadow-sm font-bold text-white border border-slate-600' : 'bg-slate-900/60 font-semibold text-slate-300 border border-slate-700 hover:bg-slate-800 hover:text-white'}`}
+        className={timeframeBtnClass(activeTimeframe === 'daily')}
         onClick={() => { setActiveTimeframe('daily'); }}
       >Daily</button>
       <button
-        className={`flex-1 min-w-[70px] p-2 text-xs rounded-lg cursor-pointer transition-all ${activeTimeframe === 'dow' ? 'bg-slate-700 shadow-sm font-bold text-white border border-slate-600' : 'bg-slate-900/60 font-semibold text-slate-300 border border-slate-700 hover:bg-slate-800 hover:text-white'}`}
+        className={timeframeBtnClass(activeTimeframe === 'dow')}
         onClick={() => { setActiveTimeframe('dow'); }}
       >Day of Week</button>
     </div>
