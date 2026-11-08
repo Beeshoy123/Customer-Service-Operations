@@ -106,10 +106,10 @@ Format: `[ ]` open · `[x]` done. Codes in brackets point to sections below: **B
 - Still open, not part of this step: the 2HR gauge stays empty unless the file has a pass column or a percent column. A count alone does not fill it (ran).
 
 ### Step 2: Merge without losing data
-- [x] Merge key = agent ID or name + date only; supervisor and location become attributes [K2, B3]. Done in `import/mergeData.ts`: ID if present, else lower-cased name; a name-only row joins an ID only when that name has exactly one ID in the batch. `calls` is still summed across files until the next box.
+- [x] Merge key = agent ID or name + date only; supervisor and location become attributes [K2, B3]. Done in `import/mergeData.ts`: ID if present, else lower-cased name; a name-only row joins an ID only when that name has exactly one ID in the batch.
 - [x] `calls` is not summed across files for the same agent+day [K2]. Done in `import/mergeData.ts`: all count fields (calls, surveys, promoters, handoffsCount, resolve contacts, ...) default to "newer file wins"; a value missing in the newer file keeps the older one; one `CONFLICTING_VALUES` warning per field when files disagree. Adding is still possible per account (`mergeStrategy`) or with `duplicateSourceHandling: 'allow'`. Rate fields (AHT, VXS, ...) still follow the account's rate-merge style; revisit with the "merge into existing day" box.
 - [ ] `applyBatchImport` merges into the existing day instead of replacing it [B1]
-- [ ] Missing values stay null for calls, AHT, VXS, resolve2hr, resolve3d (not 0) [X2]
+- [x] Missing values stay null for calls, AHT, VXS, resolve2hr, resolve3d (not 0) [X2]. Done in new `dashboard/dayRecord.ts` (`buildDayRecord`, moved out of `batchImport.ts` so it can be tested): a missing value, `-`, `n/a` or other non-number text is null; a real 0 stays 0. A day with no `calls` is no longer marked off (`isOff` only when calls is a real 0). Full `isOff` rework stays in Step 8.
 - [ ] Remove invented survey counts (the 5% rule in `helpers.ts`) [X3]
 
 ### Step 3: Dates

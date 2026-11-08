@@ -28,6 +28,7 @@ import { mergeNormalizedRows } from './import/mergeData';
 import { normalizeCellValue, normalizeHeaderToField, resolveSheetDateOrder } from './import/schemaNormalizer';
 import { detectFileType } from './import/fileTypeDetector';
 import { saveAccountProfile } from '../accountSetup/account-profile-storage';
+import { buildDayRecord } from './dayRecord';
 
 // ─── Batch Import Hook ─────────────────────────────────────────────────────
 // Everything the three callbacks need arrives as one object passed by
@@ -94,13 +95,6 @@ export const useBatchImport = (deps: BatchImportDeps) => {
     const updatedAgents = [...agents];
     const nextSupervisors = new Set(supervisors);
 
-    const toNumber = (value: any) => {
-      if (value === null || value === undefined || value === '') return 0;
-      if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
-      const parsed = Number(String(value).replace(/[%,$\s]/g, ''));
-      return Number.isFinite(parsed) ? parsed : 0;
-    };
-
     const agentByCcms = new Map();
     const agentByNameAndId = new Map();
 
@@ -160,51 +154,7 @@ export const useBatchImport = (deps: BatchImportDeps) => {
       if (rawSupervisor && rawSupervisor !== 'Unknown') nextSupervisors.add(rawSupervisor);
       if (!newHistory[targetAgent.ccms]) newHistory[targetAgent.ccms] = {};
 
-      const callsValue = toNumber(row.calls);
-      const ahtValue = toNumber(row.aht);
-      const vxsValue = toNumber(row.vxs);
-      const resolve2hrValue = toNumber(row.resolve2hr);
-      const resolve3dValue = toNumber(row.resolve3d);
-
-      // Read every recognized metric field off the normalized row.
-      // toNumber() returns 0 for missing/null, so we preserve null for truly absent
-      // fields by checking row[field] explicitly before converting.
-      const toNumberOrNull = (value: any) => {
-        if (value === null || value === undefined || value === '') return null;
-        return toNumber(value);
-      };
-
-      // resolveTotalContacts: use imported value when present, fall back to callsValue
-      const resolveTotalContactsValue =
-        row.resolveTotalContacts != null && row.resolveTotalContacts !== ''
-          ? toNumber(row.resolveTotalContacts)
-          : callsValue;
-
-      newHistory[targetAgent.ccms][rawDate] = {
-        isOff: callsValue === 0,
-        calls: callsValue,
-        resolveTotalContacts: resolveTotalContactsValue,
-        resolveTotalContacts2hr: toNumberOrNull(row.resolveTotalContacts2hr),
-        resolveTotalContacts3d: toNumberOrNull(row.resolveTotalContacts3d),
-        surveys: toNumberOrNull(row.surveys),
-        promoters: toNumberOrNull(row.promoters),
-        vxs: vxsValue,
-        resolve3d: resolve3dValue,
-        handoffs: toNumberOrNull(row.handoffs),
-        handoffsCount: toNumberOrNull(row.handoffsCount),
-        resolve2hr: resolve2hrValue,
-        aht: ahtValue,
-        hold: toNumberOrNull(row.hold),
-        dpc: toNumberOrNull(row.dpc),
-        viewTogether: toNumberOrNull(row.viewTogether),
-        vtt: toNumberOrNull(row.vtt),
-        vttSent: toNumberOrNull(row.vttSent),
-        vttTransacted: toNumberOrNull(row.vttTransacted),
-        netOcc: toNumberOrNull(row.netOcc),
-        creditFreq: toNumberOrNull(row.creditFreq),
-        phoneAdds: toNumberOrNull(row.phoneAdds),
-        vhi: toNumberOrNull(row.vhi),
-      };
+      newHistory[targetAgent.ccms][rawDate] = buildDayRecord(row);
     }
 
     // Recommendation 3 — auto-hide empty metric columns: scan the applied rows
