@@ -30,3 +30,4 @@ customer-service-ops-changes.patch
 *.csv
 *.xlsx
 *.xls
+fake-floor-*/

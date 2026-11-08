@@ -417,6 +417,20 @@ Canonical field set: `agentName` · `supervisor` · `oam` · `employeeId` · `da
 
 ---
 
+## Test data: a fake quarter for a big floor
+
+Run `node tools/make-fake-floor.mjs` (from the repo, after `npm install`). It writes `fake-floor-2026Q3/` (git-ignored, about 33 MB, 2 s, same files every run). All names and IDs are invented.
+
+| What | Size |
+|---|---|
+| Agents / floors / supervisors | 350 / 3 / 35 |
+| Call rows (Jul–Sep 2026, 3 monthly files) | about 290,000 |
+| Also | transfer log, sales, pivot export, floor VOC, absenteeism, AUX, answer keys |
+
+`answer_key_agent_month.csv` and `answer_key_floor_month.csv` hold the true totals. Steps 1–3 and 8 should compare the app's numbers against them. `README.txt` in the output folder lists the built-in traps (supervisor change on Aug 15, overlapping re-export, mixed date formats, blank survey cells, training days with zero calls, pivot export, junk rows). Do not commit the generated files; commit changes to the script instead.
+
+---
+
 ## Appendix: how this was checked
 
 - Repo unzipped into its own folder. `npm ci`, `tsc -b`, `npm test` (274 pass), `oxlint` (warnings only).
