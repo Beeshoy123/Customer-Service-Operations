@@ -2,7 +2,7 @@
 // If a dashboard metric shows 0, null, or wrong values after import, the fix
 // belongs in importPolicy.ts (FIELD_ALIASES), NOT here. This file is a generic
 // orchestration layer; it does not contain and must not contain column-name
-// knowledge. See recommendations.md §"STANDING RULE" and the banner in importPolicy.ts.
+// knowledge. See docs/suggestions.md §"STANDING RULE" and the banner in importPolicy.ts.
 
 import { parseDelimitedText } from './csvParser';
 import { detectFileType, isSupportedImportType } from './fileTypeDetector';

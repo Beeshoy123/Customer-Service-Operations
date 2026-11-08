@@ -2,7 +2,7 @@
 // ⚠️  STANDING RULE — DO NOT FIX MAPPING BUGS IN THIS FILE
 // If a dashboard metric shows 0, null, or wrong values after import, the fix
 // belongs in importPolicy.ts (FIELD_ALIASES), NOT here. Row storage in
-// applyBatchImport is correct and generic. See recommendations.md §"STANDING
+// applyBatchImport is correct and generic. See docs/suggestions.md §"STANDING
 // RULE" and the top-of-file banner in importPolicy.ts for the full checklist.
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
@@ -52,7 +52,7 @@ export const useDashboardData = (onDataReset = null, accountName = '', onImportC
 
   // S1(a): the accountProfile memos, the 16 useState declarations, the
   // setSelectedMonth wrapper, the two refs and the loadedMonths memo now
-  // live in ./state.ts (move-only extraction, recommendations.md).
+  // live in ./state.ts (move-only extraction, old recommendations.md at commit d34eb57).
   const state = useDashboardDataState(persistedState, accountName, onImportColumnsScan);
   const {
     accountProfile, hasSavedAccountProfile,
@@ -82,7 +82,7 @@ export const useDashboardData = (onDataReset = null, accountName = '', onImportC
   } = state;
 
   // S1(b): resetDashboard, the once-per-mount localStorage read and both write
-  // effects now live in ./persistence.ts (move-only extraction, recommendations.md).
+  // effects now live in ./persistence.ts (move-only extraction, old recommendations.md at commit d34eb57).
   const { resetDashboard } = useDashboardPersistence(
     {
       agents, supervisors, oamName, historicalData, hasUploadedData,
@@ -109,7 +109,7 @@ export const useDashboardData = (onDataReset = null, accountName = '', onImportC
   }, [loadedMonths, selectedMonthChosen]); // oxlint-disable-line react-hooks/exhaustive-deps -- setSelectedMonthRaw comes from ./state (S1a), untraceable to its useState here
 
   // S1(d): applyBatchImport, confirmImportPreview and processFile now live in
-  // ./batchImport.ts (move-only extraction, recommendations.md). They are fed
+  // ./batchImport.ts (move-only extraction, old recommendations.md at commit d34eb57). They are fed
   // into useUploadFlow below as parameters — batchImport.ts and uploadFlow.ts
   // never import each other (the S1(c) cycle break made that possible).
   const { applyBatchImport, confirmImportPreview, processFile } = useBatchImport({
@@ -122,7 +122,7 @@ export const useDashboardData = (onDataReset = null, accountName = '', onImportC
 
   // S1(c): handleMultipleFiles, handleAutomaticImport, continueAutomaticImport,
   // handleAutomaticFileUpload, handleFileUpload and handleFileDrop now live in
-  // ./uploadFlow.ts (move-only extraction, recommendations.md). The S1(d)
+  // ./uploadFlow.ts (move-only extraction, old recommendations.md at commit d34eb57). The S1(d)
   // callbacks below are injected as parameters — uploadFlow.ts never imports
   // this module back, so the two can never form an import cycle (the
   // processFile → handleAutomaticImport early-out moved into uploadFlow's
@@ -149,7 +149,7 @@ export const useDashboardData = (onDataReset = null, accountName = '', onImportC
   });
 
   // S1(e): the agentDataCache memo and the four timeframe selectors now live
-  // in ./timeframe.ts (move-only extraction, recommendations.md).
+  // in ./timeframe.ts (move-only extraction, old recommendations.md at commit d34eb57).
   const { getAgentDataForTimeframe, handleDateChange, getTopHeadlineMonth, monthLabel } =
     useTimeframeSelectors({
       historicalData, hasUploadedData, activeTimeframe, selectedWeek,
@@ -157,7 +157,7 @@ export const useDashboardData = (onDataReset = null, accountName = '', onImportC
       setActiveTimeframe, setSelectedDate, setSelectedDow,
     });
 
-  // S3 — memoized return (recommendations.md): the identity changes only when
+  // S3 — memoized return (old recommendations.md at commit d34eb57): the identity changes only when
   // one of the listed values changes. Every non-listed member is referentially
   // stable by construction: `resetDashboard` and the batch/upload callbacks are
   // useCallback, the setters come from state.ts's own useState calls, the two

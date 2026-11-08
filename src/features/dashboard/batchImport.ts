@@ -1,4 +1,4 @@
-// batchImport.ts — S1(d) of the `useDashboardData` split (recommendations.md).
+// batchImport.ts — S1(d) of the `useDashboardData` split (old recommendations.md at commit d34eb57).
 // Move-only extraction from hooks.ts: the batch row applier
 // (applyBatchImport), the import-preview confirmer (confirmImportPreview) and
 // the single-file preview router (processFile). Type-only `any` annotations
@@ -209,7 +209,7 @@ export const useBatchImport = (deps: BatchImportDeps) => {
 
     // Recommendation 3 — auto-hide empty metric columns: scan the applied rows
     // once and let the visible-columns owner (App.tsx) hide any metric column
-    // that received zero real values. See recommendations.md §"Recommendation 3".
+    // that received zero real values. See docs/suggestions.md §"STANDING RULE".
     const fieldsWithData = collectFieldsWithData(rowsToApply);
     onImportColumnsScanRef.current?.(fieldsWithData);
 

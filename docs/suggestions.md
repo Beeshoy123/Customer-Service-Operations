@@ -1,6 +1,6 @@
 # Suggestions: Customer-Service-Operations
 
-Audit date: 2026-11-08. No code was changed. This file is the saved copy of the audit and the plan.
+This is the one plan file for the repo. It holds the audit, the checklist and the reference rules. It was merged with the old `recommendations.md` on 2026-11-08; everything already built was dropped, and what was still open was moved in here, ordered by how critical it is. The old file is in git history (last copy at commit `d34eb57`).
 
 Legend: 🟢 solid · 🟡 weak · 🔴 missing · ⛔ blocking
 Evidence: **ran** = I executed it and saw the result. **read** = I read the code but did not run it.
@@ -28,8 +28,8 @@ The owner (Beeshoy) is a call-center team leader and a **beginner at coding**. H
 2. **Confirm data and math first.** Test with real-scale data (300K+ rows) in a real browser, not only mocks or unit tests.
 3. **Edit the existing code. Do not rebuild.** No rewrites he didn't ask for.
 4. **UI:** dark theme with color-coding. Never design without confirmation: show an HTML mock-up first.
-5. **Mapping and alias fixes go only in `importPolicy.ts`** (the repo's standing rule).
-6. **Before every commit run** `tsc -b`, `npm test`, `oxlint` and `vite build`. Baseline on 2026-11-08: tsc clean, 274/274 tests pass.
+5. **Mapping and alias fixes go only in `importPolicy.ts`** (the repo's standing rule, full text in the Reference section below).
+6. **Before every commit run** `tsc -b`, `npm test`, `npm run lint` and `npm run build`. Baseline on 2026-11-08: tsc clean, 274/274 tests pass, lint 0 errors.
 7. **Commit straight to `main`. No branches, no pull requests** (his decision). One commit per step. Tick that step's `[ ]` box in this file in the same commit.
 8. If a step changes the plan, update this file and say so.
 
@@ -51,7 +51,7 @@ The owner (Beeshoy) is a call-center team leader and a **beginner at coding**. H
 
 ---
 
-## 0. In plain English (read this first)
+## In plain English (read this first)
 
 **What you want:** put a folder of files in one place. The app finds them, reads them, merges them and keeps itself up to date. No hand-merging, no re-uploading.
 
@@ -65,16 +65,40 @@ The owner (Beeshoy) is a call-center team leader and a **beginner at coding**. H
 | Same agent and day in two files doesn't merge if one file lacks Supervisor | Rows stay split and numbers come out wrong |
 | Only call-center metrics exist | Sales, Absenteeism, AUX and floor-level VOC have nowhere to go |
 | Rows with no agent name are deleted | Floor-level VOC and Sales would disappear |
+| Three tabs try to send dashboard data to an AI service when you open them | Breaks your "agent data stays on my PC" rule. It fails today only because there is no key. |
 
-**What I suggest:** fix the foundation first (steps 1–4), then add recipes, the folder link and live refresh (steps 5–7), then the new data types and the new look (steps 8–9).
+**What I suggest:** protect the math with tests (step 0), fix the foundation (steps 1–4), then add recipes, the folder link and live refresh (steps 5–7), then the new data types and the new look (steps 8–9). Cleanup runs alongside.
 
-**What I need from you:** three answers (section 7).
+**What I need from you:** the answers in "Decisions needed".
+
+---
+
+## Priority board (most critical first)
+
+| Rank | Level | Work | Why this position |
+|---|---|---|---|
+| 1 | ⛔ P0 | **Step 0**: tests around bonus, weighted-satisfaction and trend math | Nothing guards the numbers that decide bonuses. Tests only, no behavior change. Must exist before steps 1–2 touch the math. |
+| 2 | ⛔ P0 | **Step 1**: counts stay counts | Wrong numbers on screen today |
+| 3 | ⛔ P0 | **Step 2**: merge without losing data | A second upload erases the first; rows don't merge |
+| 4 | ⛔ P0 | **Step 3**: dates | `September 2026` becomes Aug 31 in Cairo |
+| 5 | ⛔ P0 | **Step 4**: storage (silent data loss) **and AI off by default** (data leaving the PC) | Both break a rule of yours |
+| 6 | 🟡 P1 | **Steps 5–7b**: recipes, folder link, live refresh, Google Sheets | The goal features, built on the fixed foundation |
+| 7 | 🟡 P1 | **Step 8**: Sales, Absenteeism, AUX, floor-level rows | New data types |
+| 8 | 🟢 P2 | **Step 9**: combined view and redesign (includes the UX and design-gap items) | Look and usability; do after the data is right |
+| 9 | 🟢 P3 | **Step 10**: cleanup (`@ts-nocheck`, renames, file splits, root clutter) | Rolling; touch each file when a step already edits it |
 
 ---
 
 ## Checklist: what must change (cross off when done)
 
-Format: `[ ]` open · `[x]` done. Codes in brackets point to the sections below: **B** = blocker (§2), **K** = known bug (§3), **X** = extra finding (§4), **F** = frontend (§5).
+Format: `[ ]` open · `[x]` done. Codes in brackets point to sections below: **B** = blocker (Backend scorecard), **K** = known bug, **X** = extra finding, **F** = frontend, **C** = AI/safety item, **U** = usability item.
+
+### Step 0: Safety net for the math (tests only)
+- [ ] Tests for `calculateBonus`: every tier boundary, missing and partial inputs [C3]
+- [ ] Tests for `calculateWeightedVSF`: weighting math, zero denominator [C3]
+- [ ] Tests for `calculateTrend`: flat, rising, falling, single point [C3]
+- [ ] Tests for `agentMatchesSearch`, `formatName`, `shortenManagerName` [C3]
+- Rule: expected values computed by hand first. If the code disagrees, stop and report a bug. Do not change any threshold, formula or rounding. Today `helpers.test.ts` covers only hand-offs (8 tests) (ran).
 
 ### Step 1: Counts stay counts
 - [ ] `aggregateTransactions` no longer divides count fields by row count (handoffs, resolve 2Hr/3Day, surveys, promoters, etc.) [K1, K2, B5]
@@ -93,7 +117,10 @@ Format: `[ ]` open · `[x]` done. Codes in brackets point to the sections below:
 
 ### Step 4: Storage and privacy
 - [ ] Data lives in IndexedDB, not `localStorage` (no 5 MB cap, no silent loss) [B4]
-- [ ] AI features off by default, so agent-level data never leaves the PC [§2 AI row]
+- [ ] AI off by default: a visible switch, default off; no AI request without a click [C1]
+- [ ] Remove the three auto-calls on tab open: `FloorAnalysisTab`, `FloorCorrelationTab`, `FloorDowTab` each call their report function inside a mount effect [C1]
+- [ ] Remove the browser → `api.anthropic.com` call (`hooks.ts`, `executeGeminiAction`). If AI is ever wanted: a small server holds the key, never a `VITE_` variable (those end up readable in the page); send aggregates, not the roster; show a visible error state on failure [C1]
+- Alternative (see Decisions): if he does not use the AI reports, delete the AI tabs and code instead. Simplest and safest.
 
 ### Step 5: Recipes
 - [ ] Recipe per file type (VOC, Sales, Absenteeism, AUX): sheet, header row, column mapping, date format, metric meaning
@@ -124,38 +151,113 @@ Format: `[ ]` open · `[x]` done. Codes in brackets point to the sections below:
 - [ ] Replace `isOff = calls === 0` so absent and AUX-only days are not dropped [X4]
 
 ### Step 9: Combined view and redesign
+Show an HTML mock-up and get his OK before building any of this.
 - [ ] One dashboard: floor × month × agent for Sales, VOC, Absenteeism, AUX
-- [ ] One briefing hero instead of two identical KPI cards [F1]
+- [ ] One briefing hero instead of two identical KPI cards; the two cards' duplicated markup becomes one component [F1, S17]
 - [ ] "Needs you" action queue [F2]
 - [ ] Data Health panel (files, rows, last modified, status) [F3]
 - [ ] Real trend (delta vs prior month plus sparkline) instead of always +0.00% [F4, X5]
-- [ ] One dark canvas, 4 domain colors, SVG icons [F5]
+- [ ] One dark canvas, 4 domain colors, SVG icons instead of emoji (about 51 emoji-led labels, per the old audit) [F5, U1]
 - [ ] Collapsible icon rail [F6]
 - [ ] Bar charts, sparklines, daily drill-down, 4 domain tiles [F7]
-- [ ] Hover effects work [F8]
+- [ ] Hover effects work. Hover dimming is done in JavaScript (`onMouseOver`/`onMouseOut`) in `TopNavbar`, `MainModal`, `FloorBurnoutTab`; on touch screens the buttons stay dim. Move to CSS `:hover`/`:focus-visible`, resting state fully visible [F8, U2]
+- [ ] Search by comma: show the typed terms as removable chips under the box. Today the only hint is the placeholder in `FloorHeader.tsx` [U4]
+- [ ] A loading state for the first metric cards (a real "resolving" flag, no fake timer) [U5]
+- [ ] Red is for problems only: about 10 places use red as a neutral label color (old audit count, recheck) [U3]
+- [ ] One button shape in the header (round ◀ ▶ next to rectangular tabs) [U6]
 - [ ] Merge the two offender systems (Chronic 3+ vs Repeated 2+) into one rule set [X6]
-- [ ] Frontend debt: undefined Tailwind-style classes, 74 inline styles, Vite template CSS, dead `if (false …)` block in `App.tsx`
+- [ ] Frontend debt: undefined Tailwind-style classes, 74 inline styles, Vite template CSS, dead `if (false …)` block in `App.tsx` (line 308, hides a ~60-line account-setup screen), a ref written during render (`aiResetRef.current = …`, `App.tsx` line 224), unused CSS classes (about 48 per the old audit, recheck)
+- Collect while rewriting these files, do not open a separate pass: 74 inline `style={{}}`, many inline arrow handlers, conditional `className` chains.
 
 ### Step 10: Cleanup (rolling, alongside steps 1–9)
-- [ ] Remove `@ts-nocheck` [K5]: `uploadFlow.ts`
-- [ ] `batchImport.ts`
-- [ ] `hooks.ts`
-- [ ] `metrics.ts`
-- [ ] `App.tsx`
-- [ ] `helpers.ts`
-- [ ] `components/shared.tsx`
+Remove `@ts-nocheck` [K5], file by file (8 files, 2,529 lines). Best done when a step already edits the file; the UI files get rewritten in step 9, so skip them until then.
+- [ ] `helpers.ts` (do after step 0 tests are green)
+- [ ] `emptyColumns.ts`
 - [ ] `config.ts`
-- [ ] `persistence.ts`
-- [ ] `state.ts`
-- [ ] `timeframe.ts`
+- [ ] `metrics.ts`
+- [ ] `hooks.ts`
+- [ ] `components/shared.tsx`
 - [ ] `components/menus.tsx`
-- [ ] `emptyColumns.ts` (and `monthSelection.test.ts`)
-- [ ] Repo root cleaned: Python scripts, PNGs, `.tmp_test` moved or removed; README says 9 tabs [X8]
-- [ ] `recommendations.md` trimmed or archived (124 KB)
+- [ ] `App.tsx`
+
+Other cleanup:
+- [ ] Typed dashboard context: replace `createContext<any>` in `hooks.ts` with a real type, and add a test that fails if a component uses an AI member the hook does not return [C4]
+- [ ] Rename Gemini names to neutral ones: `executeGeminiAction` → `executeAiAction`, `GeminiLoader` → `AiLoader`, `.gemini-btn` → `.ai-btn` (28 hits in 10 files). Do it with step 4 if the AI code stays [C2]
+- [ ] Split `ImportPreviewModal.tsx` (1,347 lines) further: move its state and handlers into a hook. Move only; do not fix its 4 `setState`-in-effect warnings in the same commit [S4]
+- [ ] `COL_DEFINITIONS` is referenced from 25 places in 8 files; tidy only when touching them [S20]
+- [ ] `runChartData` rebuilds its date list on every recompute (`metrics.ts`); only if it measures slow [S23]
+- [ ] Decide: should an in-flight import be aborted when the page unmounts? Not done today; it changes visible behavior, so needs his OK
+- [ ] Repo root cleaned: Python scripts, PNGs, `.tmp_test` moved or removed; `.gitignore` blocks `*.csv`, `*.xlsx`, `*.xls`; README says 9 tabs and no longer mentions Gemini [X8]
+- [x] `recommendations.md` merged into this file and deleted (2026-11-08). The 29 code comments that pointed at it now point here or to git history.
 
 ---
 
-## 1. Data flow: today vs target
+## Decisions needed from Beeshoy
+
+1. **Order:** is 0 → 10 OK, or do you want recipes earlier?
+2. **AI reports:** do you use them? If not, step 4 deletes them (simplest). If yes, they stay behind an off-by-default switch.
+3. **Samples (needed before step 8 only):** one file per type (VOC, Sales, Absenteeism, AUX) with headers and 3–5 rows. Fake the agent names if you like.
+4. **Look:** do you confirm a dark canvas with the hero, action queue and Data Health panel? An HTML mock-up comes first, before any UI is built.
+5. **Policy (before step 7b):** does the company allow agent-level data in Google Sheets? Which Google account holds the sheets: personal or company?
+
+---
+
+## The five known bugs
+
+Test used: 2 agents × 10 calls per file.
+
+| # | Bug | Status | Verified cause |
+|---|---|---|---|
+| 1 | Resolve 2Hr/3Day counts vanish | 🟡 half-fixed | The old dead-tag cause is already guarded: `Resolve_2Hr_Count` now maps to `resolveTotalContacts2hr`. The live cause is that `aggregateTransactions` divides counts by row count, so 8 flagged of 10 calls becomes **0.8**. With no pass column the 2HR % never computes and the gauge stays empty. |
+| 2 | Transfer_logs handoffs wrong after merge | 🔴 open | Three causes stack. Handoffs count 2 becomes **0.2**. The Transfer file has no Supervisor, so its merge key differs and 6 rows become 4 (expected 2). `calls` is summed across files: 10 + 10 = **20**. A later upload then overwrites (B1). |
+| 3 | Mapping prompts for obvious fields | 🟢 mostly fixed | Only "Calls Handle Time" still asks. Your e2e screenshot pre-selects "Calls" while the engine's own guess is AHT. Two mapping engines (preview scoring vs importer) can disagree: with text-like sample values, CCMS is unmapped in one and `employeeId` in the other. |
+| 4 | Pivot CSVs not detected | 🔴 open | `Row Labels`, `Sum of Calls`, `Average of CSAT` all map to nothing with no warning. The sheet selector keeps a sheet named "Pivot". |
+| 5 | `@ts-nocheck` hides code from `tsc` | 🟡 open | **8 files, 2,529 of 20,275 lines (12%)** (ran, counted on 2026-11-08): `shared.tsx`, `menus.tsx`, `App.tsx`, `hooks.ts`, `helpers.ts`, `config.ts`, `metrics.ts`, `emptyColumns.ts`. "tsc clean" does not cover them. (My first audit said 13 files and 27%. That was wrong: it counted files that only mention the word in a comment.) |
+
+---
+
+## Backend scorecard
+
+| | Area | Evidence |
+|---|---|---|
+| ⛔ | **B1** A second upload replaces the same agent+day | `batchImport.ts:183` assigns the whole record (read) |
+| ⛔ | **B2** Rows with no agent name are deleted | `validation.ts` drops them (read) |
+| ⛔ | **B3** Merge key includes supervisor + location + ID | the same agent+day from two files doesn't merge (ran) |
+| ⛔ | **B4** `localStorage` cap | ~10.7 MB for 100 agents × 12 months vs ~5 MB cap. On overflow it keeps data in RAM only and loses it on reload (ran, size measured on synthetic data) |
+| ⛔ | **B5** Count fields divided by row count | see bugs 1 and 2 (ran) |
+| ⛔ | **C1** AI: data leaves the browser | `hooks.ts:236` posts dashboard data (roster, supervisors, series) to `api.anthropic.com` from the browser, with no key and no backend. Three tabs fire it on open (read). The old effect that fired on every state change is gone. |
+| 🔴 | File System Access API, IndexedDB, `lastModified` polling, recipes | 0 hits in the repo (ran) |
+| 🔴 | Sales, absenteeism, AUX, floor-level VOC | `Sales`, `Absent Days`, `AUX Break`, `Login Hours` map to nothing (ran) |
+| 🔴 | Floor or month-keyed rows | the model is agent × day only (read) |
+| 🟡 | Bonus, weighted satisfaction, trend math | untested (see step 0) (read) |
+| 🟡 | Month selector | derived from `YYYY-MM-DD` keys; no monthly-only rows (read) |
+| 🟡 | `mappingMemory` | stores header→field only. No sheet, header row, date format or filename detection, so it is not a recipe (read) |
+| 🟡 | Account profile | closest thing to a recipe, but per account, not per file type (read) |
+| 🟡 | Main-thread work | confirm path = 0.87 s CPU at 300K rows in Node. Expect a 1–3 s hitch in Chrome; to be measured there (ran) |
+| 🟢 | Quality gates | `tsc` clean, 274/274 tests pass, lint warnings only (ran) |
+| 🟢 | Worker XLSX parse, Excel serial dates, sheet filtering | ran |
+| 🟢 | Repeated and Chronic Offenders modules | pure functions with tests (read) |
+| 🟢 | Alias engine in `importPolicy.ts` | only 1 of 11 real headers still prompts (ran) |
+| 🟢 | Storage facade, AI-tools members, memoized hook returns, import-folder structure | landed since the old audit; no action (read, plus 274 tests) |
+
+---
+
+## Also found (not on your list)
+
+| Sev | Finding | Evidence |
+|---|---|---|
+| ⛔ | **X1 Month-label dates land in the wrong month in Cairo time.** `September 2026` → **2026-08-31**. `Sep-26` → 2001-09-25. `Sep 5, 2026` → Sep 4. `9/2026` → null. A VOC sheet named "Sep" is never read as the month. | ran |
+| 🔴 | **X2 Missing is saved as 0** for calls, AHT, VXS, resolve2hr, resolve3d. A Sales-only file would write VXS 0 and AHT 0. | read |
+| 🔴 | **X3 Invented survey counts.** When only a VXS % exists, `helpers.ts` sets surveys = max(1, round(calls × 5%)), which skews weighted CSAT. | read |
+| 🟡 | **X4** `isOff = calls === 0` drops absent and AUX-only days from rollups. | read |
+| 🟡 | **X5** Trend column compares a period with itself in monthly view, so it always shows "STABLE +0.00%". VXS only. | ran, seen live |
+| 🟡 | **X6** Two offender systems with different rules: Chronic Offenders (3+ months) and Repeated Offenders (2+ consecutive). | read |
+| 🟡 | **X7** Dates default to DD/MM silently, with no per-file setting. | ran |
+| 🟡 | **X8** Repo hygiene: 5 Python scripts, 3 PNGs and `.tmp_test` in the root. README says 8 tabs; there are 9. | ran |
+
+---
+
+## Data flow: today vs target
 
 ```
 TODAY
@@ -179,60 +281,7 @@ TARGET
 
 ---
 
-## 2. Backend scorecard
-
-| | Area | Evidence |
-|---|---|---|
-| 🟢 | Quality gates | `tsc` clean, 274/274 tests pass, lint warnings only (ran) |
-| 🟢 | Worker XLSX parse, Excel serial dates, sheet filtering | ran |
-| 🟢 | Repeated Offenders module | pure functions, 22 tests (read) |
-| 🟢 | Alias engine in `importPolicy.ts` | only 1 of 11 real headers still prompts (ran) |
-| 🟡 | Month selector | derived from `YYYY-MM-DD` keys; no monthly-only rows (read) |
-| 🟡 | `mappingMemory` | stores header→field only. No sheet, header row, date format or filename detection, so it is not a recipe (read) |
-| 🟡 | Account profile | closest thing to a recipe, but per account, not per file type (read) |
-| 🟡 | Main-thread work | confirm path = 0.87 s CPU at 300K rows in Node. Expect a 1–3 s hitch in Chrome; to be measured there (ran) |
-| 🟡 | AI calls | the browser posts to `api.anthropic.com` with dashboard data and no key. Conflicts with your "no cloud" rule for agent-level data (read) |
-| 🔴 | File System Access API, IndexedDB, `lastModified` polling, recipes | 0 hits in the repo (ran) |
-| 🔴 | Sales, absenteeism, AUX, floor-level VOC | `Sales`, `Absent Days`, `AUX Break`, `Login Hours` map to nothing (ran) |
-| 🔴 | Floor or month-keyed rows | the model is agent × day only (read) |
-| ⛔ | **B1** A second upload replaces the same agent+day | `batchImport.ts:183` assigns the whole record (read) |
-| ⛔ | **B2** Rows with no agent name are deleted | `validation.ts` drops them (read) |
-| ⛔ | **B3** Merge key includes supervisor + location + ID | the same agent+day from two files doesn't merge (ran) |
-| ⛔ | **B4** `localStorage` cap | ~10.7 MB for 100 agents × 12 months vs ~5 MB cap. On overflow it keeps data in RAM only and loses it on reload (ran, size measured on synthetic data) |
-| ⛔ | **B5** Count fields divided by row count | see bugs 1 and 2 (ran) |
-
----
-
-## 3. The five known bugs
-
-Test used: 2 agents × 10 calls per file.
-
-| # | Bug | Status | Verified cause |
-|---|---|---|---|
-| 1 | Resolve 2Hr/3Day counts vanish | 🟡 half-fixed | The old dead-tag cause is already guarded: `Resolve_2Hr_Count` now maps to `resolveTotalContacts2hr`. The live cause is that `aggregateTransactions` divides counts by row count, so 8 flagged of 10 calls becomes **0.8**. With no pass column the 2HR % never computes and the gauge stays empty. |
-| 2 | Transfer_logs handoffs wrong after merge | 🔴 open | Three causes stack. Handoffs count 2 becomes **0.2**. The Transfer file has no Supervisor, so its merge key differs and 6 rows become 4 (expected 2). `calls` is summed across files: 10 + 10 = **20**. A later upload then overwrites (B1). |
-| 3 | Mapping prompts for obvious fields | 🟢 mostly fixed | Only "Calls Handle Time" still asks. Your e2e screenshot pre-selects "Calls" while the engine's own guess is AHT. Two mapping engines (preview scoring vs importer) can disagree: with text-like sample values, CCMS is unmapped in one and `employeeId` in the other. |
-| 4 | Pivot CSVs not detected | 🔴 open | `Row Labels`, `Sum of Calls`, `Average of CSAT` all map to nothing with no warning. The sheet selector keeps a sheet named "Pivot". |
-| 5 | `@ts-nocheck` | 🔴 open | 13 source files, 4,282 of 15,581 lines (27%): `uploadFlow`, `batchImport`, `hooks`, `metrics`, `helpers`, `config`, `state`, `persistence`, `timeframe`, `App`. "tsc clean" does not cover them. |
-
----
-
-## 4. Also found (not on your list)
-
-| Sev | Finding | Evidence |
-|---|---|---|
-| ⛔ | **Month-label dates land in the wrong month in Cairo time.** `September 2026` → **2026-08-31**. `Sep-26` → 2001-09-25. `Sep 5, 2026` → Sep 4. `9/2026` → null. A VOC sheet named "Sep" is never read as the month. | ran |
-| 🔴 | **Missing is saved as 0** for calls, AHT, VXS, resolve2hr, resolve3d. A Sales-only file would write VXS 0 and AHT 0. (My earlier note said all 19 fields keep null. That was wrong.) | read |
-| 🔴 | **Invented survey counts.** When only a VXS % exists, `helpers.ts` sets surveys = max(1, round(calls × 5%)), which skews weighted CSAT. | read |
-| 🟡 | `isOff = calls === 0` drops absent and AUX-only days from rollups. | read |
-| 🟡 | Trend column compares a period with itself in monthly view, so it always shows "STABLE +0.00%". VXS only. | ran, seen live |
-| 🟡 | Two offender systems with different rules: Chronic Offenders (3+ months) and Repeated Offenders (2+ consecutive). | read |
-| 🟡 | Dates default to DD/MM silently, with no per-file setting. | ran |
-| 🟡 | Repo hygiene: 5 Python scripts, 3 PNGs and `.tmp_test` in the root. `recommendations.md` is 124 KB. README says 8 tabs; there are 9. | ran |
-
----
-
-## 5. Frontend audit
+## Frontend audit
 
 Method: I seeded 24 synthetic agents × 3 months and screenshotted the live app. I compared it with your two references.
 
@@ -245,48 +294,124 @@ Method: I seeded 24 synthetic agents × 3 months and screenshotted the live app.
 | F2 | No "what needs me" surface. Offenders are buried in tabs. | "Waiting for you" queue | Action queue: repeat misses, absence spikes, AUX over target. |
 | F3 | No data freshness or file status. | "Evidence health" bars | **Data Health panel**: file, rows, last modified, status. This is the folder-link UI. |
 | F4 | Trend is always +0.00%. | Delta plus sparkline | Real delta vs prior month, plus a sparkline per tile. |
-| F5 | Beige canvas, dark cards and emoji icons are mixed. | One card system, one icon set | Your rule: one dark canvas, 4 domain colors, SVG icons. |
+| F5 | Beige canvas (`#f5f2eb`), dark cards and emoji icons are mixed. | One card system, one icon set | Your rule: one dark canvas, 4 domain colors, SVG icons. |
 | F6 | 272 px fixed text sidebar. | Slim icon rail | Collapsible rail. |
 | F7 | Only chart is a hand-rolled ring; labels truncate ("HAND-OF…"). No bars, no daily drill-down. | Bar chart, stat cards with delta chips | Sparklines and bars, a daily drill-down, 4 domain tiles (Sales, VOC, Absence, AUX). |
 | F8 | Hover effects don't work. | Hover lift | CSS only. |
 
 Frontend debt (ran):
-- Classes like `hover:-translate-y-1`, `bg-[#fff1f2]`, `text-[10px]`, `bg-opacity-20` are used in the TSX but defined in no CSS, so they do nothing. The CSS is 189 hand-written utility classes imitating Tailwind.
+- Classes like `hover:-translate-y-1`, `bg-[#fff1f2]`, `text-[10px]`, `bg-opacity-20` are used in the TSX but defined in no CSS, so they do nothing. The CSS is 189 hand-written utility classes imitating Tailwind. Do not add Tailwind or a class-name library to fix this.
 - 74 inline `style={{}}` blocks.
 - Leftover Vite template CSS: global `text-align:center`, 56 px `h1`.
 - `App.tsx` has a dead `if (false && …)` block of about 60 lines.
 - No UI tests.
 
+### Design ideas to carry into step 9 (from the landing page vs dashboard comparison)
+
+The landing page already has the look you want: `#0b0b0a` background with a soft blue glow, cards with a `#2c2c2a` border on `#151512`, mint `#5dcaa5` for "good", gold `#f0c674` for warnings, blue `#378add` for glow. The dashboard ignores all of it. Ideas, ordered by impact against effort; none is built yet:
+
+| # | Idea | Impact | Effort |
+|---|---|---|---|
+| 1 | One dark background for the whole dashboard (`#0b0f19` / `#111827`) | High | Low |
+| 2 | Map "good" to mint `#5dcaa5`, warning to gold `#f0c674`, glow to blue `#378add` | High | Low |
+| 3 | Soft radial blue glow behind the KPI row | High | Very low (1 CSS rule) |
+| 4 | Tab bar as a dark card, active tab marked with a mint bottom border | Medium | Medium |
+| 5 | Larger fluid headings (`clamp()`) for "Month to Date" and "Daily Spotter" | Medium | Low |
+| 6 | KPI card hover lift, fade-in when data loads | Low | Very low |
+| 7 | Small static version of the landing orb as the navbar brand mark | Low | Medium |
+
+Ideas 1–3 alone should close most of the visual gap with no risk to functionality. All of it still needs the mock-up and his OK first.
+
 ---
 
-## 6. Plan (one idea per step, smallest first)
+## Plan table (one idea per step, smallest first)
 
 Foundation first. Recipes on a model that overwrites and divides wrongly would automate the bugs.
 
 | # | One idea | Fixes | Size |
 |---|---|---|---|
+| 0 | Tests around bonus, weighted-satisfaction, trend math (no behavior change) | C3 | S |
 | 1 | Count fields stay counts, not divided by rows | bug 1, bug 2 (part), B5 | S |
 | 2 | Merge key = agent ID or name + date only. `calls` not summed across files. Merge into the existing day instead of replacing. Missing stays null. | bug 2, B1, B3, missing = 0 | M |
 | 3 | Fix month-label dates. Add a per-file date-format setting. | date bugs | S |
-| 4 | Move data storage from `localStorage` to IndexedDB. AI calls off by default. | B4, privacy | M |
+| 4 | Move data storage from `localStorage` to IndexedDB. AI off by default, no auto-calls. | B4, C1, privacy | M |
 | 5 | Recipes v1: per file type, saves sheet, header row, mapping, date format and metric meaning. Auto-applies by filename or headers. Pivot files get flagged. | recipes, bug 3, bug 4 | M |
 | 6 | Folder link: File System Access API, handle in IndexedDB, one click per session | goal 1 | M |
 | 7 | Live refresh: poll `lastModified` every 30 s, re-read changed or new files only, in the worker, with per-file status | goal 4 | M |
 | 7b | Google Sheets reader (private sheet via Sheets API). Excel on the web needs no step: sync the OneDrive library and use the folder link. | Sheets live data | M |
 | 8 | New metric types and floor+month rows (Sales, VOC floor, Absenteeism, AUX). Daily → month rollup with daily drill-down. | B2, goal 3 | L |
-| 9 | Combined view (floor × month × agent) plus the F1–F8 redesign | goal 5 | L |
-| 10 | Remove `@ts-nocheck` file by file, as each file is touched in steps 1–9 | bug 5 | rolling |
+| 9 | Combined view (floor × month × agent) plus the F1–F8, U1–U6 and design-idea work | goal 5 | L |
+| 10 | Remove `@ts-nocheck` file by file, plus the other cleanup items | bug 5 | rolling |
 
 Each step: test with real-scale data in a real browser, run `tsc` and the tests, short report.
 
 ---
 
-## 7. Decisions needed from Beeshoy
+## Reference: rules and map for anyone touching the code
 
-1. **Order:** is 1 → 10 OK, or do you want recipes earlier?
-2. **Samples (needed before step 8 only):** one file per type (VOC, Sales, Absenteeism, AUX) with headers and 3–5 rows. Fake the agent names if you like.
-3. **Look:** do you confirm a dark canvas with the hero, action queue and Data Health panel? An HTML mock-up comes first, before any UI is built.
-4. **Policy (before step 7b):** does the company allow agent-level data in Google Sheets? Which Google account holds the sheets: personal or company?
+### STANDING RULE: mapping fixes always go in `importPolicy.ts` only
+
+> **This rule applies to ALL future mapping-related bugs, forever. Any AI model working on this codebase must read this before touching any import-related code.**
+
+When a dashboard metric (handoffs, 2HR, 3DR, CSAT, AHT, or any other field) shows incorrect values (zero, null, or wrong numbers) after an import, the **first and default assumption** must be that the column alias list is incomplete or wrong.
+
+**The principle.** This dashboard is designed to work with files from **many different source systems**: Verizon-style exports, third-party workforce management tools, custom Excel trackers, etc. Every system names its columns differently. The mapping layer (`importPolicy.ts`) is the single correct place to handle that variation.
+
+**Do not fix mapping problems by:**
+- Changing calculation logic in `helpers.ts`
+- Changing how values are stored in `applyBatchImport` (`batchImport.ts`)
+- Changing value normalization in `schemaNormalizer.ts`
+- Adding special-case logic anywhere in the dashboard rendering or aggregation pipeline
+
+**Always fix mapping problems by:**
+- Adding missing column name aliases to the relevant field's `aliases` array in `FIELD_ALIASES` inside `src/features/dashboard/import/importPolicy.ts`
+- Removing ambiguous aliases that are shared between two fields (they cause silent overwrites in the lookup map)
+- Adding or correcting token hints in `HEADER_TOKEN_HINTS` in the same file
+- Updating `PAIRED_COUNT_FIELDS` if a pass/count column pair is not being detected
+
+**Why only `importPolicy.ts`.** The rest of the pipeline (`schemaNormalizer.ts`, `importService.ts`, `helpers.ts`, the hooks) is generic and correct. It does not know or care about specific column names. `importPolicy.ts` is the **only** file that is supposed to know about real-world column name variations. Keeping all alias knowledge in one file makes it easy to audit, extend, and test without side effects anywhere else.
+
+**Checklist before any mapping fix**
+1. Identify the exact column header string as it appears in the uploaded file (case-sensitive, including spaces and symbols).
+2. Run the header through `normalizeHeader()` mentally (lowercase, strip non-alphanumeric to spaces, trim) and check if the result matches any existing alias in `FIELD_ALIASES` for the target field.
+3. If it does not match, add it to the `aliases` array of the correct field.
+4. Check that the same normalized string is NOT already listed in another field's aliases. If it is, remove it from the wrong field first.
+5. If the header is ambiguous (e.g. "Repeat Rate" could be 2HR or 3DR), add the disambiguating version ("2HR Repeat Rate", "3DR Repeat Rate") and remove the ambiguous form from both.
+6. Run the existing import tests to confirm no regressions.
+
+### Working traps (each already cost time here)
+
+1. **`tsc` is blind to the 8 `@ts-nocheck` files.** A clean `tsc -b` proves nothing about them. Check them by reading the diff and by requesting them through the Vite dev server (the page must still load).
+2. **The dashboard context is typed `any`** (`DashboardContext` in `hooks.ts`). Adding or removing a member of a hook's return object is not checked against its users. Search every consumer when you change one.
+3. **The object returned by `useDashboardData` is a public contract.** Many components read its keys. Adding a key is fine; renaming or removing one needs a search of every user first.
+4. **The `import/` folder is layered and must stay acyclic:** `types` → (`importPolicy` | `schemaNormalizer` | `mergeData` | `columnFingerprinter` | `granularityDetector` | `mappingMemory` | `csvParser` | `fileTypeDetector` | `sheetSelector` | `validation`) → `importService` → `ImportPreviewModal`. Pure functions only below the UI line. `workbookWorker.ts` keeps its own inline helper copy and `.ts` import extensions on purpose (the worker loads outside the bundler).
+5. **Every `setTimeout` that calls `setState` needs an owner that clears it.** Use `scheduleStatusClear` in `state.ts` for upload-status toasts.
+6. **Rules of hooks:** every early `return` sits below every hook call.
+7. **Saved-data keys in browser storage must not be renamed** without a migration; renaming silently discards learned mappings and account profiles. All access goes through `storage.ts`.
+8. **Memoized hook returns** (`useMemo` on `useDashboardData`, `useAiTools`, `useDashboardMetrics`): a wrong dependency list shows stale numbers with no error. After touching them, click through all 9 tabs and change timeframe and month.
+
+### Code map
+
+| Folder / file | What it does |
+|---|---|
+| `dashboard/hooks.ts` | Composes the pieces below; `useAiTools`; the dashboard context |
+| `dashboard/state.ts` | The `useState` values, import-preview wrappers, `scheduleStatusClear` |
+| `dashboard/persistence.ts`, `storage.ts`, `storageMemory.ts` | Save/load to browser storage, one safe facade plus key registry, in-memory fallback |
+| `dashboard/timeframe.ts` | Month/week/day/DOW selectors and the agent-data cache |
+| `dashboard/uploadFlow.ts` | Drag/drop, multi-file, automatic import routing |
+| `dashboard/batchImport.ts` | `applyBatchImport`, `confirmImportPreview`, `processFile` (owns the replace-on-upload code, step 2) |
+| `dashboard/metrics.ts`, `helpers.ts`, `config.ts`, `emptyColumns.ts` | Floor metrics, rollups, bonus/VSF math, column definitions |
+| `dashboard/chronicOffenders.ts`, `repeatOffenders.ts` | The two offender rule sets (X6) |
+| `dashboard/uiReducer.ts` | Modal and UI reducers |
+| `dashboard/views/{chrome,tabs,modals}` | The 9 tabs, navbar, header, stats row, main modal |
+| `dashboard/import/fileTypeDetector`, `csvParser`, `workbookLoader`, `workbookWorker`, `sheetSelector` | Read files; Excel parsing runs in a Web Worker |
+| `dashboard/import/importPolicy`, `columnFingerprinter`, `mappingMemory`, `accountDetector`, `excelSerialRange` | Column mapping engine, value-pattern detection, learned mappings, Excel serial-date ranges |
+| `dashboard/import/schemaNormalizer`, `validation`, `aggregateTransactions`, `mergeData`, `granularityDetector`, `importService`, `asyncUtils`, `types` | Normalize, clean, roll up per-call rows to agent-day, merge, orchestrate |
+| `dashboard/import/ImportPreviewModal.tsx`, `previewState.ts`, `ManageMemoryModal.tsx` | Preview and mapping UI |
+| `accountSetup/` | Account profile schema, builder and storage |
+| `src/styles/dashboard.css` | Dashboard CSS (hand-written, includes 189 utility classes) |
+
+Canonical field set: `agentName` · `supervisor` · `oam` · `employeeId` · `date` · `location` · `calls` · `aht` · `resolve2hr` · `resolve3d` · `vxs` · `satisfaction` · `handoffs` · `transferRate` · `sourceFile` · `sourceSheet`
 
 ---
 
@@ -295,4 +420,5 @@ Each step: test with real-scale data in a real browser, run `tsc` and the tests,
 - Repo unzipped into its own folder. `npm ci`, `tsc -b`, `npm test` (274 pass), `oxlint` (warnings only).
 - Probes with the repo's own functions: header mapping, 3-file transaction merge, date parsing, pivot headers, mapping confidence, 100K and 300K row timing.
 - Live app in Chromium (Cairo timezone) with synthetic data, for the screenshots and the storage-size estimate.
+- 2026-11-08: the old `recommendations.md` was checked item by item against the code (greps, file listings, `tsc`, tests). Done items were dropped; open items were merged above. Counts marked "old audit" were not rechecked.
 - Not yet checked: real 300K-row timing in the browser, and the overwrite behaviour across two real uploads. Both are planned for steps 1–2.

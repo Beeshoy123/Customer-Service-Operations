@@ -3,7 +3,7 @@
 // belongs in importPolicy.ts (FIELD_ALIASES), NOT here. This file is a generic
 // normalization pipeline that reads alias definitions from importPolicy.ts; it
 // does not contain and must not contain any source-system column-name knowledge.
-// See recommendations.md §"STANDING RULE" and the banner in importPolicy.ts.
+// See docs/suggestions.md §"STANDING RULE" and the banner in importPolicy.ts.
 
 import { FIELD_ALIASES, FIELD_COMPONENT_GROUPS, normalizeImportedValue, findCanonicalField, findPairedCountField, normalizeHeader } from './importPolicy';
 import type { NormalizedRow, SheetTable } from './types';

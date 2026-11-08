@@ -40,7 +40,7 @@
 //      disambiguating form and remove the ambiguous one from both fields.
 //   6. Run the existing import tests to confirm no regressions.
 //
-// See recommendations.md §"STANDING RULE" for full context.
+// See docs/suggestions.md §"STANDING RULE" for full context.
 // =============================================================================
 
 import type {

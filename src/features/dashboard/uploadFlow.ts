@@ -1,4 +1,4 @@
-// uploadFlow.ts — S1(c) of the `useDashboardData` split (recommendations.md).
+// uploadFlow.ts — S1(c) of the `useDashboardData` split (old recommendations.md at commit d34eb57).
 // Move-only extraction from hooks.ts: the multi-file batch parser
 // (handleMultipleFiles), the automatic-import pipeline (handleAutomaticImport,
 // continueAutomaticImport, handleAutomaticFileUpload) and the single-file

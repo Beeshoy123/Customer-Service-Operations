@@ -4,7 +4,7 @@
 // keeping the calculation preferences that are still part of the existing
 // dashboard pipeline and are not being retired here.
 //
-// S6 (recommendations.md): all persistence goes through the shared `safeStorage`
+// S6 (old recommendations.md at commit d34eb57): all persistence goes through the shared `safeStorage`
 // facade and the `storageKeys` registry — no direct localStorage access here
 // anymore, so SecurityError / quota failures fall back to memory instead of
 // crashing the caller. Key VALUES are unchanged (no migration exists).

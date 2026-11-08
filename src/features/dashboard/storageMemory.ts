@@ -1,4 +1,4 @@
-// storageMemory.ts — S6 (recommendations.md): the string→string in-memory
+// storageMemory.ts — S6 (old recommendations.md at commit d34eb57): the string→string in-memory
 // fallback backing store, moved out of mappingMemory.ts's private shim.
 //
 // NOTE on the original doc spec: mappingMemory.ts's old `inMemoryStore` was a

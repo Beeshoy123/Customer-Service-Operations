@@ -1,4 +1,4 @@
-// storage.ts — S6 (recommendations.md): one storage facade + one key registry
+// storage.ts — S6 (old recommendations.md at commit d34eb57): one storage facade + one key registry
 // for every persisted value in the app. Replaces three divergent safety
 // strategies (raw localStorage in account-profile-storage.ts, a private shim in
 // mappingMemory.ts, try/catch+console.warn in persistence.ts) with the single
@@ -11,7 +11,7 @@
 // There is no migration code in this repo; renaming any key here silently
 // discards saved account profiles, learned mappings and dashboard state.
 // Namespace consolidation under `cs-ops:` is a separate change that must ship
-// with a migration (see recommendations.md S6).
+// with a migration (see old recommendations.md at commit d34eb57 S6).
 
 import { inMemoryStore } from './storageMemory';
 

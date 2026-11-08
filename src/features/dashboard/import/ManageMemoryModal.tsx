@@ -1,5 +1,5 @@
 // S4 extraction (move-only): ManageMemoryModal moved VERBATIM from
-// ImportPreviewModal.tsx:395-572. See recommendations.md S4.
+// ImportPreviewModal.tsx:395-572. See old recommendations.md at commit d34eb57 S4.
 import React, { useState, useEffect } from 'react';
 import { getCanonicalFieldLabel } from './previewState';
 import {

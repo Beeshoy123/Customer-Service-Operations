@@ -1,4 +1,4 @@
-// persistence.ts — S1(b) of the `useDashboardData` split (recommendations.md).
+// persistence.ts — S1(b) of the `useDashboardData` split (old recommendations.md at commit d34eb57).
 // Move-only extraction from hooks.ts: the two localStorage key constants, the
 // once-per-mount read (readPersistedDashboardState), resetDashboard and the two
 // write effects. No logic changes — verified by an origin-diff parity audit

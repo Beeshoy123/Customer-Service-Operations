@@ -1,4 +1,4 @@
-// state.ts — S1(a) of the `useDashboardData` split (recommendations.md, 2026-09-30).
+// state.ts — S1(a) of the `useDashboardData` split (old recommendations.md at commit d34eb57, 2026-09-30).
 // Move-only extraction from hooks.ts: the accountProfile/hasSavedAccountProfile
 // memos, the 16 useState declarations, the setSelectedMonth wrapper, the two
 // refs, and the loadedMonths memo. No logic changes — verified by an

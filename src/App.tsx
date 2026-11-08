@@ -63,7 +63,7 @@ var tailwind = typeof window !== 'undefined' ? window.tailwind : { config: {} };
 
 // ============================================================================
 // FILE STRUCTURE:
-// NOTE: Extracted so far (see recommendations.md):
+// NOTE: Extracted so far (see old recommendations.md at commit d34eb57):
 //   Phase 1 → src/app/* (ErrorBoundary, UploadStatus, ChartActionPlanModal)
 //             + src/components/dropZone.tsx
 //   Phase 2 → src/styles/dashboard.css (DASHBOARD_STYLES moved out of TS into

@@ -3,7 +3,7 @@
 // Recommendation 3 — Auto-Hide Empty Metric Columns After Import
 // ============================================================================
 // Pure detection helpers. No React state, no side effects, no import-pipeline
-// knowledge — see recommendations.md §"Recommendation 3".
+// knowledge — see docs/suggestions.md §"STANDING RULE".
 //
 // Contract:
 //   1. After an import batch is applied, `collectFieldsWithData` scans the

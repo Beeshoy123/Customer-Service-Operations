@@ -1,5 +1,5 @@
 // S4 extraction (move-only): pure preview-state helpers + LocalSheetState moved
-// VERBATIM from ImportPreviewModal.tsx. See recommendations.md S4.
+// VERBATIM from ImportPreviewModal.tsx. See old recommendations.md at commit d34eb57 S4.
 // Column-mapping policy stays in importPolicy.ts only (STANDING RULE).
 import type {
   SheetTable,

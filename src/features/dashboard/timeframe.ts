@@ -1,4 +1,4 @@
-// timeframe.ts — S1(e) of the `useDashboardData` split (recommendations.md).
+// timeframe.ts — S1(e) of the `useDashboardData` split (old recommendations.md at commit d34eb57).
 // Move-only extraction from hooks.ts: the agentDataCache memo and the four
 // timeframe selectors. No logic changes — verified by an origin-diff parity
 // audit against hooks.ts.

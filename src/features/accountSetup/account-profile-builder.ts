@@ -1,13 +1,13 @@
 // S11 (2026-10-12): buildAccountProfile moved here from the import preview layer
 // (originally ImportPreviewModal.tsx:201–274, relocated by S4 into
 // import/previewState.ts) so the persisted AccountProfile has ONE source of
-// truth beside its schema. See recommendations.md S11.
+// truth beside its schema. See old recommendations.md at commit d34eb57 S11.
 //
 // Move-only + one type tightening: the draft shape became a local interface
 // (`MetricDraftInput`) structurally identical to the old `AdditionalMetricDraft`;
 // the vtt `as never` cast was replaced with the schema's own element type.
 // Zero behavior change — DEFAULT_ACCOUNT_PROFILE is still the seed and every
-// default/inference below is unchanged (audit recorded in recommendations.md).
+// default/inference below is unchanged (audit recorded in old recommendations.md at commit d34eb57).
 import type {
   AccountProfile,
   CustomerExperienceConfig,

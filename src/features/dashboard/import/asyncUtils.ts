@@ -1,4 +1,4 @@
-// asyncUtils.ts — S8 of recommendations.md: single owner for the two tiny
+// asyncUtils.ts — S8 of old recommendations.md at commit d34eb57: single owner for the two tiny
 // async helpers that were duplicated across the import pipeline
 // (previously inline in importService.ts and workbookLoader.ts).
 //
