@@ -16,7 +16,7 @@ Two strict micro-average (pooled-sum) computations, per the Q2.csv data specs:
      - Total calls == 0 or no active agents -> explicit 0.0 / N/A.
 
 Usage:
-    python3 csat_handoffs_aggregation.py [path/to/Q2.csv]
+    python3 tools/csat_handoffs_aggregation.py [path/to/Q2.csv]
 """
 
 import sys

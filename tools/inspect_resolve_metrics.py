@@ -2,7 +2,7 @@
 Senior-analyst inspection of resolve/repeat metric structure in Q2.csv.
 
 Usage:
-    python3 inspect_resolve_metrics.py [path/to/Q2.csv]   # defaults to ./Q2.csv
+    python3 tools/inspect_resolve_metrics.py [path/to/Q2.csv]   # defaults to ./Q2.csv
 
 Answers three questions:
   1. dtype + non-null counts for the five key columns.

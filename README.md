@@ -34,8 +34,8 @@ This is not a generic analytics app; it is a floor-performance and operations-mo
 2. **Normalize** — standardize column names, date formats, and value shapes, then group records by agent and date.
 3. **Aggregate** — roll data up from agent to supervisor to OAM/manager to floor level, across daily, weekly, monthly, and day-of-week timeframes.
 4. **Compare to targets** — every metric is evaluated against the thresholds defined in the central metric configuration.
-5. **Explore** — eight floor tabs: Roster, Outliers, Apprentice, Analysis, Trends, Correlation (Integrity Match-ups), Burnout (Behavioral Scan), and DoW Analysis.
-6. **Act** — the AI assistant (Gemini) generates team, apprentice-track, and supervisor expert reports plus chart action plans, either automatically per view or on demand via Ask AI.
+5. **Explore** — nine floor tabs: Roster, Outliers, Apprentice, Analysis, Trends, Correlation (Integrity Match-ups), Burnout (Behavioral Scan), DoW Analysis, and Chronic Offenders.
+6. **Act** — the AI assistant (Claude, called from the browser via the Anthropic API) generates team, apprentice-track, and supervisor expert reports plus chart action plans, either automatically per view or on demand via Ask AI.
 7. **Persist** — view state survives reloads via `localStorage` (heavy state and view state are stored under separate keys). There is no backend: all data and business logic stay in the browser.
 
 ## Operational metric model
@@ -93,7 +93,7 @@ Key modules:
 | `features/dashboard/emptyColumns.ts` | auto-hide of empty metric columns after import |
 | `features/dashboard/import/*` | import pipeline (file-type and granularity detection, sheet selection, column fingerprinting/mapping, validation, merge, worker-based workbook loading) |
 | `features/dashboard/upload/*` | import landing screen |
-| `features/dashboard/views/tabs/*` | the eight floor tabs |
+| `features/dashboard/views/tabs/*` | the nine floor tabs |
 | `features/dashboard/views/modals/MainModal.tsx` | modal shell + Ask AI content + supervisor modal |
 | `features/dashboard/views/chrome/*` | TopNavbar, MainStatsRow, FloorHeader |
 | `features/accountSetup/*` | account profile storage and metric detection |
@@ -130,10 +130,11 @@ src/
       views/
         chrome/                    # TopNavbar, MainStatsRow, FloorHeader
         modals/MainModal.tsx       # modal shell, Ask AI content, supervisor modal
-        tabs/                      # the eight floor tabs
+        tabs/                      # the nine floor tabs
   styles/
     index.css                      # global styling and layout rules
     App.css
+tools/                             # dev-only scripts (e2e probes, CSV/sheet inspection); run from the repo root
 ```
 
 ## Tooling

@@ -187,7 +187,7 @@ Other cleanup:
 - [ ] `COL_DEFINITIONS` is referenced from 25 places in 8 files; tidy only when touching them [S20]
 - [ ] `runChartData` rebuilds its date list on every recompute (`metrics.ts`); only if it measures slow [S23]
 - [ ] Decide: should an in-flight import be aborted when the page unmounts? Not done today; it changes visible behavior, so needs his OK
-- [ ] Repo root cleaned: Python scripts, PNGs, `.tmp_test` moved or removed; `.gitignore` blocks `*.csv`, `*.xlsx`, `*.xls`; README says 9 tabs and no longer mentions Gemini [X8]
+- [x] Repo root cleaned: Python scripts, PNGs, `.tmp_test` moved or removed; `.gitignore` blocks `*.csv`, `*.xlsx`, `*.xls`; README says 9 tabs and no longer mentions Gemini [X8]
 - [x] `recommendations.md` merged into this file and deleted (2026-11-08). The 29 code comments that pointed at it now point here or to git history.
 
 ---

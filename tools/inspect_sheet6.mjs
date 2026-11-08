@@ -1,6 +1,6 @@
 import * as XLSXModule from 'xlsx';
 import fs from 'node:fs';
-import { selectSheetsWithDetails } from './src/features/dashboard/import/sheetSelector.ts';
+import { selectSheetsWithDetails } from '../src/features/dashboard/import/sheetSelector.ts';
 
 const XLSX = XLSXModule.default || XLSXModule;
 const buf = fs.readFileSync('G:\\resolve case study.xlsx');
