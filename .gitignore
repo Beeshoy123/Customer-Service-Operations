@@ -25,3 +25,8 @@ dist-ssr
 dbg.png
 resume_test.png
 customer-service-ops-changes.patch
+
+# Data files (repo is public)
+*.csv
+*.xlsx
+*.xls
