@@ -49,3 +49,42 @@ export const buildDayRecord = (row: any) => {
     vhi: toNumberOrNull(row.vhi),
   };
 };
+
+const isPresent = (v: unknown) => v !== null && v !== undefined;
+
+/**
+ * Step 2: a later upload MERGES into the day that is already stored.
+ * - a new value wins (newer upload is the newer fact; same value twice changes nothing)
+ * - a missing value keeps what is stored (file B without calls does not erase file A's calls)
+ * - the stored record is copied, never edited in place
+ * - isOff is recomputed from the merged calls
+ */
+export const mergeDayRecord = (existing: any, row: any) => {
+  const incoming: any = buildDayRecord(row);
+  if (!existing) return incoming;
+
+  const merged: any = { ...existing };
+  for (const [field, value] of Object.entries(incoming)) {
+    if (field === 'isOff' || field === 'resolveTotalContacts') continue;
+    if (isPresent(value)) merged[field] = value;
+  }
+
+  // resolveTotalContacts: an imported value wins; otherwise it follows calls when it was
+  // only ever "calls" (the fallback), and an older imported value is kept.
+  if (isPresent(toNumberOrNull(row.resolveTotalContacts))) {
+    merged.resolveTotalContacts = incoming.resolveTotalContacts;
+  } else if (!isPresent(existing.resolveTotalContacts) || existing.resolveTotalContacts === existing.calls) {
+    merged.resolveTotalContacts = isPresent(merged.calls) ? merged.calls : null;
+  }
+
+  merged.isOff = merged.calls === 0;
+  return merged;
+};
+
+// An agent attribute (supervisor, oam): "Unknown" or empty from a file that has no such
+// column must not overwrite a value we already know.
+export const keepKnown = (existing: string | null | undefined, incoming: string): string => {
+  const incomingIsKnown = !!incoming && incoming !== 'Unknown';
+  if (incomingIsKnown) return incoming;
+  return existing && existing !== 'Unknown' ? existing : incoming;
+};

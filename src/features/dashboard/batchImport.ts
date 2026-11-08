@@ -28,7 +28,8 @@ import { mergeNormalizedRows } from './import/mergeData';
 import { normalizeCellValue, normalizeHeaderToField, resolveSheetDateOrder } from './import/schemaNormalizer';
 import { detectFileType } from './import/fileTypeDetector';
 import { saveAccountProfile } from '../accountSetup/account-profile-storage';
-import { buildDayRecord } from './dayRecord';
+import { mergeDayRecord, keepKnown } from './dayRecord';
+import { createAgentIndex, findAgent, registerAgent } from './agentIndex';
 
 // ─── Batch Import Hook ─────────────────────────────────────────────────────
 // Everything the three callbacks need arrives as one object passed by
@@ -95,16 +96,9 @@ export const useBatchImport = (deps: BatchImportDeps) => {
     const updatedAgents = [...agents];
     const nextSupervisors = new Set(supervisors);
 
-    const agentByCcms = new Map();
-    const agentByNameAndId = new Map();
-
-    for (const agent of updatedAgents) {
-      if (agent.ccms) {
-        agentByCcms.set(agent.ccms, agent);
-      }
-      const nameIdKey = `${(agent.name || '').toLowerCase()}|${agent.sourceId || ''}`;
-      agentByNameAndId.set(nameIdKey, agent);
-    }
+    const agentIndex = createAgentIndex(updatedAgents);
+    // Agents whose day records were already copied in this import (copy once, not per row).
+    const copiedHistory = new Set<string>();
 
     const chunkSize = 2500;
     console.log('[DEBUG 8 - applyBatchImport] Starting to apply rows to state. Total rows:', rowsToApply.length);
@@ -129,8 +123,7 @@ export const useBatchImport = (deps: BatchImportDeps) => {
       const rawId = String(row.employeeId ?? '').trim();
       const agentKey = rawId ? `ID_${rawId}` : `AUTO_${rawName.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`;
 
-      const nameIdKey = `${rawName.toLowerCase()}|${rawId}`;
-      let targetAgent = agentByCcms.get(agentKey) || agentByNameAndId.get(nameIdKey);
+      let targetAgent = findAgent(agentIndex, { agentKey, rawName, rawId });
       if (!targetAgent) {
         targetAgent = {
           ccms: agentKey,
@@ -142,19 +135,24 @@ export const useBatchImport = (deps: BatchImportDeps) => {
           phase: 'Unknown',
         };
         updatedAgents.push(targetAgent);
-        agentByCcms.set(agentKey, targetAgent);
-        agentByNameAndId.set(nameIdKey, targetAgent);
+        registerAgent(agentIndex, targetAgent);
       } else {
         targetAgent.name = rawName;
-        targetAgent.supervisor = rawSupervisor;
-        targetAgent.oam = rawOam;
+        // A file without a Supervisor/OAM column must not wipe the stored one (Step 2).
+        targetAgent.supervisor = keepKnown(targetAgent.supervisor, rawSupervisor);
+        targetAgent.oam = keepKnown(targetAgent.oam, rawOam);
         if (!targetAgent.sourceId && rawId) targetAgent.sourceId = rawId;
+        registerAgent(agentIndex, targetAgent);
       }
 
       if (rawSupervisor && rawSupervisor !== 'Unknown') nextSupervisors.add(rawSupervisor);
-      if (!newHistory[targetAgent.ccms]) newHistory[targetAgent.ccms] = {};
-
-      newHistory[targetAgent.ccms][rawDate] = buildDayRecord(row);
+      // Copy this agent's stored days once (never edit state in place), then merge the row
+      // into the day that is already there instead of replacing it (Step 2).
+      if (!copiedHistory.has(targetAgent.ccms)) {
+        newHistory[targetAgent.ccms] = { ...(newHistory[targetAgent.ccms] || {}) };
+        copiedHistory.add(targetAgent.ccms);
+      }
+      newHistory[targetAgent.ccms][rawDate] = mergeDayRecord(newHistory[targetAgent.ccms][rawDate], row);
     }
 
     // Recommendation 3 — auto-hide empty metric columns: scan the applied rows
