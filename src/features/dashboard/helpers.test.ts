@@ -80,3 +80,62 @@ describe('aggregateTeamMetrics — team hand-offs aggregation', () => {
     assert.equal(team.handoffs, null);
   });
 });
+
+describe('Step 2: no invented survey counts (the 5% rule is gone)', () => {
+  it('a day with only a VXS % has NO surveys or promoters, but the agent still shows that %', () => {
+    const r: any = aggregateRecords([{ calls: 100, vxs: 90 }]);
+    assert.equal(r.surveys, 0);
+    assert.equal(r.promoters, 0);
+    assert.equal(r.detractors, 0);
+    assert.equal(r.vxs, 90);
+  });
+
+  it('several VXS-only days show the plain mean of the reported % (nothing invented)', () => {
+    const r: any = aggregateRecords([{ calls: 100, vxs: 80 }, { calls: 900, vxs: 90 }]);
+    assert.equal(r.surveys, 0);
+    assert.equal(r.vxs, 85);
+  });
+
+  it('real counts are used as before (25 of 50 = 50%)', () => {
+    const r: any = aggregateRecords([{ calls: 100, surveys: 50, promoters: 25, vxs: 50 }]);
+    assert.equal(r.surveys, 50);
+    assert.equal(r.promoters, 25);
+    assert.equal(r.vxs, 50);
+  });
+
+  it('days with real counts and days with only a %: only the real counts are used', () => {
+    const r: any = aggregateRecords([
+      { calls: 100, surveys: 50, promoters: 25, vxs: 50 },
+      { calls: 1000, vxs: 95 },
+    ]);
+    assert.equal(r.surveys, 50);
+    assert.equal(r.vxs, 50);
+  });
+
+  it('floor: a 1,000-call VXS-only agent does not outweigh an agent with real 25/50', () => {
+    const floor: any = aggregateTeamMetrics([
+      { calls: 1000, vxs: 90 },
+      { calls: 100, surveys: 50, promoters: 25, vxs: 50 },
+    ]);
+    assert.equal(floor.surveys, 50);
+    assert.equal(floor.vxs, 50);
+  });
+
+  it('floor: two agents, 100 calls each, one VXS-only 90% and one real 25/50 -> 50% (was 53.6%)', () => {
+    const floor: any = aggregateTeamMetrics([
+      aggregateRecords([{ calls: 100, vxs: 90 }]),
+      aggregateRecords([{ calls: 100, surveys: 50, promoters: 25, vxs: 50 }]),
+    ]);
+    assert.equal(floor.surveys, 50);
+    assert.equal(floor.vxs, 50);
+  });
+
+  it('floor with no survey counts at all is blank (null), not a made-up number', () => {
+    const floor: any = aggregateTeamMetrics([
+      aggregateRecords([{ calls: 100, vxs: 90 }]),
+      aggregateRecords([{ calls: 100, vxs: 70 }]),
+    ]);
+    assert.equal(floor.surveys, 0);
+    assert.equal(floor.vxs, null);
+  });
+});

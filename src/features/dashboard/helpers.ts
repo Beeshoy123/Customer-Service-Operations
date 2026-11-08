@@ -113,6 +113,9 @@ export const calculateBonus = (vxs: Num, r3d: Num, handoffs: Num): number | null
 // ─── Record Aggregation ──────────────────────────────────────
 export const aggregateRecords = (records: ReadonlyArray<MetricRecord | null | undefined>) => {
   let calls = 0, sumResolveTotalContacts = 0, sumTalkTime = 0, callsWithAht = 0, surveys = 0, promoters = 0;
+  // Days that only report a VXS % (no survey counts). Their % is shown for the agent when
+  // there are no real counts at all, but they never become invented survey counts (Step 2).
+  let vxsOnlySum = 0, vxsOnlyDays = 0;
   let totalResContacts3d = 0, totalRepeats3d = 0, totalResContacts2hr = 0, totalRepeats2hr = 0, ncwCount = 0;
   let sumHandoffsCount = 0, callsWithHandoffs = 0, sumHoldTime = 0, callsWithHold = 0, sumDpcTime = 0, callsWithDpc = 0;
   let sumVtt = 0, callsWithVtt = 0, sumVttSent = 0, sumVttTransacted = 0, sumNetOcc = 0, callsWithNetOcc = 0, sumCreditFreq = 0, callsWithCreditFreq = 0;
@@ -156,9 +159,8 @@ export const aggregateRecords = (records: ReadonlyArray<MetricRecord | null | un
       surveys += d.surveys;
       promoters += d.promoters;
     } else if (d.vxs != null) {
-      const simulatedSurveys = Math.max(1, Math.round(c * 0.05));
-      surveys += simulatedSurveys;
-      promoters += simulatedSurveys * (d.vxs / 100);
+      vxsOnlySum += d.vxs;
+      vxsOnlyDays += 1;
     }
 
     const resContacts3d = d.resolveTotalContacts3d != null ? d.resolveTotalContacts3d : resTotal;
@@ -176,7 +178,9 @@ export const aggregateRecords = (records: ReadonlyArray<MetricRecord | null | un
     };
   }
 
-  const vxs = surveys > 0 ? (promoters / surveys) * 100 : null;
+  const vxs = surveys > 0
+    ? (promoters / surveys) * 100
+    : (vxsOnlyDays > 0 ? vxsOnlySum / vxsOnlyDays : null);
   const resolve3d = totalResContacts3d > 0 ? (1 - totalRepeats3d / totalResContacts3d) * 100 : null;
   const resolve2hr = totalResContacts2hr > 0 ? (1 - totalRepeats2hr / totalResContacts2hr) * 100 : null;
   const handoffs = callsWithHandoffs > 0 ? (sumHandoffsCount / callsWithHandoffs) * 100 : null;
