@@ -107,7 +107,7 @@ Format: `[ ]` open · `[x]` done. Codes in brackets point to sections below: **B
 
 ### Step 2: Merge without losing data
 - [x] Merge key = agent ID or name + date only; supervisor and location become attributes [K2, B3]. Done in `import/mergeData.ts`: ID if present, else lower-cased name; a name-only row joins an ID only when that name has exactly one ID in the batch. `calls` is still summed across files until the next box.
-- [ ] `calls` is not summed across files for the same agent+day [K2]
+- [x] `calls` is not summed across files for the same agent+day [K2]. Done in `import/mergeData.ts`: all count fields (calls, surveys, promoters, handoffsCount, resolve contacts, ...) default to "newer file wins"; a value missing in the newer file keeps the older one; one `CONFLICTING_VALUES` warning per field when files disagree. Adding is still possible per account (`mergeStrategy`) or with `duplicateSourceHandling: 'allow'`. Rate fields (AHT, VXS, ...) still follow the account's rate-merge style; revisit with the "merge into existing day" box.
 - [ ] `applyBatchImport` merges into the existing day instead of replacing it [B1]
 - [ ] Missing values stay null for calls, AHT, VXS, resolve2hr, resolve3d (not 0) [X2]
 - [ ] Remove invented survey counts (the 5% rule in `helpers.ts`) [X3]

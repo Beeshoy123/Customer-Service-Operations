@@ -159,15 +159,20 @@ const dedupeSameSourceRows = (sourceRows: NormalizedRow[]): NormalizedRow => {
   return deduped;
 };
 
+// Step 2: the same agent + day + count reported in two files is ONE fact seen twice,
+// so counts default to "newer file wins" instead of being added together. Adding is still
+// available per account (explicit mergeStrategy) and when same-source rows are allowed
+// (duplicateSourceHandling = 'allow'), where several rows per agent + day are meant to add up.
 const getFieldStrategy = (
   field: string,
-  overrides?: Record<string, MergeStrategy>
+  overrides?: Record<string, MergeStrategy>,
+  countsAdd = false
 ): MergeStrategy | null => {
   if (overrides && overrides[field]) {
     return overrides[field];
   }
   if (sumFields.has(field)) {
-    return 'sum';
+    return countsAdd ? 'sum' : 'last-seen';
   }
   if (averageFields.has(field)) {
     return 'average';
@@ -224,6 +229,9 @@ export const mergeNormalizedRows = (
   const { mergeStrategy, duplicateSourceHandling = 'dedupe', onWarning } = options;
   const groups = new Map<string, NormalizedRow[]>();
   const nameToIds = buildNameToIds(rows);
+  const countsAdd = duplicateSourceHandling === 'allow';
+  // field -> number of agent-days where two files gave different values (newer one was used)
+  const conflicts = new Map<string, number>();
 
   for (const row of rows) {
     const key = getRecordKey(row, nameToIds);
@@ -314,7 +322,16 @@ export const mergeNormalizedRows = (
         continue;
       }
 
-      const strategy = getFieldStrategy(field, mergeStrategy);
+      const strategy = getFieldStrategy(field, mergeStrategy, countsAdd);
+
+      if (
+        strategy === 'last-seen' &&
+        sumFields.has(field) &&
+        !mergeStrategy?.[field] &&
+        new Set(values).size > 1
+      ) {
+        conflicts.set(field, (conflicts.get(field) ?? 0) + 1);
+      }
 
       if (strategy === 'sum') {
         const numValues = values.filter((v): v is number => typeof v === 'number' && !Number.isNaN(v));
@@ -349,6 +366,16 @@ export const mergeNormalizedRows = (
     result.push(merged);
   }
 
+  if (onWarning) {
+    for (const [field, agentDays] of conflicts) {
+      onWarning({
+        fileName: 'multiple files',
+        message: `"${field}" differed between files for ${agentDays} agent-days. The newer file's value was used; nothing was added together.`,
+        code: 'CONFLICTING_VALUES',
+      });
+    }
+  }
+
   return result;
 };
 
@@ -367,7 +394,7 @@ export const mergeNormalizedRowsWithDetails = (
     ...options,
     onWarning: (warning) => {
       warnings.push(warning);
-      duplicateCount += 1;
+      if (warning.code === 'DUPLICATE_SOURCE_RECORD') duplicateCount += 1;
       if (options.onWarning) {
         options.onWarning(warning);
       }

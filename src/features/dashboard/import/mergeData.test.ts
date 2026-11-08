@@ -48,8 +48,8 @@ describe('mergeNormalizedRows', () => {
     assert.equal(result.aht, 20);
     assert.equal(result.hold, 120);
 
-    // Check sum for sumFields
-    assert.equal(result.calls, 30);
+    // Step 2: counts are not added across files; the newest row (calls: 15) wins
+    assert.equal(result.calls, 15);
   });
 
   it('computes the true arithmetic mean across 4 rows with varying values', () => {
@@ -91,7 +91,8 @@ describe('mergeNormalizedRows', () => {
     assert.equal(merged.length, 1);
     assert.equal(merged[0].aht, 15);
     assert.equal(merged[0].netOcc, 85);
-    assert.equal(merged[0].calls, 20);
+    // Step 2: counts are not added across files; the newest row (calls: 12) wins
+    assert.equal(merged[0].calls, 12);
   });
 
   it('handles rows where only a subset have values for an averageField', () => {
@@ -165,7 +166,7 @@ describe('Problem 7: Duplicate Source Detection & Prevention of Double Counting'
     assert.ok(warnings[0].message.includes('monthly_calls.xlsx'));
   });
 
-  it('merges distinct sources while deduplicating same-source duplicate rows', () => {
+  it('merges distinct sources while deduplicating same-source duplicate rows (newer source wins for counts)', () => {
     const rows: NormalizedRow[] = [
       // Phone source (uploaded twice accidentally)
       {
@@ -200,12 +201,15 @@ describe('Problem 7: Duplicate Source Detection & Prevention of Double Counting'
 
     const details = mergeNormalizedRowsWithDetails(rows);
     assert.equal(details.rows.length, 1);
-    // Phone calls (20 deduped) + Chat calls (15) = 35 (not 55!)
-    assert.equal(details.rows[0].calls, 35);
+    // Step 2: Phone calls (20, deduped) are NOT added to the second file's calls (15);
+    // the newer source wins -> 15 (not 35, not 55)
+    assert.equal(details.rows[0].calls, 15);
     // Arithmetic average across 2 distinct sources: (300 + 150) / 2 = 225
     assert.equal(details.rows[0].aht, 225);
     assert.equal(details.duplicateCount, 1);
-    assert.equal(details.warnings.length, 1);
+    // 1 duplicate-source warning + 1 "calls differed between files" warning
+    assert.equal(details.warnings.length, 2);
+    assert.equal(details.warnings.filter((w) => w.code === 'CONFLICTING_VALUES').length, 1);
   });
 
   it('allows same-source duplicates when duplicateSourceHandling is set to allow', () => {
@@ -396,5 +400,79 @@ describe('Step 2: merge key is agent (ID or name) + date only', () => {
       { agentName: 'Agent One', date: D, handoffsCount: 2, sourceFile: 'b.csv', sourceSheet: 'CSV' },
     ]);
     assert.equal(merged.length, 3);
+  });
+});
+
+describe('Step 2: counts are never added together across files', () => {
+  const D = '2026-10-05';
+  const voc = (name: string, calls: number): NormalizedRow => ({
+    agentName: name, date: D, supervisor: 'Sup X', calls, sourceFile: 'voc.csv', sourceSheet: 'CSV',
+  });
+  const transfer = (name: string, calls: number, handoffsCount: number): NormalizedRow => ({
+    agentName: name, date: D, calls, handoffsCount, sourceFile: 'transfer.csv', sourceSheet: 'CSV',
+  });
+
+  it('2 agents x 10 calls in two files stay 10 (not 20)', () => {
+    const merged = mergeNormalizedRows([
+      voc('Agent One', 10), voc('Agent Two', 10),
+      transfer('Agent One', 10, 2), transfer('Agent Two', 10, 1),
+    ]);
+    assert.equal(merged.length, 2);
+    assert.deepEqual(merged.map((r) => r.calls), [10, 10]);
+  });
+
+  it('when the two files disagree, the newer file wins (10 then 12 -> 12)', () => {
+    const merged = mergeNormalizedRows([voc('Agent One', 10), transfer('Agent One', 12, 2)]);
+    assert.equal(merged[0].calls, 12);
+  });
+
+  it('re-uploading the same data under another file name does not double it', () => {
+    const copy: NormalizedRow = { ...voc('Agent One', 10), sourceFile: 'voc (1).csv' };
+    const merged = mergeNormalizedRows([voc('Agent One', 10), copy]);
+    assert.equal(merged[0].calls, 10);
+  });
+
+  it('a value missing in the newer file keeps the older value', () => {
+    const merged = mergeNormalizedRows([
+      { ...voc('Agent One', 10), surveys: 5, promoters: 4 },
+      { agentName: 'Agent One', date: D, aht: 300, sourceFile: 'other.csv', sourceSheet: 'CSV' },
+    ]);
+    assert.equal(merged[0].calls, 10);
+    assert.equal(merged[0].surveys, 5);
+    assert.equal(merged[0].promoters, 4);
+  });
+
+  it('other count fields (surveys, handoffsCount) are not added either', () => {
+    const merged = mergeNormalizedRows([
+      { ...voc('Agent One', 10), surveys: 5, handoffsCount: 2 },
+      { ...transfer('Agent One', 10, 2), surveys: 5 },
+    ]);
+    assert.equal(merged[0].surveys, 5);
+    assert.equal(merged[0].handoffsCount, 2);
+  });
+
+  it('reports ONE warning per field when files disagree, and it is not counted as a duplicate', () => {
+    const details = mergeNormalizedRowsWithDetails([
+      voc('Agent One', 10), voc('Agent Two', 10),
+      transfer('Agent One', 12, 2), transfer('Agent Two', 11, 1),
+    ]);
+    const conflicts = details.warnings.filter((w) => w.code === 'CONFLICTING_VALUES');
+    assert.equal(conflicts.length, 1);
+    assert.match(conflicts[0].message, /calls/);
+    assert.match(conflicts[0].message, /2 agent-days/);
+    assert.equal(details.duplicateCount, 0);
+  });
+
+  it('no warning when both files agree', () => {
+    const details = mergeNormalizedRowsWithDetails([voc('Agent One', 10), transfer('Agent One', 10, 2)]);
+    assert.equal(details.warnings.length, 0);
+  });
+
+  it('an account can still opt in to adding a field with an explicit merge strategy', () => {
+    const merged = mergeNormalizedRows(
+      [voc('Agent One', 10), transfer('Agent One', 10, 2)],
+      { mergeStrategy: { calls: 'sum' } }
+    );
+    assert.equal(merged[0].calls, 20);
   });
 });
