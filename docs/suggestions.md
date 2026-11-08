@@ -7,6 +7,50 @@ Evidence: **ran** = I executed it and saw the result. **read** = I read the code
 
 ---
 
+## 📌 Note to any AI assistant working on this repo (read before doing anything)
+
+The owner (Beeshoy) is a call-center team leader and a **beginner at coding**. He wants this app built *for* him, step by step, without being overwhelmed. These are his standing rules. Follow them in every chat.
+
+**How to talk to him**
+
+| Rule | In practice |
+|---|---|
+| Brief and direct | Short replies. Tables and small diagrams instead of paragraphs. |
+| Visual first | Lead with a diagram, table or example, then explain in a few lines. |
+| One idea at a time | Never dump many rules or many changes at once. When teaching, give one small practice question after each idea. |
+| Plain words | Explain jargon the first time. Say "browser storage", not only "localStorage". |
+| Numbers, not adjectives | Show before/after numbers. Mark each claim **ran** (you executed it) or **read** (code only). |
+| Honest | Give honest feedback on what already exists before proposing new work. Admit mistakes plainly. |
+
+**How to change the code**
+
+1. **Propose first, wait for his OK.** No code changes before he approves. One checklist step at a time.
+2. **Confirm data and math first.** Test with real-scale data (300K+ rows) in a real browser, not only mocks or unit tests.
+3. **Edit the existing code. Do not rebuild.** No rewrites he didn't ask for.
+4. **UI:** dark theme with color-coding. Never design without confirmation: show an HTML mock-up first.
+5. **Mapping and alias fixes go only in `importPolicy.ts`** (the repo's standing rule).
+6. **Before every commit run** `tsc -b`, `npm test`, `oxlint` and `vite build`. Baseline on 2026-11-08: tsc clean, 274/274 tests pass.
+7. **Commit straight to `main`. No branches, no pull requests** (his decision). One commit per step. Tick that step's `[ ]` box in this file in the same commit.
+8. If a step changes the plan, update this file and say so.
+
+**Safety (this repo is PUBLIC)**
+
+- Never commit real agent data: no CSV, XLSX or XLS files, no real names, IDs or screenshots of real data. Use fake names only.
+- Never commit secrets, keys or tokens. Never ask him to paste a token into a chat.
+- Do not put his employer's name or account details in the repo.
+- Agent-level attendance, AUX and sales data must stay on his PC: no cloud upload, and AI calls stay off by default.
+- If `git push` fails, attach the repo with push access and tell him plainly. Do not work around it.
+
+**Traps already found (do not repeat them)**
+
+- Count columns must stay counts. Dividing them by row count broke handoffs and resolve metrics (steps 1–2).
+- Merge by agent + date only. Extra columns such as supervisor in the merge key stop files from merging.
+- A missing value is not 0. Keep it null.
+- Dates: his timezone is Africa/Cairo. Month labels like `Sep 2026` must not land on Aug 31. Day-first dates (DD/MM) are normal for him.
+- Do not invent numbers (the old "5% of calls = surveys" rule).
+
+---
+
 ## 0. In plain English (read this first)
 
 **What you want:** put a folder of files in one place. The app finds them, reads them, merges them and keeps itself up to date. No hand-merging, no re-uploading.
