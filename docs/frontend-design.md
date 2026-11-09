@@ -40,6 +40,17 @@ Design preferences and ready-to-use build prompts for the Customer Service Opera
 
 Review each step in the browser before moving to the next.
 
+**Status at a glance (checked against the code 2026-11-09)**
+
+| # | Part | Status | Still open |
+|---|---|---|---|
+| 1 | Background and colors | done (1a, 1b) | 19 inline colors; hard borders to soft shadows (left over from step 1) |
+| 2 | Sidebar | done | search box and profile block (no data for them) |
+| 3 | Page layout | **not started** | fixed page height, bento tiles, table scrolling inside its own panel |
+| 4 | Cards | done (cards only) | trend badge and sparkline (no real trend data yet, F4/F7); italic accent on stat cards |
+| 5 | Headers and text | partly done (header) | italic accent on the stat cards (waits with the trend badge) |
+| 6 | Animation | A and B done | C (sparkline draw-in) waits for sparklines |
+
 ---
 
 ## 1. Background and colors
@@ -118,6 +129,8 @@ When done, list every file changed and run the build to confirm it passes.
 
 ## 3. Page layout
 
+**Status: not started** (checked 2026-11-09: no fixed page height, no bento tiles).
+
 **Preferences**
 - The page is locked to the screen height with no page-level scrolling.
 - Only the table scrolls, inside its own panel, with a sticky header row.
@@ -172,7 +185,7 @@ Style reference: frosted white cards on a soft mint background, with big numbers
 When done, list every file changed and run the build to confirm it passes.
 ```
 
-**Status: cards built 2026-11-09** (glass, option A chosen from the mock-up) in `MainStatsRow.tsx`, `shared.tsx` (`DonutChart`), `layout.css`, `dashboard.css`, `index.css`. Checked in Chromium on fake data (ran): both KPI cards render with no console errors, the hover lift moves 5px and does not move with reduced motion, no sideways scroll at 560px wide. Not yet run: `npx tsc -b`, `npm test`, `npm run lint`, `npm run build` (no `node_modules` in that session).
+**Status: cards built 2026-11-09** (glass, option A chosen from the mock-up) in `MainStatsRow.tsx`, `shared.tsx` (`DonutChart`), `layout.css`, `dashboard.css`, `index.css`. Checked in Chromium on fake data (ran): both KPI cards render with no console errors, the hover lift moves 5px and does not move with reduced motion, no sideways scroll at 560px wide. Checks run later on the same code (2026-11-09, ran): `npx tsc -b` clean, `npm test` 429 of 429, `npm run lint` 0 errors (105 warnings, same as baseline), `npm run build` passes.
 
 | Part of the prompt | Done | Notes |
 |---|---|---|
@@ -229,7 +242,7 @@ When done, list every file changed and run the build to confirm it passes.
 
 All animation uses plain CSS and small bits of React. No animation library.
 
-**Status (2026-11-09):** parts A and B are built and browser-tested on fake data (15 of 15 checks, ran). Part C waits for sparklines.
+**Status (2026-11-09):** parts A and B are built and browser-tested on fake data (15 of 15 checks, ran). Re-checked after the glass cards and the new header landed: still 15 of 15, no animation left running, and the 5px hover lift still works after the entrance (ran). Part C waits for sparklines.
 
 | Part | What | Where | Status |
 |---|---|---|---|
