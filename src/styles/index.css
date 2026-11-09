@@ -24,6 +24,8 @@
   --cso-forest-deep: #163a30;   /* cards, table header (keeps status red readable) */
   --cso-mint: #7be0b0;          /* glow / accent on dark surfaces */
   --cso-peach: #f6a77c;         /* highlights, badges */
+  --cso-mint-deep: #2f9d77;     /* second accent bar on dark cards (3.7:1 on forest-deep) */
+  --cso-on-forest: #cfe6dc;     /* text and icons on forest (7.3:1) */
   --cso-tint-mint: #ddf3e8;
   --cso-tint-peach: #fce3d4;
   --cso-tint-blue: #dcebf7;

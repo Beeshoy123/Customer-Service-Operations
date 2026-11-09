@@ -227,7 +227,7 @@ button, input, select, textarea { font-family: inherit; }
 .top-navbar { padding: 12px 40px; }
 .top-navbar-inner { max-width: 1240px; margin: 0 auto; gap: 12px; }
 .navbar-account {
-  color: #94a3b8;
+  color: var(--cso-on-forest);
   font-size: .8rem;
   font-weight: 700;
   letter-spacing: .08em;
