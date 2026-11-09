@@ -201,6 +201,7 @@ Format: `[ ]` open · `[x]` done. Codes in brackets point to sections below: **B
 - [ ] Replace `isOff = calls === 0` so absent and AUX-only days are not dropped [X4]
 
 ### Step 9: Combined view and redesign
+Design direction and ready-to-use build prompts for the look (colors, sidebar, layout, cards, headers, animation) are in [`docs/frontend-design.md`](frontend-design.md). Update that file as each part is built. **Open conflict:** it uses a light mint/forest-green palette, while the rule above says dark theme. He must choose before anything is built (see Decisions, item 4).
 Show an HTML mock-up and get his OK before building any of this.
 - [ ] One dashboard: floor × month × agent for Sales, VOC, Absenteeism, AUX
 - [ ] One briefing hero instead of two identical KPI cards; the two cards' duplicated markup becomes one component [F1, S17]
@@ -248,7 +249,7 @@ Other cleanup:
 1. **Order:** is 0 → 10 OK, or do you want recipes earlier?
 2. **AI reports:** do you use them? If not, step 4 deletes them (simplest). If yes, they stay behind an off-by-default switch.
 3. **Samples (needed before step 8 only):** one file per type (VOC, Sales, Absenteeism, AUX) with headers and 3–5 rows. Fake the agent names if you like.
-4. **Look:** do you confirm a dark canvas with the hero, action queue and Data Health panel? An HTML mock-up comes first, before any UI is built.
+4. **Look:** do you confirm a dark canvas with the hero, action queue and Data Health panel? An HTML mock-up comes first, before any UI is built. Note: `docs/frontend-design.md` proposes a light mint-grey base with forest green and peach instead of a dark canvas. Which look do you want: dark or the light mint one?
 5. **Policy (before step 7b):** does the company allow agent-level data in Google Sheets? Which Google account holds the sheets: personal or company?
 
 ---
