@@ -143,6 +143,13 @@ export const parseDateText = (input: string, order: DateOrder = 'dayFirst'): str
   return parseMonthNameDate(text);
 };
 
+/** The two leading numbers of an all-numeric date like 13/09/2026 or 9/5/26, else null. */
+export const numericDateParts = (value: unknown): { first: number; second: number } | null => {
+  if (typeof value !== 'string') return null;
+  const match = NUMERIC_THREE_PART.exec(cleanDateText(value));
+  return match ? { first: Number(match[1]), second: Number(match[3]) } : null;
+};
+
 export type DateOrderDetection = {
   /** The order to use: the proven one, otherwise the fallback. */
   order: DateOrder;
@@ -168,11 +175,9 @@ export const detectDateOrder = (
   let monthFirstProof = 0;
 
   for (const value of values) {
-    if (typeof value !== 'string') continue;
-    const match = NUMERIC_THREE_PART.exec(cleanDateText(value));
-    if (!match) continue;
-    const first = Number(match[1]);
-    const second = Number(match[3]);
+    const parts = numericDateParts(value);
+    if (!parts) continue;
+    const { first, second } = parts;
     if (first > 12 && second >= 1 && second <= 12) dayFirstProof += 1;
     else if (second > 12 && first >= 1 && first <= 12) monthFirstProof += 1;
   }

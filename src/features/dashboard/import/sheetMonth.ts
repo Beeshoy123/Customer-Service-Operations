@@ -14,7 +14,7 @@ import { monthNumberFromWord, parseDateText } from './dateText';
 import type { ImportWarning } from './types';
 
 export type SheetMonth =
-  | { status: 'ok'; date: string; yearFrom: 'sheetName' | 'fileName' }
+  | { status: 'ok'; date: string; yearFrom: 'sheetName' | 'fileName' | 'choice' }
   | { status: 'needsYear'; month: number }
   | { status: 'none' };
 
@@ -25,7 +25,14 @@ export const yearFromFileName = (fileName: string): number | null => {
   return years.size === 1 ? [...years][0] : null;
 };
 
-export const resolveSheetMonth = (sheetName: string | undefined, fileName: string): SheetMonth => {
+const isUsableYear = (year: number | undefined): year is number =>
+  year !== undefined && Number.isInteger(year) && year >= 2000 && year <= 2099;
+
+/**
+ * `yearChoice` is a year the user picked in the import preview. It only applies
+ * to a bare month sheet ("Sep") and wins over the file name.
+ */
+export const resolveSheetMonth = (sheetName: string | undefined, fileName: string, yearChoice?: number): SheetMonth => {
   const name = (sheetName ?? '').trim();
   if (!name) return { status: 'none' };
 
@@ -39,6 +46,9 @@ export const resolveSheetMonth = (sheetName: string | undefined, fileName: strin
   const month = monthNumberFromWord(name.toLowerCase().replace(/\.$/, ''));
   if (month === null) return { status: 'none' };
 
+  if (isUsableYear(yearChoice)) {
+    return { status: 'ok', date: `${yearChoice}-${String(month).padStart(2, '0')}-01`, yearFrom: 'choice' };
+  }
   const year = yearFromFileName(fileName);
   if (year === null) return { status: 'needsYear', month };
   return { status: 'ok', date: `${year}-${String(month).padStart(2, '0')}-01`, yearFrom: 'fileName' };
@@ -54,10 +64,11 @@ export const planSheetDate = (
   sheetName: string | undefined,
   fileName: string,
   hasDateColumn: boolean,
+  yearChoice?: number,
 ): SheetDatePlan => {
   if (hasDateColumn) return { date: null, warning: null };
 
-  const resolved = resolveSheetMonth(sheetName, fileName);
+  const resolved = resolveSheetMonth(sheetName, fileName, yearChoice);
   if (resolved.status === 'none') return { date: null, warning: null };
 
   if (resolved.status === 'needsYear') {
@@ -74,7 +85,12 @@ export const planSheetDate = (
     };
   }
 
-  const source = resolved.yearFrom === 'sheetName' ? 'the sheet name' : 'the month from the sheet name and the year from the file name';
+  const source =
+    resolved.yearFrom === 'sheetName'
+      ? 'the sheet name'
+      : resolved.yearFrom === 'choice'
+        ? 'the month from the sheet name and the year you picked in the import preview'
+        : 'the month from the sheet name and the year from the file name';
   return {
     date: resolved.date,
     warning: {
