@@ -172,6 +172,21 @@ Style reference: frosted white cards on a soft mint background, with big numbers
 When done, list every file changed and run the build to confirm it passes.
 ```
 
+**Status: cards built 2026-11-09** (glass, option A chosen from the mock-up) in `MainStatsRow.tsx`, `shared.tsx` (`DonutChart`), `layout.css`, `dashboard.css`, `index.css`. Checked in Chromium on fake data (ran): both KPI cards render with no console errors, the hover lift moves 5px and does not move with reduced motion, no sideways scroll at 560px wide. Not yet run: `npx tsc -b`, `npm test`, `npm run lint`, `npm run build` (no `node_modules` in that session).
+
+| Part of the prompt | Done | Notes |
+|---|---|---|
+| Glass card, blur, soft shadow, no hard border, 28px corners | yes | `.metric-card`; tokens `--cso-glass`, `--cso-radius-card`, `--cso-shadow-hover` |
+| Pastel variants | yes | Metric tiles are mint (on target), peach (off target) or white (no value or no target) |
+| Small tag component | yes | `.kpi-chip` (blue, call counts), `.kpi-pill` (peach card label, fixes the invisible "MONTH-END STRATEGY" / "DAILY EXECUTION"), `.donut-tag` ("On target" / "Off target" under each gauge) |
+| Hover lift, reduced motion respected | yes | `translateY(-5px)`, only inside the no-reduced-motion block |
+| Stat card: big number + small label | yes | Each tile also shows "value minus target" (for example "+8.40 vs target") |
+| Trend badge (+5%) and sparkline | **no, waits** | There is no real trend data yet (always +0.00%, item X5/F4). Not invented. Comes with F4/F7 |
+| Italic accent word on the stat cards | **no, waits** | Goes with the trend badge work |
+
+- Gauge and text colors are for light cards only. Contrast measured (ran): text at least 4.8:1, rings at least 3.1:1.
+- The two copied tile blocks became one `KpiTile` component (this also does part of S17; the single briefing hero is still open).
+
 ---
 
 ## 5. Headers and text
