@@ -29,7 +29,7 @@ The owner (Beeshoy) is a call-center team leader and a **beginner at coding**. H
 3. **Edit the existing code. Do not rebuild.** No rewrites he didn't ask for.
 4. **UI:** follow `docs/frontend-design.md` (light mint look, his choice on 2026-11-09), keep color-coding. Never design without confirmation: show an HTML mock-up first.
 5. **Mapping and alias fixes go only in `importPolicy.ts`** (the repo's standing rule, full text in the Reference section below).
-6. **Before every commit run** `tsc -b`, `npm test`, `npm run lint` and `npm run build`. Baseline on 2026-11-08: tsc clean, 274/274 tests pass, lint 0 errors.
+6. **Before every commit run** `tsc -b`, `npm test`, `npm run lint` and `npm run build`. Baseline on 2026-11-09: tsc clean, 422/422 tests pass, lint 0 errors (105 warnings).
 7. **Commit straight to `main`. No branches, no pull requests** (his decision). One commit per step. Tick that step's `[ ]` box in this file in the same commit.
 8. If a step changes the plan, update this file and say so.
 
@@ -59,10 +59,10 @@ The owner (Beeshoy) is a call-center team leader and a **beginner at coding**. H
 
 | Today | What it means for you |
 |---|---|
-| A second file for the same agent and day **replaces** the first | This is why you merge everything into one CSV by hand |
+| ✅ Fixed in step 2: a second file for the same agent and day **replaces** the first | This is why you merge everything into one CSV by hand |
 | Data is saved in the browser's small storage (~5 MB). Yours needs ~10 MB. | When it's full, the browser forgets silently. That is probably why you re-upload. |
-| Counts get divided by the number of calls | 2 handoffs in 10 calls is saved as 0.2. That is the Transfer_logs bug. |
-| Same agent and day in two files doesn't merge if one file lacks Supervisor | Rows stay split and numbers come out wrong |
+| ✅ Fixed in step 1: counts get divided by the number of calls | 2 handoffs in 10 calls is saved as 0.2. That is the Transfer_logs bug. |
+| ✅ Fixed in step 2: same agent and day in two files doesn't merge if one file lacks Supervisor | Rows stay split and numbers come out wrong |
 | Only call-center metrics exist | Sales, Absenteeism, AUX and floor-level VOC have nowhere to go |
 | Rows with no agent name are deleted | Floor-level VOC and Sales would disappear |
 | Three tabs try to send dashboard data to an AI service when you open them | Breaks your "agent data stays on my PC" rule. It fails today only because there is no key. |
@@ -78,9 +78,9 @@ The owner (Beeshoy) is a call-center team leader and a **beginner at coding**. H
 | Rank | Level | Work | Why this position |
 |---|---|---|---|
 | 1 | ⛔ P0 | **Step 0**: tests around bonus, weighted-satisfaction and trend math | Nothing guards the numbers that decide bonuses. Tests only, no behavior change. Must exist before steps 1–2 touch the math. |
-| 2 | ⛔ P0 | **Step 1**: counts stay counts | Wrong numbers on screen today |
-| 3 | ⛔ P0 | **Step 2**: merge without losing data | A second upload erases the first; rows don't merge |
-| 4 | ⛔ P0 | **Step 3**: dates | `September 2026` becomes Aug 31 in Cairo |
+| 2 | ✅ done | **Step 1** (2026-11-08): counts stay counts | Wrong numbers on screen today |
+| 3 | ✅ done | **Step 2** (2026-11-09): merge without losing data | A second upload erases the first; rows don't merge |
+| 4 | ✅ done | **Step 3** (2026-11-09): dates | `September 2026` becomes Aug 31 in Cairo |
 | 5 | ⛔ P0 | **Step 4**: storage (silent data loss) **and AI off by default** (data leaving the PC) | Both break a rule of yours |
 | 6 | 🟡 P1 | **Steps 5–7b**: recipes, folder link, live refresh, Google Sheets | The goal features, built on the fixed foundation |
 | 7 | 🟡 P1 | **Step 8**: Sales, Absenteeism, AUX, floor-level rows | New data types |
@@ -163,7 +163,14 @@ Format: `[ ]` open · `[x]` done. Codes in brackets point to sections below: **B
 - [x] Missing values stay null for calls, AHT, VXS, resolve2hr, resolve3d (not 0) [X2]. Done in new `dashboard/dayRecord.ts` (`buildDayRecord`, moved out of `batchImport.ts` so it can be tested): a missing value, `-`, `n/a` or other non-number text is null; a real 0 stays 0. A day with no `calls` is no longer marked off (`isOff` only when calls is a real 0). Full `isOff` rework stays in Step 8.
 - [x] Remove invented survey counts (the 5% rule in `helpers.ts`) [X3]. Done in `aggregateRecords`: a day with only a VXS % adds no surveys or promoters. The agent still shows the plain mean of the reported % when it has no real counts at all; floor and supervisor rollups use real counts only and show blank when there are none. Fake-data check: floor 53.6% -> 50.0%, and a 1,000-call VXS-only agent 70% -> 50%.
 - Done 2026-11-09: tested in Chromium with two overlapping fake files (300K rows, 225,000 agent-days, 75,000 shared): upload A, then B. Before Step 2: 6,000 agents, 300,000 agent-days, calls 7,350,000 (doubled), 3,000 supervisors turned "Unknown". After: 3,000 agents, 225,000 agent-days, calls 5,512,500, A's surveys, promoters and supervisors all kept, B's handoffs added (ran). Re-run: `tools/make-fake-overlap-files.mjs` + `tools/e2e_merge_scale.mjs` (header of the second file says how).
-- Still open, not part of this step: rate fields (AHT, VXS, ...) across two files still follow the "rate calculation" dropdown (average or weighted). Once data is loaded the app has no visible "add another file" button (the landing page shows only when there is no data); the test passes file B to the same import function the landing page uses.
+- Still open, not part of this step: once data is loaded the app has no visible "add another file" button (the landing page shows only when there is no data). The browser test passes file B to the same import function the landing page uses (`dashData.handleAutomaticImport`).
+- [ ] **PARKED 2026-11-09 (he is not sure yet; do not build until he says OK): rate fields across two files.** AHT, VXS, resolve 2hr/3d, hold and similar rates still follow the "Rate calculation" dropdown when two files give a value for the same agent + day.
+  - His rule: new files bring different metrics; the same KPI in two files only differs when one is an update, so the newer file is the latest number.
+  - Today (ran, fake data): file A AHT 300, VXS 80, hold 20 and file B AHT 400, VXS 90, hold 30, uploaded together, give AHT 350, VXS 85, hold 25 for both dropdown settings. Uploaded one after the other, the newer wins (400, 90, 30). So the result depends on the upload order.
+  - Proposal: add a third style "Newer file wins" and make it the default; keep "Arithmetic average" and "Weighted by counts" as options. A value missing in the newer file keeps the older one. Expected: 400, 90, 30 either way.
+  - Where (read): `import/mergeData.ts` (rate strategy about lines 170-180, average branch about 343-357), `config.ts` line 71, `account-profile-schema.ts` line 238, `ImportLanding.tsx` lines 34 and 345. The dropdown is used only in `mergeData.ts` line 344.
+  - Tests to write first: A 300 then B 400 gives 400; missing in B keeps A; average and weighted still work when chosen.
+  - Risk: an account that already saved "Arithmetic average" keeps averaging until it switches (check how the saved choice is stored).
 
 ### Step 3: Dates
 - [x] `September 2026`, `Sep-26`, `Sep 5, 2026`, `9/2026` parse to the correct date in Cairo time [X1]
@@ -256,6 +263,7 @@ Other cleanup:
 3. **Samples (needed before step 8 only):** one file per type (VOC, Sales, Absenteeism, AUX) with headers and 3–5 rows. Fake the agent names if you like.
 4. ✅ **Look (decided 2026-11-09):** the light mint design in `docs/frontend-design.md`, not a dark canvas. Still to confirm: the hero, action queue and Data Health panel on that look. An HTML mock-up comes first, before any UI is built. Note: `docs/frontend-design.md` proposes a light mint-grey base with forest green and peach instead of a dark canvas. Which look do you want: dark or the light mint one?
 5. **Policy (before step 7b):** does the company allow agent-level data in Google Sheets? Which Google account holds the sheets: personal or company?
+6. **Rates across files (parked, see Step 2):** should "newer file wins" be the default for AHT, VXS and other rates when two files give the same agent + day? He said same KPI in two files means an update, but is not sure about changing the default yet.
 
 ---
 
@@ -265,11 +273,11 @@ Test used: 2 agents × 10 calls per file.
 
 | # | Bug | Status | Verified cause |
 |---|---|---|---|
-| 1 | Resolve 2Hr/3Day counts vanish | 🟡 half-fixed | The old dead-tag cause is already guarded: `Resolve_2Hr_Count` now maps to `resolveTotalContacts2hr`. The live cause is that `aggregateTransactions` divides counts by row count, so 8 flagged of 10 calls becomes **0.8**. With no pass column the 2HR % never computes and the gauge stays empty. |
-| 2 | Transfer_logs handoffs wrong after merge | 🔴 open | Three causes stack. Handoffs count 2 becomes **0.2**. The Transfer file has no Supervisor, so its merge key differs and 6 rows become 4 (expected 2). `calls` is summed across files: 10 + 10 = **20**. A later upload then overwrites (B1). |
+| 1 | Resolve 2Hr/3Day counts vanish | 🟢 fixed (step 1) | The old dead-tag cause is already guarded: `Resolve_2Hr_Count` now maps to `resolveTotalContacts2hr`. The live cause is that `aggregateTransactions` divides counts by row count, so 8 flagged of 10 calls becomes **0.8**. With no pass column the 2HR % never computes and the gauge stays empty. **Update 2026-11-08:** step 1 stopped the division; counts are summed (`SUMMED_COUNT_FIELDS`). The 2HR gauge still needs a pass or percent column (see Step 1). |
+| 2 | Transfer_logs handoffs wrong after merge | 🟢 fixed (steps 1–2) | Three causes stack. Handoffs count 2 becomes **0.2**. The Transfer file has no Supervisor, so its merge key differs and 6 rows become 4 (expected 2). `calls` is summed across files: 10 + 10 = **20**. A later upload then overwrites (B1). **Update 2026-11-09:** all three causes fixed (counts stay counts, merge key = agent + date, `calls` not summed). Browser-tested with two overlapping 300K-row fake files (ran). |
 | 3 | Mapping prompts for obvious fields | 🟢 mostly fixed | Only "Calls Handle Time" still asks. Your e2e screenshot pre-selects "Calls" while the engine's own guess is AHT. Two mapping engines (preview scoring vs importer) can disagree: with text-like sample values, CCMS is unmapped in one and `employeeId` in the other. |
 | 4 | Pivot CSVs not detected | 🔴 open | `Row Labels`, `Sum of Calls`, `Average of CSAT` all map to nothing with no warning. The sheet selector keeps a sheet named "Pivot". |
-| 5 | `@ts-nocheck` hides code from `tsc` | 🟡 open | **8 files, 2,529 of 20,275 lines (12%)** (ran, counted on 2026-11-08): `shared.tsx`, `menus.tsx`, `App.tsx`, `hooks.ts`, `helpers.ts`, `config.ts`, `metrics.ts`, `emptyColumns.ts`. "tsc clean" does not cover them. (My first audit said 13 files and 27%. That was wrong: it counted files that only mention the word in a comment.) |
+| 5 | `@ts-nocheck` hides code from `tsc` | 🟡 open | **8 files, 2,529 of 20,275 lines (12%)** (ran, counted on 2026-11-08): `shared.tsx`, `menus.tsx`, `App.tsx`, `hooks.ts`, `helpers.ts`, `config.ts`, `metrics.ts`, `emptyColumns.ts`. "tsc clean" does not cover them. (My first audit said 13 files and 27%. That was wrong: it counted files that only mention the word in a comment.) **Update 2026-11-09 (ran):** now 10 files, 3,547 lines: `App.tsx`, `menus.tsx`, `shared.tsx`, `batchImport.ts`, `hooks.ts`, `metrics.ts`, `persistence.ts`, `state.ts`, `timeframe.ts`, `uploadFlow.ts`. `helpers.ts`, `config.ts` and `emptyColumns.ts` are cleaned. The list of 8 above missed `batchImport.ts`, `persistence.ts`, `state.ts`, `timeframe.ts` and `uploadFlow.ts`. |
 
 ---
 
@@ -277,11 +285,11 @@ Test used: 2 agents × 10 calls per file.
 
 | | Area | Evidence |
 |---|---|---|
-| ⛔ | **B1** A second upload replaces the same agent+day | `batchImport.ts:183` assigns the whole record (read) |
+| ✅ | **B1** A second upload replaces the same agent+day | `batchImport.ts:183` assigns the whole record (read) **Fixed 2026-11-09** (step 2): `mergeDayRecord` merges into the stored day; browser-tested (ran). |
 | ⛔ | **B2** Rows with no agent name are deleted | `validation.ts` drops them (read) |
-| ⛔ | **B3** Merge key includes supervisor + location + ID | the same agent+day from two files doesn't merge (ran) |
+| ✅ | **B3** Merge key includes supervisor + location + ID | the same agent+day from two files doesn't merge (ran) **Fixed 2026-11-09** (step 2): key = agent (ID or name) + date (ran). |
 | ⛔ | **B4** `localStorage` cap | ~10.7 MB for 100 agents × 12 months vs ~5 MB cap. On overflow it keeps data in RAM only and loses it on reload (ran, size measured on synthetic data) |
-| ⛔ | **B5** Count fields divided by row count | see bugs 1 and 2 (ran) |
+| ✅ | **B5** Count fields divided by row count | see bugs 1 and 2 (ran) **Fixed 2026-11-08** (step 1) (ran). |
 | ⛔ | **C1** AI: data leaves the browser | `hooks.ts:236` posts dashboard data (roster, supervisors, series) to `api.anthropic.com` from the browser, with no key and no backend. Three tabs fire it on open (read). The old effect that fired on every state change is gone. |
 | 🔴 | File System Access API, IndexedDB, `lastModified` polling, recipes | 0 hits in the repo (ran) |
 | 🔴 | Sales, absenteeism, AUX, floor-level VOC | `Sales`, `Absent Days`, `AUX Break`, `Login Hours` map to nothing (ran) |
@@ -291,7 +299,7 @@ Test used: 2 agents × 10 calls per file.
 | 🟡 | `mappingMemory` | stores header→field only. No sheet, header row, date format or filename detection, so it is not a recipe (read) |
 | 🟡 | Account profile | closest thing to a recipe, but per account, not per file type (read) |
 | 🟡 | Main-thread work | confirm path = 0.87 s CPU at 300K rows in Node. Expect a 1–3 s hitch in Chrome; to be measured there (ran) |
-| 🟢 | Quality gates | `tsc` clean, 274/274 tests pass, lint warnings only (ran) |
+| 🟢 | Quality gates | `tsc` clean, 422/422 tests pass (2026-11-09), lint warnings only (ran) |
 | 🟢 | Worker XLSX parse, Excel serial dates, sheet filtering | ran |
 | 🟢 | Repeated and Chronic Offenders modules | pure functions with tests (read) |
 | 🟢 | Alias engine in `importPolicy.ts` | only 1 of 11 real headers still prompts (ran) |
@@ -304,13 +312,13 @@ Test used: 2 agents × 10 calls per file.
 | Sev | Finding | Evidence |
 |---|---|---|
 | ⛔ | **X1 Month-label dates land in the wrong month in Cairo time.** `September 2026` → **2026-08-31**. `Sep-26` → 2001-09-25. `Sep 5, 2026` → Sep 4. `9/2026` → null. A VOC sheet named "Sep" is never read as the month. **Update:** the date text is now parsed correctly (step 3, change 1, `import/dateText.ts`, 14 tests); the sheet-name part is fixed too (change 3, `import/sheetMonth.ts`); the import preview now shows the order and asks for a missing year (`DatesSection.tsx`). | ran |
-| 🔴 | **X2 Missing is saved as 0** for calls, AHT, VXS, resolve2hr, resolve3d. A Sales-only file would write VXS 0 and AHT 0. | read |
-| 🔴 | **X3 Invented survey counts.** When only a VXS % exists, `helpers.ts` sets surveys = max(1, round(calls × 5%)), which skews weighted CSAT. | read |
+| ✅ | **X2 Missing is saved as 0** for calls, AHT, VXS, resolve2hr, resolve3d. A Sales-only file would write VXS 0 and AHT 0. | read **Fixed 2026-11-09** (step 2): `buildDayRecord` in `dayRecord.ts`; missing, `-` and `n/a` stay null, a real 0 stays 0 (ran). |
+| ✅ | **X3 Invented survey counts.** When only a VXS % exists, `helpers.ts` sets surveys = max(1, round(calls × 5%)), which skews weighted CSAT. | read **Fixed 2026-11-09** (step 2): the 5% rule is gone; floor figures use real counts only (ran). |
 | 🟡 | **X4** `isOff = calls === 0` drops absent and AUX-only days from rollups. | read |
 | 🟡 | **X5** Trend column compares a period with itself in monthly view, so it always shows "STABLE +0.00%". VXS only. | ran, seen live |
 | 🟡 | **X6** Two offender systems with different rules: Chronic Offenders (3+ months) and Repeated Offenders (2+ consecutive). | read |
 | 🟡 | **X7** Dates default to DD/MM silently, with no per-file setting. **Update:** order is now detected per sheet (`import/dateText.ts`, `detectDateOrder`); a sheet with no proof still defaults to DD/MM, but the import preview now warns and lets you switch (`DatesSection.tsx`). | ran |
-| 🟡 | **X8** Repo hygiene: 5 Python scripts, 3 PNGs and `.tmp_test` in the root. README says 8 tabs; there are 9. | ran |
+| ✅ | **X8** Repo hygiene: 5 Python scripts, 3 PNGs and `.tmp_test` in the root. README says 8 tabs; there are 9. | ran **Fixed** (step 10, commit 5108eb0): scripts moved to `tools/`, PNGs and `.tmp_test` removed, README says 9 tabs. |
 | ⛔ | **X9 (new, found 2026-11-09)** In the Chronic Offenders tab, clicking the coaching-plan button throws `TypeError: setUploadStatus is not a function` (`FloorOffendersTab.tsx:106`). The tab reads `setUploadStatus` and `scheduleStatusClear` from the dashboard data, but the hook's returned object does not include them. Same failure class as C4, on `dashData` instead of `aiTools`. Not fixed yet; needs his OK. | ran |
 
 ---
