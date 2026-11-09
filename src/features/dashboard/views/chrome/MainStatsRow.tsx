@@ -2,6 +2,7 @@
 import React, { useMemo } from 'react';
 import { useDashboard } from '../../hooks';
 import { DonutChart } from '../../../../components/shared';
+import { CountUp } from './CountUp';
 import { getDynamicTarget, METRIC_CONFIG, getDynamicMax } from '../../config';
 
 // ─── KPI Summary Row ──────────────────────────────────────
@@ -30,8 +31,8 @@ export const MainStatsRow = React.memo(() => {
           <div>
             <h2 className="metric-card-title">{dashData.activeTimeframe === 'monthly' ? (dashData.selectedMonth === 'all' ? 'All Months' : dashData.monthLabel(dashData.selectedMonth)) : 'Month To Date'}</h2>
             <div className="flex gap-3 mt-2">
-              <span className="text-xs text-slate-400 bg-slate-800 py-1 px-2 rounded">Calls Handled: <strong className="text-white">{metrics.mtdLeaderData.calls ? metrics.mtdLeaderData.calls.toLocaleString() : '-'}</strong></span>
-              <span className="text-xs text-slate-400 bg-slate-800 py-1 px-2 rounded">Res Contacts: <strong className="text-white">{metrics.mtdLeaderData.resolveTotalContacts ? metrics.mtdLeaderData.resolveTotalContacts.toLocaleString() : '-'}</strong></span>
+              <span className="text-xs text-slate-400 bg-slate-800 py-1 px-2 rounded">Calls Handled: <strong className="text-white">{metrics.mtdLeaderData.calls ? <CountUp value={metrics.mtdLeaderData.calls} grouped /> : '-'}</strong></span>
+              <span className="text-xs text-slate-400 bg-slate-800 py-1 px-2 rounded">Res Contacts: <strong className="text-white">{metrics.mtdLeaderData.resolveTotalContacts ? <CountUp value={metrics.mtdLeaderData.resolveTotalContacts} grouped /> : '-'}</strong></span>
             </div>
           </div>
           <span className="bg-red-900 bg-opacity-20 text-red-300 py-1 px-2 rounded text-xs font-bold">MONTH-END STRATEGY</span>
@@ -56,7 +57,7 @@ export const MainStatsRow = React.memo(() => {
               return (
                 <div key={key} className="bg-slate-900 border border-slate-800 p-3 rounded-lg flex flex-col">
                   <span className="text-xs text-slate-500 uppercase font-extrabold tracking-wide">{config.label}</span>
-                  <span className={`text-lg font-bold mt-1 ${isGood ? 'text-emerald-400' : 'text-red-400'}`}>{displayVal}{config.format}</span>
+                  <span className={`text-lg font-bold mt-1 ${isGood ? 'text-emerald-400' : 'text-red-400'}`}>{displayVal === '-' ? displayVal : <CountUp value={Number(val)} decimals={config.isInteger ? 0 : 2} />}{config.format}</span>
                 </div>
               );
             })}
@@ -74,8 +75,8 @@ export const MainStatsRow = React.memo(() => {
               {spotterPrefix} <span className="text-sm text-slate-400 italic ml-2 font-normal">({spotterDate})</span>
             </h2>
             <div className="flex gap-3 mt-2">
-              <span className="text-xs text-slate-400 bg-slate-800 py-1 px-2 rounded">Calls Handled: <strong className="text-white">{metrics.activeLeaderData.calls ? metrics.activeLeaderData.calls.toLocaleString() : '-'}</strong></span>
-              <span className="text-xs text-slate-400 bg-slate-800 py-1 px-2 rounded">Res Contacts: <strong className="text-white">{metrics.activeLeaderData.resolveTotalContacts ? metrics.activeLeaderData.resolveTotalContacts.toLocaleString() : '-'}</strong></span>
+              <span className="text-xs text-slate-400 bg-slate-800 py-1 px-2 rounded">Calls Handled: <strong className="text-white">{metrics.activeLeaderData.calls ? <CountUp value={metrics.activeLeaderData.calls} grouped /> : '-'}</strong></span>
+              <span className="text-xs text-slate-400 bg-slate-800 py-1 px-2 rounded">Res Contacts: <strong className="text-white">{metrics.activeLeaderData.resolveTotalContacts ? <CountUp value={metrics.activeLeaderData.resolveTotalContacts} grouped /> : '-'}</strong></span>
             </div>
           </div>
           <span className="bg-red-900 bg-opacity-20 text-red-300 py-1 px-2 rounded text-xs font-bold">DAILY EXECUTION</span>
@@ -98,7 +99,7 @@ export const MainStatsRow = React.memo(() => {
               return (
                 <div key={key} className="bg-slate-900 border border-slate-800 p-3 rounded-lg flex flex-col">
                   <span className="text-xs text-slate-500 uppercase font-extrabold tracking-wide">{config.label}</span>
-                  <span className={`text-lg font-bold mt-1 ${isGood ? 'text-emerald-400' : 'text-red-400'}`}>{displayVal}{config.format}</span>
+                  <span className={`text-lg font-bold mt-1 ${isGood ? 'text-emerald-400' : 'text-red-400'}`}>{displayVal === '-' ? displayVal : <CountUp value={Number(val)} decimals={config.isInteger ? 0 : 2} />}{config.format}</span>
                 </div>
               );
             })}

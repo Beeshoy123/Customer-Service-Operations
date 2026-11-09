@@ -418,7 +418,7 @@ export default function App() {
               {/* ==== Floor board / roster content (sidebar-driven) ==== */}
               <div className="flex flex-col gap-4 mb-16">
                 {/* ==== Tab content switcher ==== */}
-                <div className="roster-container">
+                <div className="roster-container tab-panel" key={mainTab}>
                   {mainTab === 'roster'      && <FloorRosterTab />}
                   {mainTab === 'outliers'    && <FloorOutliersTab />}
                   {mainTab === 'apprentice'  && <FloorApprenticeTab />}

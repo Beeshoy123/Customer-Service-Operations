@@ -157,10 +157,16 @@ button, input, select, textarea { font-family: inherit; }
   cursor: pointer;
 }
 .sidebar-item:hover { background: rgba(255, 255, 255, .09); color: #fff; }
-.sidebar-item.active {
+.sidebar-item.active { color: var(--sb-mint); }
+/* One highlight that slides to the active item (see SidebarNav.tsx) */
+.sidebar-glow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border-radius: 14px;
   background: rgba(123, 224, 176, .18);
-  color: var(--sb-mint);
   box-shadow: 0 0 0 1px rgba(123, 224, 176, .35), 0 0 18px rgba(123, 224, 176, .35);
+  pointer-events: none;
 }
 .sidebar-item:focus-visible,
 .sidebar-toggle:focus-visible,
@@ -216,12 +222,27 @@ button, input, select, textarea { font-family: inherit; }
   .sidebar-nav { transition: width .28s ease; }
   .workspace-col { transition: margin-left .28s ease; }
   .sidebar-item { transition: background-color .2s ease, color .2s ease, box-shadow .25s ease; }
+  .sidebar-glow { transition: transform .4s cubic-bezier(.3, 1.25, .5, 1), width .28s ease, height .28s ease; }
+
+  /* Entrance: the two KPI cards and the tab panel rise in one after another.
+     fill-mode backwards (not both) so the end state does not block card hover. */
+  .stats-row > :nth-child(1) { --i: 0; }
+  .stats-row > :nth-child(2) { --i: 1; }
+  .metric-card, .roster-container {
+    animation: cso-rise .42s cubic-bezier(.2, .8, .2, 1) backwards;
+    animation-delay: calc(var(--i, 2) * 60ms);
+  }
+  /* Tab switch: the new panel fades in with a small rise (the key on it in App.tsx replays this) */
+  .roster-container.tab-panel { animation-name: cso-tab-in; animation-duration: .28s; animation-delay: 0s; }
   .sidebar-toggle { transition: background-color .2s ease; }
   .sidebar-toggle svg { transition: transform .28s ease; }
   .sidebar-chevron-icon { transition: transform .15s ease; }
   .sidebar-item-label, .sidebar-brand-text { transition: opacity .18s ease; }
   .sidebar-folder-header { transition: color .15s ease, opacity .18s ease; }
 }
+
+@keyframes cso-rise { from { opacity: 0; transform: translateY(14px); } }
+@keyframes cso-tab-in { from { opacity: 0; transform: translateY(8px); } }
 
 /* ─── Right workspace: slim utility navbar ─────────────────────── */
 .top-navbar { padding: 12px 40px; }

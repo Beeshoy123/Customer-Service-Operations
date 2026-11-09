@@ -122,6 +122,29 @@ export const SidebarNav = React.memo(() => {
   const narrow = useIsNarrow();
   const collapsed = userCollapsed || narrow;
 
+  // Sliding glow: one mint highlight that moves to the active item (part A of
+  // the animation plan). It is measured from the real button, so it follows the
+  // folders opening/closing and the panel width change.
+  const navRef = React.useRef<HTMLElement>(null);
+  const [glow, setGlow] = React.useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const measureGlow = React.useCallback(() => {
+    const nav = navRef.current;
+    const item = nav?.querySelector<HTMLElement>('.sidebar-item.active');
+    if (!nav || !item) { setGlow(null); return; }
+    const n = nav.getBoundingClientRect();
+    const r = item.getBoundingClientRect();
+    const next = { x: r.left - n.left, y: r.top - n.top + nav.scrollTop, w: r.width, h: r.height };
+    setGlow(g => (g && g.x === next.x && g.y === next.y && g.w === next.w && g.h === next.h ? g : next));
+  }, []);
+  React.useLayoutEffect(measureGlow, [measureGlow, activeId, collapsed, openFolders]);
+  React.useEffect(() => {
+    const nav = navRef.current;
+    if (!nav || typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(measureGlow);
+    ro.observe(nav);
+    return () => ro.disconnect();
+  }, [measureGlow]);
+
   // The workspace column reads this flag from <html> (see layout.css) so it
   // slides in step with the panel without App.tsx knowing about it.
   React.useLayoutEffect(() => {
@@ -137,7 +160,14 @@ export const SidebarNav = React.memo(() => {
   };
 
   return (
-    <nav id="dashboard-sidebar" className={`sidebar-nav${collapsed ? ' collapsed' : ''}`} aria-label="Dashboard sections">
+    <nav ref={navRef} id="dashboard-sidebar" className={`sidebar-nav${collapsed ? ' collapsed' : ''}`} aria-label="Dashboard sections">
+      {glow && (
+        <span
+          className="sidebar-glow"
+          aria-hidden="true"
+          style={{ width: glow.w, height: glow.h, transform: `translate(${glow.x}px, ${glow.y}px)` }}
+        />
+      )}
       <div className="sidebar-brand">
         <span className="sidebar-brand-mark" aria-hidden="true">CSO</span>
         <span className="sidebar-brand-text">Customer Service<br />Operations</span>

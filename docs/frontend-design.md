@@ -204,32 +204,28 @@ When done, list every file changed and run the build to confirm it passes.
 
 All animation uses plain CSS and small bits of React. No animation library.
 
-**Preferences**
-- Sidebar expand/collapse is smooth, with labels fading out (built in step 2).
-- Cards lift slightly on hover (built in step 4).
-- Entrance animation: cards fade and slide up when a tab opens, one after another (staggered).
-- Number count-up: stat numbers tick up to their value.
-- Sparkline draw: the mini graph lines draw themselves in.
-- Smooth tab switching: content fades between pages.
-- Glow transition: the mint glow eases onto the active sidebar icon instead of snapping.
-- Everything is switched off for people who have reduced motion turned on in their device settings.
+**Status (2026-11-09):** parts A and B are built and browser-tested on fake data (15 of 15 checks, ran). Part C waits for sparklines.
 
-**Prompt**
+| Part | What | Where | Status |
+|---|---|---|---|
+| A | Two KPI cards and the tab panel rise in (14px, 60ms apart, 0.42s) | `layout.css` (`cso-rise`) | done |
+| A | Tab switch: new panel fades in with an 8px rise (0.28s); `key={mainTab}` replays it | `layout.css` (`cso-tab-in`), `App.tsx` | done |
+| A | One mint glow slides to the active sidebar item; follows folder open/close and panel collapse | `SidebarNav.tsx`, `layout.css` (`.sidebar-glow`) | done |
+| B | Numbers count up over 800ms (ease-out); new value takes over from the number on screen | `views/chrome/CountUp.tsx`, `MainStatsRow.tsx` | done |
+| C | Sparkline line draws itself in (900ms, `stroke-dashoffset`) | none yet | parked until sparklines exist (F4/F7) |
+
+**Rules that hold**
+- All motion sits inside `@media (prefers-reduced-motion: no-preference)`; `CountUp` also shows the final number at once when reduced motion is on or `matchMedia` is missing.
+- Only `transform` and `opacity` animate (the glow also eases width and height).
+- The entrance uses fill-mode `backwards`, so the end state never blocks the card hover lift.
+- Sidebar expand/collapse (step 2) and the card hover lift (step 4) were built earlier.
+
+**Prompt for part C (use when sparklines exist)**
 
 ```
-I am revamping my React 19 + TypeScript + Vite dashboard (plain CSS, no UI or icon libraries, no animation libraries, no new dependencies). I will upload the repo zip. The sidebar, glass cards and stat cards are already restyled.
+React 19 + TypeScript + Vite dashboard, plain CSS, no new dependencies. Parts A and B of docs/frontend-design.md section 6 are done.
 
-Task: Add the animation layer only.
-- Entrance animation: when a tab opens, its cards fade in and slide up about 12-16px, staggered by roughly 60ms each (use a CSS variable like --i for the index). Keep each animation under 500ms.
-- Number count-up: build a small reusable React hook/component (for example useCountUp) that animates stat numbers from 0 to their value over about 800ms using requestAnimationFrame with an ease-out curve. It must handle decimals, percentages and currency formatting, and must show the final value immediately if the value changes rapidly or the user prefers reduced motion.
-- Sparkline draw: for the inline SVG sparklines, animate stroke-dashoffset so the line draws itself in over about 900ms.
-- Tab switching: fade (and a tiny slide) the workspace content when the active tab changes, without remounting heavy components unnecessarily and without any layout jump.
-- Glow transition: the mint glow on the active sidebar icon should ease between items (transition on background, box-shadow and transform) instead of snapping.
-- Wrap all motion in @media (prefers-reduced-motion: no-preference) so it is disabled for people who prefer reduced motion.
-- Only animate transform and opacity where possible, for smooth performance.
-- Do not change data logic or component behavior.
+Task: animate the inline SVG sparklines only. The line draws itself in over about 900ms by animating stroke-dashoffset (set stroke-dasharray from the path length). Wrap it in @media (prefers-reduced-motion: no-preference). Do not change data logic or component behavior.
 
-Style reference: a polished dashboard where cards float in one after another, numbers tick up, small graph lines draw themselves, and the active menu glow slides smoothly between items.
-
-When done, list every file changed and run the build to confirm it passes.
+Run tsc -b, npm test, npm run lint and npm run build before committing to main.
 ```
