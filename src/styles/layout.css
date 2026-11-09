@@ -29,9 +29,9 @@ button, input, select, textarea { font-family: inherit; }
 .workspace-col { margin-left: calc(var(--sb-w) + var(--sb-gap) * 2); }
 
 .sidebar-nav {
-  --sb-forest: #1f4d3f;
-  --sb-mint: #7be0b0;
-  --sb-peach: #f6a77c;
+  --sb-forest: var(--cso-forest);
+  --sb-mint: var(--cso-mint);
+  --sb-peach: var(--cso-peach);
   position: fixed;
   top: var(--sb-gap);
   left: var(--sb-gap);

@@ -44,6 +44,11 @@ Review each step in the browser before moving to the next.
 
 ## 1. Background and colors
 
+**Status, split in two commits (decided 2026-11-09):**
+- **1a built 2026-11-09:** shared color names in `src/styles/index.css` (prefixed `--cso-`: base, forest, forest-deep, mint, peach, three tints, shadow, canvas gradient). The page behind everything (`.analyst-dashboard`) now uses the soft mint/peach/blue gradient, fixed in place. The sidebar reads its colors from these names. Radii and glass tokens are not added yet: they arrive with step 4 (Cards), when they are first used.
+- **1b next:** recolor the top bar (forest), metric cards and table header (forest-deep), and the old blue accents (mint on dark parts, forest on light parts). Colors only. Red, amber and green status colors stay, with a lighter red on dark cards (contrast checked, ran). Card shape, glass, rounded corners and hover lift stay for steps 4 to 6.
+- Hard borders to soft shadows: left for step 4 with the cards.
+
 **Preferences**
 - Use the V22 palette: mint-grey base, forest green, mint glow, peach accents.
 - Soft frosted gradient behind everything, so the glass effect is visible.

@@ -15,6 +15,27 @@
   --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
   --mono: ui-monospace, Consolas, monospace;
 
+  /* Light mint look (docs/frontend-design.md). The dashboard's own colors.
+     Prefixed --cso- so they never clash with the Vite template names above.
+     Contrast (ran 2026-11-09): white on forest 9.6:1, mint on forest 6.0:1.
+     Mint is for dark surfaces only (1.4:1 on the pale base). */
+  --cso-base: #e9f0ec;          /* page base, soft mint-grey */
+  --cso-forest: #1f4d3f;        /* sidebar, top bar */
+  --cso-forest-deep: #163a30;   /* cards, table header (keeps status red readable) */
+  --cso-mint: #7be0b0;          /* glow / accent on dark surfaces */
+  --cso-peach: #f6a77c;         /* highlights, badges */
+  --cso-tint-mint: #ddf3e8;
+  --cso-tint-peach: #fce3d4;
+  --cso-tint-blue: #dcebf7;
+  --cso-shadow: 0 10px 30px rgba(31, 77, 63, 0.1);
+  /* Soft frosted gradient behind the whole app: mint bottom-left, a hint of
+     peach top-right, a hint of light blue bottom-right, over the base. */
+  --cso-canvas:
+    radial-gradient(55% 45% at 92% 0%, var(--cso-tint-peach) 0%, transparent 65%),
+    radial-gradient(60% 55% at 100% 100%, var(--cso-tint-blue) 0%, transparent 65%),
+    radial-gradient(70% 60% at 0% 100%, var(--cso-tint-mint) 0%, transparent 70%),
+    var(--cso-base);
+
   font: 18px/145% var(--sans);
   letter-spacing: 0.18px;
   color-scheme: light dark;
