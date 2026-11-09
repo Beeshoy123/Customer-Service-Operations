@@ -21,6 +21,16 @@ The owner (Beeshoy) is a call-center team leader and a **beginner at coding**.
 6. Before every commit run: `npx tsc -b`, `npm test`, `npm run lint`, `npm run build`. Baseline 2026-11-09: tsc clean, 429/429 tests pass, lint 0 errors.
 7. **Commit straight to `main`. No branches, no pull requests.** One commit per step.
 
+## Run the checks (copy and paste)
+```
+npm ci                                   # once per fresh clone
+npx tsc -b && npm test && npm run lint && npm run build
+npm run dev -- --port 5173               # leave running, then in a second terminal:
+python3 tools/e2e_animation.py           # browser check on fake data, expect 15/15
+```
+Browser tests need `pip install playwright && playwright install chromium`. Other browser scripts are in `tools/` (the header of each says how to run it). Never use real agent data in them.
+Stop the dev server with `pkill -f "[v]ite"` in a command of its own. If that same command contains the word vite anywhere else (a log file name, say), pkill kills its own shell.
+
 ## Safety: this repo is PUBLIC
 - Never commit real agent data (no CSV/XLSX/XLS, no real names or IDs, no screenshots of real data). Fake names only.
 - Never commit secrets or tokens. Never ask him to paste a token into a chat.
