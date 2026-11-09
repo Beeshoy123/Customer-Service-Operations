@@ -16,7 +16,7 @@ The owner (Beeshoy) is a call-center team leader and a **beginner at coding**.
 1. **Propose first and wait for his OK.** One checklist step at a time. No unsolicited changes.
 2. Confirm data and math first. Test with real-scale data in a real browser, not only mocks.
 3. Edit existing code. Do not rebuild.
-4. UI: dark theme with color-coding. Show an HTML mock-up and get confirmation before building any design.
+4. UI: follow `docs/frontend-design.md` (light mint look, chosen 2026-11-09), keep color-coding. Show an HTML mock-up and get confirmation before building any design.
 5. Mapping and alias fixes go **only** in `src/features/dashboard/import/importPolicy.ts`.
 6. Before every commit run: `npx tsc -b`, `npm test`, `npm run lint`, `npm run build`. Baseline 2026-11-08: tsc clean, 274/274 tests pass.
 7. **Commit straight to `main`. No branches, no pull requests.** One commit per step.

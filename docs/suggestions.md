@@ -27,7 +27,7 @@ The owner (Beeshoy) is a call-center team leader and a **beginner at coding**. H
 1. **Propose first, wait for his OK.** No code changes before he approves. One checklist step at a time.
 2. **Confirm data and math first.** Test with real-scale data (300K+ rows) in a real browser, not only mocks or unit tests.
 3. **Edit the existing code. Do not rebuild.** No rewrites he didn't ask for.
-4. **UI:** dark theme with color-coding. Never design without confirmation: show an HTML mock-up first.
+4. **UI:** follow `docs/frontend-design.md` (light mint look, his choice on 2026-11-09), keep color-coding. Never design without confirmation: show an HTML mock-up first.
 5. **Mapping and alias fixes go only in `importPolicy.ts`** (the repo's standing rule, full text in the Reference section below).
 6. **Before every commit run** `tsc -b`, `npm test`, `npm run lint` and `npm run build`. Baseline on 2026-11-08: tsc clean, 274/274 tests pass, lint 0 errors.
 7. **Commit straight to `main`. No branches, no pull requests** (his decision). One commit per step. Tick that step's `[ ]` box in this file in the same commit.
@@ -120,7 +120,7 @@ Most critical first. Codes in bold are the old item numbers; the checklist below
 | 13 | **S15** | 74 inline `style={{}}` blocks (ran) | Move to CSS while rewriting each file | M |
 | 14 | **S16** | Many inline arrow handlers | Name them or lift them while rewriting | M |
 | 15 | **S18** | ✅ Done 2026-11-09: long conditional `className` chains | Named class constants instead of long inline strings | S |
-| 16 | **Design gap** | Beige canvas with dark cards and mixed icons | Dark canvas, mint and gold colors, blue glow (7 ideas below). HTML mock-up first. | L |
+| 16 | **Design gap** | Beige canvas with dark cards and mixed icons | The light mint look in `docs/frontend-design.md` (build order and prompts are there). HTML mock-up first. | L |
 
 **⚪ Cosmetic: only when already editing the file**
 
@@ -140,6 +140,9 @@ Suggested sequence: 1 → 2 → 3, then 4–7 as one small cleanup, then everyth
 ## Checklist: what must change (cross off when done)
 
 Format: `[ ]` open · `[x]` done. Codes in brackets point to sections below: **B** = blocker (Backend scorecard), **K** = known bug, **X** = extra finding, **F** = frontend, **C** = AI/safety item, **U** = usability item.
+
+### Bugs found during work (fix when he approves)
+- [ ] **X9** Chronic Offenders coaching-plan button crashes: `setUploadStatus is not a function` (`FloorOffendersTab.tsx:106`). Make the hook return `setUploadStatus` and `scheduleStatusClear`, add a test, then re-check every tab for the same kind of missing member. Details in "Also found".
 
 ### Step 0: Safety net for the math (tests only)
 - [ ] Tests for `calculateBonus`: every tier boundary, missing and partial inputs [C3]
@@ -201,14 +204,14 @@ Format: `[ ]` open · `[x]` done. Codes in brackets point to sections below: **B
 - [ ] Replace `isOff = calls === 0` so absent and AUX-only days are not dropped [X4]
 
 ### Step 9: Combined view and redesign
-Design direction and ready-to-use build prompts for the look (colors, sidebar, layout, cards, headers, animation) are in [`docs/frontend-design.md`](frontend-design.md). Update that file as each part is built. **Open conflict:** it uses a light mint/forest-green palette, while the rule above says dark theme. He must choose before anything is built (see Decisions, item 4).
+Design direction and ready-to-use build prompts for the look (colors, sidebar, layout, cards, headers, animation) are in [`docs/frontend-design.md`](frontend-design.md). Update that file as each part is built. **Decided 2026-11-09:** he chose this light mint look (forest green, mint glow, peach) instead of a dark theme. Still no building without an HTML mock-up and his OK.
 Show an HTML mock-up and get his OK before building any of this.
 - [ ] One dashboard: floor × month × agent for Sales, VOC, Absenteeism, AUX
 - [ ] One briefing hero instead of two identical KPI cards; the two cards' duplicated markup becomes one component [F1, S17]
 - [ ] "Needs you" action queue [F2]
 - [ ] Data Health panel (files, rows, last modified, status) [F3]
 - [ ] Real trend (delta vs prior month plus sparkline) instead of always +0.00% [F4, X5]
-- [ ] One dark canvas, 4 domain colors, SVG icons instead of emoji (about 51 emoji-led labels, per the old audit) [F5, U1]
+- [ ] One light mint canvas with forest green, mint glow and peach accents (per `docs/frontend-design.md`), 4 domain colors, SVG icons instead of emoji (about 51 emoji-led labels, per the old audit) [F5, U1]
 - [ ] Collapsible icon rail [F6]
 - [ ] Bar charts, sparklines, daily drill-down, 4 domain tiles [F7]
 - [ ] Hover effects work. Hover dimming is done in JavaScript (`onMouseOver`/`onMouseOut`) in `TopNavbar`, `MainModal`, `FloorBurnoutTab`; on touch screens the buttons stay dim. Move to CSS `:hover`/`:focus-visible`, resting state fully visible [F8, U2]
@@ -249,7 +252,7 @@ Other cleanup:
 1. **Order:** is 0 → 10 OK, or do you want recipes earlier?
 2. **AI reports:** do you use them? If not, step 4 deletes them (simplest). If yes, they stay behind an off-by-default switch.
 3. **Samples (needed before step 8 only):** one file per type (VOC, Sales, Absenteeism, AUX) with headers and 3–5 rows. Fake the agent names if you like.
-4. **Look:** do you confirm a dark canvas with the hero, action queue and Data Health panel? An HTML mock-up comes first, before any UI is built. Note: `docs/frontend-design.md` proposes a light mint-grey base with forest green and peach instead of a dark canvas. Which look do you want: dark or the light mint one?
+4. ✅ **Look (decided 2026-11-09):** the light mint design in `docs/frontend-design.md`, not a dark canvas. Still to confirm: the hero, action queue and Data Health panel on that look. An HTML mock-up comes first, before any UI is built. Note: `docs/frontend-design.md` proposes a light mint-grey base with forest green and peach instead of a dark canvas. Which look do you want: dark or the light mint one?
 5. **Policy (before step 7b):** does the company allow agent-level data in Google Sheets? Which Google account holds the sheets: personal or company?
 
 ---
@@ -347,7 +350,7 @@ Method: I seeded 24 synthetic agents × 3 months and screenshotted the live app.
 | F2 | No "what needs me" surface. Offenders are buried in tabs. | "Waiting for you" queue | Action queue: repeat misses, absence spikes, AUX over target. |
 | F3 | No data freshness or file status. | "Evidence health" bars | **Data Health panel**: file, rows, last modified, status. This is the folder-link UI. |
 | F4 | Trend is always +0.00%. | Delta plus sparkline | Real delta vs prior month, plus a sparkline per tile. |
-| F5 | Beige canvas (`#f5f2eb`), dark cards and emoji icons are mixed. | One card system, one icon set | Your rule: one dark canvas, 4 domain colors, SVG icons. |
+| F5 | Beige canvas (`#f5f2eb`), dark cards and emoji icons are mixed. | One card system, one icon set | One canvas, 4 domain colors, SVG icons, in the light mint look from `docs/frontend-design.md`. |
 | F6 | 272 px fixed text sidebar. | Slim icon rail | Collapsible rail. |
 | F7 | Only chart is a hand-rolled ring; labels truncate ("HAND-OF…"). No bars, no daily drill-down. | Bar chart, stat cards with delta chips | Sparklines and bars, a daily drill-down, 4 domain tiles (Sales, VOC, Absence, AUX). |
 | F8 | Hover effects don't work. | Hover lift | CSS only. |
@@ -360,6 +363,8 @@ Frontend debt (ran):
 - No UI tests.
 
 ### Design ideas to carry into step 9 (from the landing page vs dashboard comparison)
+
+**Superseded 2026-11-09:** he chose the light mint look in `docs/frontend-design.md`. Ideas 1–4 below assumed a dark canvas and no longer apply. Ideas 5–7 (fluid headings, card hover lift, brand mark) can carry over.
 
 The landing page already has the look you want: `#0b0b0a` background with a soft blue glow, cards with a `#2c2c2a` border on `#151512`, mint `#5dcaa5` for "good", gold `#f0c674` for warnings, blue `#378add` for glow. The dashboard ignores all of it. Ideas, ordered by impact against effort; none is built yet:
 
