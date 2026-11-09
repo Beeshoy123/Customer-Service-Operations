@@ -17,6 +17,7 @@ import { readPersistedDashboardState, useDashboardPersistence } from './persiste
 import { useTimeframeSelectors } from './timeframe';
 import { useBatchImport } from './batchImport';
 import { useUploadFlow } from './uploadFlow';
+import { AI_ENABLED, AI_UNDER_CONSTRUCTION_TEXT } from './aiSwitch';
 import {
   agentMatchesSearch,
   aggregateTeamMetrics,
@@ -191,6 +192,8 @@ const _aiControllers = new Map();
 const delayForRetry = (attempt) => new Promise((resolve) => setTimeout(resolve, 1000 * 2 ** attempt));
 
 const fetchWithRetry = async (url, options, retries = 2, timeoutMs = 30000) => {
+  // Second lock: the only network call in the app refuses to run while AI is frozen.
+  if (!AI_ENABLED) throw new Error('AI is switched off (under construction)');
   let lastError = null;
 
   for (let attempt = 0; attempt <= retries; attempt += 1) {
@@ -220,7 +223,12 @@ const fetchWithRetry = async (url, options, retries = 2, timeoutMs = 30000) => {
   throw lastError || new Error('AI request failed');
 };
 
-const executeGeminiAction = async (context, systemPrompt, setStatusFn, setLoadingFn, errorMsg) => {
+export const executeGeminiAction = async (context, systemPrompt, setStatusFn, setLoadingFn, errorMsg) => {
+  // AI is frozen (see aiSwitch.ts): build no request, show "under construction" in the panel.
+  if (!AI_ENABLED) {
+    setStatusFn(AI_UNDER_CONSTRUCTION_TEXT);
+    return;
+  }
   const slotKey = setLoadingFn;
   if (_aiControllers.get(slotKey)?.active) return;
 
