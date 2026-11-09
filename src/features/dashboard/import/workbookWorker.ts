@@ -157,7 +157,7 @@ export const handleWorkerMessage = async (
               message: `Mapping ${sheet.sheetName}: ${processedRows.toLocaleString()} / ${totalRows.toLocaleString()} rows`,
             },
           });
-        }, options.mappingOverrides || {});
+        }, options.mappingOverrides || {}, options.dateOrder, (warning) => warnings.push(warning));
         const finalRows = detectGranularity(sheet).classification === 'transaction'
           ? aggregateTransactions(mappedRows)
           : mappedRows;

@@ -55,7 +55,8 @@ const TIME_SUFFIX =
 
 const WEEKDAY_PREFIX = /^(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*[,\s]+/i;
 
-const monthNumberFromWord = (word: string): number | null => {
+/** 1-12 for a month name or 3+ letter prefix (lower case), else null. */
+export const monthNumberFromWord = (word: string): number | null => {
   if (word.length < 3) return null;
   if (word === 'sept') return 9;
   const index = MONTH_NAMES.findIndex((name) => name.startsWith(word));

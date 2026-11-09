@@ -7,7 +7,8 @@
 
 import { FIELD_ALIASES, FIELD_COMPONENT_GROUPS, normalizeImportedValue, type NormalizeValueOptions, findCanonicalField, findPairedCountField, normalizeHeader } from './importPolicy';
 import { detectDateOrder, type DateOrder } from './dateText';
-import type { NormalizedRow, SheetTable } from './types';
+import { planSheetDate } from './sheetMonth';
+import type { ImportWarning, NormalizedRow, SheetTable } from './types';
 
 // S7: header normalization is owned solely by importPolicy.ts — `normalizeHeader`
 // is imported from there. A byte-identical private copy used to live here; it was
@@ -111,6 +112,7 @@ export const mapTableToNormalizedRows = (
   fileName: string,
   mappingOverrides: Record<string, string | null> = {},
   dateOrderChoice?: DateOrder,
+  onWarning?: (warning: ImportWarning) => void,
 ): NormalizedRow[] => {
   const headers = table.headerRow ?? [];
   if (!headers.length) {
@@ -141,6 +143,12 @@ export const mapTableToNormalizedRows = (
   }
 
   const dateOrder = resolveSheetDateOrder(rows, mappedHeaders, dateOrderChoice);
+  const sheetDatePlan = planSheetDate(
+    table.sheetName,
+    fileName,
+    mappedHeaders.some((header) => FIELD_ALIASES[header.mappedField]?.kind === 'date'),
+  );
+  if (sheetDatePlan.warning) onWarning?.(sheetDatePlan.warning);
   const normalizedRows: NormalizedRow[] = [];
 
   for (let r = 0; r < rows.length; r += 1) {
@@ -157,6 +165,7 @@ export const mapTableToNormalizedRows = (
     }
 
     if (Object.keys(row).length > 0) {
+      if (sheetDatePlan.date) row.date = sheetDatePlan.date;
       row.sourceFile = fileName;
       row.sourceSheet = table.sheetName;
       normalizedRows.push(row);
@@ -172,6 +181,7 @@ export const mapTableToNormalizedRowsAsync = async (
   onProgress?: (processedRows: number, totalRows: number) => void,
   mappingOverrides: Record<string, string | null> = {},
   dateOrderChoice?: DateOrder,
+  onWarning?: (warning: ImportWarning) => void,
 ): Promise<NormalizedRow[]> => {
   const headers = table.headerRow ?? [];
   if (!headers.length) return [];
@@ -193,6 +203,12 @@ export const mapTableToNormalizedRowsAsync = async (
   if (mappedHeaders.length === 0) return [];
 
   const dateOrder = resolveSheetDateOrder(rows, mappedHeaders, dateOrderChoice);
+  const sheetDatePlan = planSheetDate(
+    table.sheetName,
+    fileName,
+    mappedHeaders.some((header) => FIELD_ALIASES[header.mappedField]?.kind === 'date'),
+  );
+  if (sheetDatePlan.warning) onWarning?.(sheetDatePlan.warning);
   const normalizedRows: NormalizedRow[] = [];
   const yieldEvery = 5000;
   for (let r = 0; r < rows.length; r += 1) {
@@ -208,6 +224,7 @@ export const mapTableToNormalizedRowsAsync = async (
     }
 
     if (Object.keys(row).length > 0) {
+      if (sheetDatePlan.date) row.date = sheetDatePlan.date;
       row.sourceFile = fileName;
       row.sourceSheet = table.sheetName;
       normalizedRows.push(row);

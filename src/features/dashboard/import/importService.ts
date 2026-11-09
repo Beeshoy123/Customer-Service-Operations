@@ -213,7 +213,13 @@ const parseWorkbookFile = async (file: File, options: ImportOptions = {}): Promi
     throwIfAborted(options.signal);
 
     const sheet = filteredSheets[sheetIndex];
-    const mappedRows = mapTableToNormalizedRows(sheet, file.name, options.mappingOverrides, options.dateOrder);
+    const mappedRows = mapTableToNormalizedRows(
+      sheet,
+      file.name,
+      options.mappingOverrides,
+      options.dateOrder,
+      (warning) => warnings.push(warning),
+    );
     const finalRows = detectGranularity(sheet).classification === 'transaction'
       ? aggregateTransactions(mappedRows)
       : mappedRows;

@@ -26,6 +26,8 @@ import { aggregateTransactions } from './import/aggregateTransactions';
 import { validateNormalizedRows } from './import/validation';
 import { mergeNormalizedRows } from './import/mergeData';
 import { normalizeCellValue, normalizeHeaderToField, resolveSheetDateOrder } from './import/schemaNormalizer';
+import { planSheetDate } from './import/sheetMonth';
+import { FIELD_ALIASES } from './import/importPolicy';
 import { detectFileType } from './import/fileTypeDetector';
 import { saveAccountProfile } from '../accountSetup/account-profile-storage';
 import { mergeDayRecord, keepKnown } from './dayRecord';
@@ -235,6 +237,13 @@ export const useBatchImport = (deps: BatchImportDeps) => {
             mappedHeaders.map((header: any) => ({ index: header.colIdx, mappedField: header.mappedField })),
             sheetConfig?.dateOrder,
           );
+          // A month-named sheet ("Sep") with no date column supplies the date.
+          const sheetDatePlan = planSheetDate(
+            sheet.sheetName,
+            sheet.workbookName || importPreview.fileName || 'Upload',
+            mappedHeaders.some((header: any) => FIELD_ALIASES[header.mappedField]?.kind === 'date'),
+          );
+          if (sheetDatePlan.warning) warnings.push(sheetDatePlan.warning);
           const rawMappedRows = [];
           for (const rawRow of rows) {
             const mappedRow: any = {};
@@ -245,6 +254,7 @@ export const useBatchImport = (deps: BatchImportDeps) => {
             }
 
             if (Object.keys(mappedRow).length > 0) {
+              if (sheetDatePlan.date) mappedRow.date = sheetDatePlan.date;
               mappedRow.sourceFile = sheet.workbookName || importPreview.fileName || 'Upload';
               mappedRow.sourceSheet = sheet.sheetName || 'CSV';
               rawMappedRows.push(mappedRow);
