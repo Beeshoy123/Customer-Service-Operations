@@ -4,41 +4,81 @@
 // current tab components keep working unchanged.
 import React from 'react';
 import { useDashboard } from '../../hooks';
+import { safeStorage, storageKeys } from '../../storage';
 
 export type MainTabId =
   | 'roster' | 'outliers' | 'integrity'
   | 'analysis' | 'trends' | 'dow'
   | 'apprentice' | 'burnout' | 'offenders';
 
-interface NavItem { id: MainTabId; label: string; icon: string }
+// `badge` is optional on purpose: nothing passes one yet, so no badge shows.
+// Add one only when the app already has a real number for that page.
+interface NavItem { id: MainTabId; label: string; badge?: number }
 interface NavFolder { title: string; items: NavItem[] }
 
 const NAV_MODEL: NavFolder[] = [
   {
     title: 'Floor Operations',
     items: [
-      { id: 'roster',     label: 'Team Roster',             icon: '📋' },
-      { id: 'outliers',   label: 'Floor Outliers / Performers', icon: '⚠️' },
-      { id: 'integrity',  label: 'Integrity Match Up',      icon: '🎯' },
+      { id: 'roster',     label: 'Team Roster' },
+      { id: 'outliers',   label: 'Floor Outliers / Performers' },
+      { id: 'integrity',  label: 'Integrity Match Up' },
     ],
   },
   {
     title: 'Insights & Trends',
     items: [
-      { id: 'analysis',   label: 'Floor Analysis', icon: '🤖' },
-      { id: 'trends',     label: 'Trends',         icon: '📈' },
-      { id: 'dow',        label: 'DOW (Day of Week)', icon: '📅' },
+      { id: 'analysis',   label: 'Floor Analysis' },
+      { id: 'trends',     label: 'Trends' },
+      { id: 'dow',        label: 'DOW (Day of Week)' },
     ],
   },
   {
     title: 'Agent Development',
     items: [
-      { id: 'apprentice', label: 'Apprentice Track',   icon: '🎓' },
-      { id: 'burnout',    label: 'Behavioral Scan',    icon: '🧠' },
-      { id: 'offenders',  label: 'Chronic Offenders',  icon: '🚫' },
+      { id: 'apprentice', label: 'Apprentice Track' },
+      { id: 'burnout',    label: 'Behavioral Scan' },
+      { id: 'offenders',  label: 'Chronic Offenders' },
     ],
   },
 ];
+
+// Line icons drawn as inline SVG (no icon library). 24x24 grid, stroke only.
+const ICON_SHAPES: Record<MainTabId, React.ReactNode> = {
+  roster: (<><rect x="5" y="4" width="14" height="17" rx="2.5" /><path d="M9 4V3h6v1M9 10h6M9 14h6M9 18h3" /></>),
+  outliers: (<><path d="M12 4l9 16H3z" /><path d="M12 10v4M12 17v.01" /></>),
+  integrity: (<><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="4" /><circle cx="12" cy="12" r=".6" /></>),
+  analysis: (<path d="M5 20V10M12 20V4M19 20v-7" />),
+  trends: (<><path d="M3 17l6-6 4 4 8-9" /><path d="M15 6h6v6" /></>),
+  dow: (<><rect x="4" y="5" width="16" height="16" rx="3" /><path d="M8 3v4M16 3v4M4 10h16" /></>),
+  apprentice: (<><path d="M2 9l10-5 10 5-10 5z" /><path d="M6 11.5V16c0 1.5 3 3 6 3s6-1.5 6-3v-4.5" /></>),
+  burnout: (<path d="M3 12h4l3-7 4 14 3-7h4" />),
+  offenders: (<><circle cx="12" cy="12" r="9" /><path d="M5.6 5.6l12.8 12.8" /></>),
+};
+
+const NavIcon = ({ id }: { id: MainTabId }) => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
+       aria-hidden="true" focusable="false">
+    {ICON_SHAPES[id]}
+  </svg>
+);
+
+// Narrow screens always show the slim icon pill (the full panel would cover the page).
+const NARROW_QUERY = '(max-width: 1024px)';
+const canMatchMedia = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function';
+
+function useIsNarrow(): boolean {
+  const [narrow, setNarrow] = React.useState<boolean>(() => canMatchMedia() && window.matchMedia(NARROW_QUERY).matches);
+  React.useEffect(() => {
+    if (!canMatchMedia()) return undefined;
+    const mq = window.matchMedia(NARROW_QUERY);
+    const onChange = () => setNarrow(mq.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+  return narrow;
+}
 
 // Sidebar ids → mainTab values consumed by the workspace switcher.
 // 'integrity' reuses the correlation view; 'offenders' is a placeholder tab.
@@ -56,8 +96,15 @@ export const TAB_TO_SIDEBAR: Record<string, MainTabId> = Object.fromEntries(
 const Chevron = ({ open }: { open: boolean }) => (
   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
        strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"
-       style={{ transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s ease' }}>
+       className={`sidebar-chevron-icon${open ? ' open' : ''}`} aria-hidden="true">
     <path d="M9 6l6 6-6 6" />
+  </svg>
+);
+
+const ToggleArrow = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M15 6l-6 6 6 6" />
   </svg>
 );
 
@@ -68,15 +115,50 @@ export const SidebarNav = React.memo(() => {
     () => Object.fromEntries(NAV_MODEL.map(f => [f.title, true])),
   );
 
+  // Expanded/collapsed choice is remembered through the storage facade.
+  const [userCollapsed, setUserCollapsed] = React.useState<boolean>(
+    () => safeStorage.getItem(storageKeys.sidebarCollapsed) === 'true',
+  );
+  const narrow = useIsNarrow();
+  const collapsed = userCollapsed || narrow;
+
+  // The workspace column reads this flag from <html> (see layout.css) so it
+  // slides in step with the panel without App.tsx knowing about it.
+  React.useLayoutEffect(() => {
+    const root = document.documentElement;
+    root.dataset.sidebar = collapsed ? 'collapsed' : 'expanded';
+    return () => { delete root.dataset.sidebar; };
+  }, [collapsed]);
+
+  const toggleCollapsed = () => {
+    const next = !userCollapsed;
+    setUserCollapsed(next);
+    safeStorage.setItem(storageKeys.sidebarCollapsed, String(next));
+  };
+
   return (
-    <nav className="sidebar-nav" aria-label="Dashboard sections">
+    <nav id="dashboard-sidebar" className={`sidebar-nav${collapsed ? ' collapsed' : ''}`} aria-label="Dashboard sections">
       <div className="sidebar-brand">
         <span className="sidebar-brand-mark" aria-hidden="true">CSO</span>
         <span className="sidebar-brand-text">Customer Service<br />Operations</span>
+        {!narrow && (
+          <button
+            type="button"
+            className="sidebar-toggle"
+            onClick={toggleCollapsed}
+            aria-expanded={!collapsed}
+            aria-controls="dashboard-sidebar"
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            <ToggleArrow />
+          </button>
+        )}
       </div>
 
       {NAV_MODEL.map(folder => {
         const open = openFolders[folder.title];
+        // Collapsed pill always lists every icon, whatever the folder state.
+        const showItems = open || collapsed;
         return (
           <div key={folder.title} className={`sidebar-folder${open ? ' open' : ''}`}>
             <button
@@ -84,11 +166,12 @@ export const SidebarNav = React.memo(() => {
               className="sidebar-folder-header"
               onClick={() => setOpenFolders(s => ({ ...s, [folder.title]: !s[folder.title] }))}
               aria-expanded={open}
+              tabIndex={collapsed ? -1 : undefined}
             >
-              <span className="sidebar-chevron"><Chevron open={open} /></span>
               <span className="sidebar-folder-title">{folder.title}</span>
+              <span className="sidebar-chevron"><Chevron open={open} /></span>
             </button>
-            {open && (
+            {showItems && (
               <ul className="sidebar-list">
                 {folder.items.map(item => (
                   <li key={item.id}>
@@ -97,10 +180,14 @@ export const SidebarNav = React.memo(() => {
                       className={`sidebar-item${activeId === item.id ? ' active' : ''}`}
                       onClick={() => uiHandlers.setMainTab(SIDEBAR_TO_TAB[item.id])}
                       aria-current={activeId === item.id ? 'page' : undefined}
-                      title={item.label}
+                      title={collapsed ? undefined : item.label}
+                      data-tip={item.label}
                     >
-                      <span className="sidebar-item-icon" aria-hidden="true">{item.icon}</span>
-                      <span>{item.label}</span>
+                      <span className="sidebar-item-icon"><NavIcon id={item.id} /></span>
+                      <span className="sidebar-item-label">{item.label}</span>
+                      {item.badge != null && item.badge > 0 && (
+                        <span className="sidebar-badge">{item.badge}</span>
+                      )}
                     </button>
                   </li>
                 ))}

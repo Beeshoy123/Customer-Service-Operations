@@ -214,7 +214,7 @@ Show an HTML mock-up and get his OK before building any of this.
 - [ ] Data Health panel (files, rows, last modified, status) [F3]
 - [ ] Real trend (delta vs prior month plus sparkline) instead of always +0.00% [F4, X5]
 - [ ] One light mint canvas with forest green, mint glow and peach accents (per `docs/frontend-design.md`), 4 domain colors, SVG icons instead of emoji (about 51 emoji-led labels, per the old audit) [F5, U1]
-- [ ] Collapsible icon rail [F6]
+- [x] Collapsible icon rail [F6]. Done 2026-11-09 (sidebar only; the rest of Step 9 is still open): floating forest-green panel, one round toggle between full (264 px) and a slim icon pill (76 px), choice remembered in browser storage (`storageKeys.sidebarCollapsed`), hover and keyboard-focus names in the pill, 9 line SVG icons instead of emoji, narrow screens (1024 px and below) always show the pill, and the workspace now moves with the panel (before, it sat under the panel on narrow screens). Optional number badge supported but none shown, because the app has no number for it. Search box and profile block were left out: the app has no data for them. Checked in Chromium on fake data: 30 of 30 checks passed (ran).
 - [ ] Bar charts, sparklines, daily drill-down, 4 domain tiles [F7]
 - [ ] Hover effects work. Hover dimming is done in JavaScript (`onMouseOver`/`onMouseOut`) in `TopNavbar`, `MainModal`, `FloorBurnoutTab`; on touch screens the buttons stay dim. Move to CSS `:hover`/`:focus-visible`, resting state fully visible [F8, U2]
 - [ ] Search by comma: show the typed terms as removable chips under the box. Today the only hint is the placeholder in `FloorHeader.tsx` [U4]

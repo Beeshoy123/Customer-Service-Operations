@@ -71,6 +71,8 @@ When done, list every file changed and run the build to confirm it passes.
 
 ## 2. Sidebar
 
+**Status: built 2026-11-09** in `SidebarNav.tsx` and `layout.css`. Left out on purpose because the app has no data for them: the search box and the profile block. The number-badge prop exists but nothing passes a number yet. The folder headings still open and close when the panel is full. Colors are set on `.sidebar-nav` for now; they move to shared tokens in step 1 (Background and colors).
+
 **Preferences**
 - Collapses to icons only or expands to icons + words, using one toggle button.
 - Smooth expand/collapse animation.

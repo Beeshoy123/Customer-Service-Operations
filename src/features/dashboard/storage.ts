@@ -113,4 +113,6 @@ export const storageKeys = {
   dashboardState: 'customer-service-dashboard-state-v1',
   /** Tiny timeframe/date/month selections. Was DASHBOARD_VIEW_STORAGE_KEY in persistence.ts. */
   dashboardView: 'customer-service-dashboard-view-v1',
+  /** Sidebar expanded/collapsed choice ('true' = collapsed). A look-only preference, not data. */
+  sidebarCollapsed: 'cs-ops:sidebar-collapsed',
 } as const;

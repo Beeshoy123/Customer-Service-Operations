@@ -21,103 +21,207 @@ button, input, select, textarea { font-family: inherit; }
   flex-direction: column;
 }
 
-/* ─── Left sidebar (fixed) ─────────────────────────────────────── */
+/* ─── Left sidebar (floating panel, collapsible) ───────────────── */
+/* --sb-w is the panel width. SidebarNav sets data-sidebar on <html>, so the
+   workspace column can follow the panel without App.tsx knowing about it. */
+:root { --sb-w: 264px; --sb-gap: 16px; }
+:root[data-sidebar='collapsed'] { --sb-w: 76px; }
+.workspace-col { margin-left: calc(var(--sb-w) + var(--sb-gap) * 2); }
+
 .sidebar-nav {
+  --sb-forest: #1f4d3f;
+  --sb-mint: #7be0b0;
+  --sb-peach: #f6a77c;
   position: fixed;
-  top: 0;
-  left: 0;
-  bottom: 0;
-  width: 272px;
-  background: #0b0f19;
-  border-right: 1px solid #1e293b;
-  padding: 28px 16px 40px;
+  top: var(--sb-gap);
+  left: var(--sb-gap);
+  bottom: var(--sb-gap);
+  width: var(--sb-w);
+  background: var(--sb-forest);
+  color: #fff;
+  border-radius: 28px;
+  box-shadow: 0 10px 30px rgba(31, 77, 63, .18);
+  padding: 18px 14px;
+  overflow-x: hidden;
   overflow-y: auto;
   z-index: 60;
   display: flex;
   flex-direction: column;
-  gap: 26px;
+  gap: 10px;
   box-sizing: border-box;
 }
-.sidebar-brand {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 0 8px 4px;
+/* Collapsed pill lets the hover name (tooltip) stick out past its edge. */
+.sidebar-nav.collapsed { overflow: visible; }
+@media (max-height: 560px) {
+  .sidebar-nav.collapsed { overflow-x: hidden; overflow-y: auto; }
 }
+
+/* Top row: brand mark, name, round toggle */
+.sidebar-brand { display: flex; align-items: center; gap: 10px; min-height: 44px; }
+.sidebar-nav.collapsed .sidebar-brand { flex-direction: column; min-height: 0; gap: 8px; }
 .sidebar-brand-mark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
-  color: #fff;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: var(--sb-mint);
+  color: var(--sb-forest);
   font-weight: 800;
   font-size: .8rem;
   letter-spacing: .04em;
   flex-shrink: 0;
 }
 .sidebar-brand-text {
-  color: #e2e8f0;
-  font-size: .82rem;
+  flex: 1;
+  min-width: 0;
+  color: #fff;
+  font-size: .8rem;
   font-weight: 700;
-  line-height: 1.35;
-  letter-spacing: .01em;
+  line-height: 1.3;
+  white-space: nowrap;
 }
-.sidebar-folder { display: flex; flex-direction: column; gap: 2px; }
+.sidebar-toggle {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .12);
+  color: #fff;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.sidebar-toggle:hover { background: rgba(255, 255, 255, .22); }
+.sidebar-nav.collapsed .sidebar-toggle svg { transform: rotate(180deg); }
+
+/* Groups (folders) */
+.sidebar-folder { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
+.sidebar-nav.collapsed .sidebar-folder + .sidebar-folder {
+  border-top: 1px solid rgba(255, 255, 255, .12);
+  padding-top: 6px;
+}
 .sidebar-folder-header {
   display: flex;
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 8px 10px;
+  height: 26px;
+  padding: 0 10px;
   background: transparent;
   border: none;
-  cursor: pointer;
-  color: #64748b;
-  font-size: .7rem;
-  font-weight: 800;
-  letter-spacing: .12em;
-  text-transform: uppercase;
   border-radius: 8px;
-  transition: color .15s ease;
+  cursor: pointer;
+  color: rgba(255, 255, 255, .55);
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
 }
-.sidebar-folder-header:hover { color: #cbd5e1; }
-.sidebar-chevron { display: inline-flex; align-items: center; width: 14px; }
-.sidebar-folder.open .sidebar-folder-title { color: #94a3b8; }
+.sidebar-folder-header:hover { color: #fff; }
+.sidebar-folder-title { flex: 1; min-width: 0; }
+.sidebar-chevron { display: inline-flex; align-items: center; width: 14px; flex-shrink: 0; }
+.sidebar-chevron-icon.open { transform: rotate(90deg); }
+.sidebar-nav.collapsed .sidebar-folder-header { height: 0; padding: 0; opacity: 0; pointer-events: none; }
 .sidebar-list {
   list-style: none;
-  margin: 4px 0 0;
-  padding: 0 0 0 4px;
+  margin: 0;
+  padding: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
+
+/* Items */
 .sidebar-item {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 12px;
   width: 100%;
-  padding: 10px 12px;
+  height: 44px;
+  padding: 0 12px;
   background: transparent;
   border: none;
-  border-radius: 8px;
-  color: #94a3b8;
+  border-radius: 14px;
+  color: rgba(255, 255, 255, .82);
   font-family: inherit;
-  font-size: .9rem;
+  font-size: .86rem;
   font-weight: 600;
   text-align: left;
+  white-space: nowrap;
   cursor: pointer;
-  transition: background-color .15s ease, color .15s ease;
 }
-.sidebar-item:hover { background: rgba(148, 163, 184, .08); color: #f1f5f9; }
+.sidebar-item:hover { background: rgba(255, 255, 255, .09); color: #fff; }
 .sidebar-item.active {
-  background: #ffffff;
-  color: #0b0f19;
-  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, .08), 0 2px 8px rgba(2, 6, 23, .35);
+  background: rgba(123, 224, 176, .18);
+  color: var(--sb-mint);
+  box-shadow: 0 0 0 1px rgba(123, 224, 176, .35), 0 0 18px rgba(123, 224, 176, .35);
 }
-.sidebar-item-icon { width: 20px; display: inline-flex; justify-content: center; font-size: .95rem; opacity: .9; flex-shrink: 0; }
+.sidebar-item:focus-visible,
+.sidebar-toggle:focus-visible,
+.sidebar-folder-header:focus-visible { outline: 2px solid var(--sb-mint); outline-offset: 2px; }
+.sidebar-item-icon { display: inline-flex; width: 20px; flex-shrink: 0; }
+.sidebar-item-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.sidebar-badge {
+  display: grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--sb-peach);
+  color: #4a2412;
+  font-size: .68rem;
+  font-weight: 700;
+}
+
+/* Collapsed pill: icons only; a name shows on hover and keyboard focus */
+.sidebar-nav.collapsed .sidebar-brand-text,
+.sidebar-nav.collapsed .sidebar-item-label { opacity: 0; width: 0; flex: 0; overflow: hidden; pointer-events: none; }
+.sidebar-nav.collapsed .sidebar-item { justify-content: center; padding: 0; gap: 0; }
+.sidebar-nav.collapsed .sidebar-badge {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  min-width: 16px;
+  height: 16px;
+  font-size: .6rem;
+  padding: 0 4px;
+}
+.sidebar-nav.collapsed .sidebar-item:hover::after,
+.sidebar-nav.collapsed .sidebar-item:focus-visible::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: calc(100% + 12px);
+  top: 50%;
+  transform: translateY(-50%);
+  background: #10211b;
+  color: #fff;
+  font-size: .78rem;
+  font-weight: 600;
+  padding: 6px 10px;
+  border-radius: 10px;
+  white-space: nowrap;
+  box-shadow: 0 10px 30px rgba(31, 77, 63, .25);
+  z-index: 5;
+}
+
+/* Motion only for people who have not asked for less of it */
+@media (prefers-reduced-motion: no-preference) {
+  .sidebar-nav { transition: width .28s ease; }
+  .workspace-col { transition: margin-left .28s ease; }
+  .sidebar-item { transition: background-color .2s ease, color .2s ease, box-shadow .25s ease; }
+  .sidebar-toggle { transition: background-color .2s ease; }
+  .sidebar-toggle svg { transition: transform .28s ease; }
+  .sidebar-chevron-icon { transition: transform .15s ease; }
+  .sidebar-item-label, .sidebar-brand-text { transition: opacity .18s ease; }
+  .sidebar-folder-header { transition: color .15s ease, opacity .18s ease; }
+}
 
 /* ─── Right workspace: slim utility navbar ─────────────────────── */
 .top-navbar { padding: 12px 40px; }
@@ -226,16 +330,9 @@ button, input, select, textarea { font-family: inherit; }
 .offenders-placeholder .workspace-title { font-size: 1.3rem; }
 .offenders-placeholder-text { margin: 0; max-width: 460px; color: #64748b; font-size: .95rem; line-height: 1.7; }
 
-/* ─── Responsive: collapse sidebar to an icon rail on narrow screens ── */
+/* ─── Responsive: narrow screens (the sidebar turns into the icon pill in SidebarNav.tsx) ── */
 @media (max-width: 1024px) {
-  .sidebar-nav { width: 72px; padding: 24px 10px; }
-  .sidebar-brand-text, .sidebar-folder-title, .sidebar-item span:not(.sidebar-item-icon), .sidebar-chevron { display: none; }
-  .sidebar-item { justify-content: center; padding: 12px 0; }
-  .sidebar-folder-header { justify-content: center; padding: 8px 0; }
   .analyst-dashboard { }
   .top-navbar { padding: 12px 20px; }
   .main-workspace { padding: 24px 20px !important; }
-}
-@media (min-width: 1025px) {
-  .workspace-col { margin-left: 272px; }
 }
