@@ -803,3 +803,15 @@
 .ipm-memory-footer { display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; border-top: 1px solid #e2e8f0; background-color: #f8fafc; }
 .ipm-memory-count { font-size: 0.78rem; color: #64748b; }
 .ipm-memory-close-btn { padding: 6px 14px; }
+
+/* Dates section (step 3) */
+.ipm-dates-status { margin: 10px 0; padding: 8px 12px; border-radius: 8px; font-size: 0.8rem; line-height: 1.45; border: 1px solid; }
+.ipm-dates-status-ok { background-color: #f0fdf4; border-color: #86efac; color: #166534; }
+.ipm-dates-status-warn { background-color: #fffbeb; border-color: #fcd34d; color: #78350f; }
+.ipm-dates-choices { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 10px 0; }
+.ipm-dates-choice { padding: 7px 14px; font-size: 0.82rem; font-weight: 600; color: #334155; background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; cursor: pointer; }
+.ipm-dates-choice:hover { border-color: #94a3b8; }
+.ipm-dates-choice-on { color: #1d4ed8; background-color: #eff6ff; border-color: #2563eb; }
+.ipm-dates-examples { list-style: none; margin: 0; padding: 0; }
+.ipm-dates-examples li { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; border-top: 1px solid #e2e8f0; font-size: 0.8rem; color: #334155; }
+.ipm-dates-examples code { color: #64748b; }

@@ -28,6 +28,9 @@ import {
   type LocalSheetState,
 } from './previewState';
 import { ManageMemoryModal } from './ManageMemoryModal';
+import { DatesSection } from './DatesSection';
+import { describeSheetDates } from './datePreview';
+import type { DateOrder } from './dateText';
 
 export interface ImportPreviewModalProps {
   isOpen: boolean;
@@ -41,6 +44,8 @@ export interface ImportPreviewModalProps {
       {
         granularity: SheetGranularity;
         columnMappings: Record<string, string | null>;
+        dateOrder?: DateOrder;
+        sheetYear?: number;
       }
     >;
     accountProfile?: AccountProfile;
@@ -161,6 +166,22 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
       target.isConfirmed = parsedGranularity !== 'unknown';
       target.isManuallySet = true;
       next[sheetIdx] = target;
+      return next;
+    });
+  };
+
+  const handleDateOrderChange = (sheetIdx: number, order: DateOrder) => {
+    setSheetStates((prev) => {
+      const next = [...prev];
+      next[sheetIdx] = { ...next[sheetIdx], dateOrderChoice: order };
+      return next;
+    });
+  };
+
+  const handleSheetYearChange = (sheetIdx: number, year: number | 'skip') => {
+    setSheetStates((prev) => {
+      const next = [...prev];
+      next[sheetIdx] = { ...next[sheetIdx], sheetYearChoice: year };
       return next;
     });
   };
@@ -316,6 +337,20 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
     return sheetStates.filter((sheet) => sheet.isConfirmed && sheet.selectedGranularity !== 'unknown').length;
   }, [sheetStates]);
 
+  const datesPreview = useMemo(
+    () =>
+      currentSheet
+        ? describeSheetDates({
+            table: currentSheet.table,
+            columnMappings: currentSheet.columnMappings,
+            fileName: currentSheet.workbookName || fileName || '',
+            orderChoice: currentSheet.dateOrderChoice,
+            yearChoice: typeof currentSheet.sheetYearChoice === 'number' ? currentSheet.sheetYearChoice : undefined,
+          })
+        : ({ kind: 'none' } as const),
+    [currentSheet, fileName]
+  );
+
   const workbookGroups = useMemo(() => {
     const groups: {
       workbookName: string;
@@ -387,6 +422,8 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
       {
         granularity: SheetGranularity;
         columnMappings: Record<string, string | null>;
+        dateOrder?: DateOrder;
+        sheetYear?: number;
       }
     > = {};
 
@@ -399,6 +436,8 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
       const config = {
         granularity: sheet.selectedGranularity,
         columnMappings: mappings,
+        ...(sheet.dateOrderChoice ? { dateOrder: sheet.dateOrderChoice } : {}),
+        ...(typeof sheet.sheetYearChoice === 'number' ? { sheetYear: sheet.sheetYearChoice } : {}),
       };
 
       if (sheet.workbookName) {
@@ -834,6 +873,14 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
                   </div>
 
                 </div>
+
+                  <DatesSection
+                    preview={datesPreview}
+                    currentYear={new Date().getFullYear()}
+                    yearChoice={currentSheet.sheetYearChoice}
+                    onOrderChange={(order) => handleDateOrderChange(activeSheetIndex, order)}
+                    onYearChange={(year) => handleSheetYearChange(activeSheetIndex, year)}
+                  />
 
                   {vxsColumns.length > 0 && (
                     <div className="ipm-section">

@@ -109,3 +109,13 @@ export const describeSheetDates = (input: {
     examples: distinct.map((raw) => ({ raw, read: parseDateText(raw, effective) })),
   };
 };
+
+const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** `2026-09-05` → `5 Sep 2026`. Text only, no Date object, so no time zone. */
+export const formatIsoDate = (iso: string): string => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!match) return iso;
+  const month = MONTH_SHORT[Number(match[2]) - 1];
+  return month ? `${Number(match[3])} ${month} ${match[1]}` : iso;
+};

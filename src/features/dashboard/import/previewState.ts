@@ -1,6 +1,7 @@
 // S4 extraction (move-only): pure preview-state helpers + LocalSheetState moved
 // VERBATIM from ImportPreviewModal.tsx. See old recommendations.md at commit d34eb57 S4.
 // Column-mapping policy stays in importPolicy.ts only (STANDING RULE).
+import type { DateOrder } from './dateText';
 import type {
   SheetTable,
   SheetGranularity,
@@ -34,6 +35,10 @@ export interface LocalSheetState {
   isConfirmed: boolean;
   isManuallySet: boolean;
   columnMappings: DetectedColumnMapping[];
+  /** Day/month order the user chose for this sheet's slash dates (unset = detected from the file). */
+  dateOrderChoice?: DateOrder;
+  /** Year picked for a month-named sheet with no date column; 'skip' = leave its rows undated. */
+  sheetYearChoice?: number | 'skip';
 }
 
 const FIELD_LABEL_MAP: Record<string, string> = Object.fromEntries(
