@@ -408,7 +408,7 @@ export default function App() {
             <TopNavbar />
 
             {/* ==== Dashboard body shell ==== */}
-            <div className="main-workspace" style={{ width: '100%', maxWidth: '1240px', minWidth: 0, margin: '0 auto', padding: '36px 40px' }}>
+            <div className="main-workspace">
               {/* ==== Workspace header: department title + live headcount ==== */}
               <FloorHeader />
 
@@ -416,7 +416,7 @@ export default function App() {
               <MainStatsRow />
 
               {/* ==== Floor board / roster content (sidebar-driven) ==== */}
-              <div className="flex flex-col gap-4 mb-16">
+              <div className="tab-area">
                 {/* ==== Tab content switcher ==== */}
                 <div className="roster-container tab-panel" key={mainTab}>
                   {mainTab === 'roster'      && <FloorRosterTab />}

@@ -46,7 +46,7 @@ Review each step in the browser before moving to the next.
 |---|---|---|---|
 | 1 | Background and colors | done (1a, 1b) | 19 inline colors; hard borders to soft shadows (left over from step 1) |
 | 2 | Sidebar | done | search box and profile block (no data for them) |
-| 3 | Page layout | **not started** | fixed page height, bento tiles, table scrolling inside its own panel |
+| 3 | Page layout | done (shell, table box, compact cards) | bento tiles for the 5 chart tabs; sticky header row in the 3 other table tabs |
 | 4 | Cards | done (cards only) | trend badge and sparkline (no real trend data yet, F4/F7); italic accent on stat cards |
 | 5 | Headers and text | partly done (header) | italic accent on the stat cards (waits with the trend badge) |
 | 6 | Animation | A and B done | C (sparkline draw-in) waits for sparklines |
@@ -129,7 +129,13 @@ When done, list every file changed and run the build to confirm it passes.
 
 ## 3. Page layout
 
-**Status: not started** (checked 2026-11-09: no fixed page height, no bento tiles).
+**Status: built 2026-11-09 (shell, table box, compact cards). Bento tiles still open.**
+- Page locked to the screen height (`100dvh`); top bar, header and both KPI cards stay put; only the tab panel scrolls. On a very short screen the workspace scrolls so the panel never shrinks below 260 px.
+- Team Roster: only the table scrolls, in its own box, and its header row sticks.
+- KPI cards and header made compact (all content kept): cards 496 px to 281 px, header 149 px to 108 px at 1366x768 (ran, fake data).
+- Panel height now: 1366x768 = 265 px, 1920x1080 = 577 px, 1024x768 = 261 px (ran). The approved mock-up promised about 294 px at 1366x768; the real cards hold more than the mock-up showed (up to 4 gauges plus tiles), so they could not shrink to 170 px.
+- Checked: `tools/e2e_page_layout.py`, 31 of 31 (3 sizes, all 9 tabs, no page scroll, no sideways overflow, sticky header).
+- Still open: bento tiles for the 5 chart tabs (own mock-up first); sticky header row in Apprentice, Day of Week and Offenders (their tables sit inside clipping wrappers).
 
 **Preferences**
 - The page is locked to the screen height with no page-level scrolling.

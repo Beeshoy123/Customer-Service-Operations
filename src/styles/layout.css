@@ -467,5 +467,58 @@ button, input, select, textarea { font-family: inherit; }
 @media (max-width: 1024px) {
   .analyst-dashboard { }
   .top-navbar { padding: 12px 20px; }
-  .main-workspace { padding: 24px 20px !important; }
+  .main-workspace { padding: 16px 20px 12px !important; }
 }
+
+/* ─── Page layout (step 3 of docs/frontend-design.md) ───────────────
+   The page is locked to the screen height: top bar, header and KPI cards stay put and
+   only the tab panel scrolls (in the Team Roster, only the table, so its header row
+   sticks). Nothing here changes data or behaviour. On a very short screen the workspace
+   itself scrolls, so the panel can never shrink to nothing. */
+.analyst-dashboard { height: 100dvh; min-height: 0; overflow: hidden; }
+.analyst-dashboard .workspace-col { height: 100dvh; min-height: 0; }
+.analyst-dashboard .main-workspace {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  max-width: 1240px;
+  min-width: 0;
+  margin: 0 auto;
+  padding: 16px 28px 12px;
+  gap: 16px;
+  overflow-y: auto;
+}
+.analyst-dashboard .main-workspace > * { flex: none; }
+.analyst-dashboard .main-workspace > .tab-area {
+  flex: 1 1 auto;
+  min-height: 260px;
+  display: flex;
+  flex-direction: column;
+}
+.tab-area > .roster-container { flex: 1 1 auto; min-height: 0; margin-bottom: 0; overflow-y: auto; }
+/* Team Roster: header row and controls stay, the table body scrolls in its own box */
+.tab-area > .roster-container > .table-scroll-area { flex: 1 1 auto; min-height: 0; overflow: auto; }
+
+/* Compact header and KPI cards so the panel gets the room (all content kept) */
+.analyst-dashboard .stats-row { margin-top: 0; gap: 16px; }
+.analyst-dashboard .workspace-header { padding: 10px 20px; }
+.analyst-dashboard .workspace-greeting { margin-bottom: 2px; }
+.analyst-dashboard .workspace-header :is(p, h1, span, button) { line-height: 1.25; }
+.analyst-dashboard .workspace-title { font-size: 1.5rem; }
+.analyst-dashboard .workspace-headcount { margin-top: 4px; }
+.analyst-dashboard .metric-card { min-height: 0; padding: 16px 20px; }
+.metric-card > div:first-child { margin-bottom: 8px; }
+.metric-card .kpi-divider { padding-bottom: 10px; gap: 8px; }
+.metric-card .kpi-divider + .grid { padding-top: 10px; gap: 8px; }
+.metric-card .donut-ring { width: 56px; height: 56px; }
+.metric-card .donut-value { font-size: .8rem; }
+.metric-card .kpi-tile { padding: 6px 10px; gap: 0; }
+.metric-card .kpi-tile-value { font-size: 1rem; }
+.metric-card .kpi-divider > div { gap: 2px; }
+.metric-card .donut-tag { margin-top: 2px; padding: 2px 10px; }
+.metric-card .metric-card-title { font-size: 1.05rem; }
+.metric-card > div:first-child { margin-bottom: 6px; }
+.metric-card > div:first-child .mt-2 { margin-top: 4px; }
+.analyst-dashboard .top-navbar { padding: 10px 24px; }
+.metric-card :is(.donut-label, .donut-tag, .kpi-chip, .kpi-pill, .kpi-tile > span, .metric-card-title) { line-height: 1.25; }
+.metric-card .kpi-divider > div > .text-center > span { line-height: 1.25; }
