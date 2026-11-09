@@ -29,7 +29,7 @@ The owner (Beeshoy) is a call-center team leader and a **beginner at coding**. H
 3. **Edit the existing code. Do not rebuild.** No rewrites he didn't ask for.
 4. **UI:** follow `docs/frontend-design.md` (light mint look, his choice on 2026-11-09), keep color-coding. Never design without confirmation: show an HTML mock-up first.
 5. **Mapping and alias fixes go only in `importPolicy.ts`** (the repo's standing rule, full text in the Reference section below).
-6. **Before every commit run** `tsc -b`, `npm test`, `npm run lint` and `npm run build`. Baseline on 2026-11-09: tsc clean, 422/422 tests pass, lint 0 errors (105 warnings).
+6. **Before every commit run** `tsc -b`, `npm test`, `npm run lint` and `npm run build`. Baseline on 2026-11-09: tsc clean, 429/429 tests pass, lint 0 errors (105 warnings).
 7. **Commit straight to `main`. No branches, no pull requests** (his decision). One commit per step. Tick that step's `[ ]` box in this file in the same commit.
 8. If a step changes the plan, update this file and say so.
 
@@ -223,6 +223,7 @@ Show an HTML mock-up and get his OK before building any of this.
 - [ ] One light mint canvas with forest green, mint glow and peach accents (per `docs/frontend-design.md`), 4 domain colors, SVG icons instead of emoji (about 51 emoji-led labels, per the old audit) [F5, U1]. In progress 2026-11-09: 1a and 1b done (shared `--cso-` colors, background gradient, top bar, cards, table header and blue accents recolored, sidebar already on SVG icons). Still open in this box: the other emoji labels, the 4 domain colors, the 19 inline colors listed in `docs/frontend-design.md`
 - [x] Collapsible icon rail [F6]. Done 2026-11-09 (sidebar only; the rest of Step 9 is still open): floating forest-green panel, one round toggle between full (264 px) and a slim icon pill (76 px), choice remembered in browser storage (`storageKeys.sidebarCollapsed`), hover and keyboard-focus names in the pill, 9 line SVG icons instead of emoji, narrow screens (1024 px and below) always show the pill, and the workspace now moves with the panel (before, it sat under the panel on narrow screens). Optional number badge supported but none shown, because the app has no number for it. Search box and profile block were left out: the app has no data for them. Checked in Chromium on fake data: 30 of 30 checks passed (ran).
 - [x] Animation layer, parts A and B (frontend-design.md section 6). Done 2026-11-09: two KPI cards and the tab panel rise in, the tab panel fades in on every tab change, one mint glow slides to the active sidebar item, KPI numbers count up over 800ms (`CountUp.tsx`); all of it off for reduced motion. Checked in Chromium on fake data: 15 of 15 checks passed (ran). Part C (sparkline draw-in) is parked until sparklines exist (F4/F7).
+- [x] Workspace header, first part of frontend-design.md section 5. Done 2026-11-09: greeting by the clock + today's date, the word "Floor" in italic serif, a "N agents need attention" chip (Chronic Offenders rule, hidden when it cannot be known), glass card look. 7 new unit tests; Chromium check on fake data 16 of 16, including 3,000 agents x 12 months (ran). Open: italic touch on the stat cards (waits for Cards, step 4). The chip uses the Chronic rule, so revisit it with X6.
 - [ ] Bar charts, sparklines, daily drill-down, 4 domain tiles [F7]
 - [ ] Hover effects work. Hover dimming is done in JavaScript (`onMouseOver`/`onMouseOut`) in `TopNavbar`, `MainModal`, `FloorBurnoutTab`; on touch screens the buttons stay dim. Move to CSS `:hover`/`:focus-visible`, resting state fully visible [F8, U2]
 - [ ] Search by comma: show the typed terms as removable chips under the box. Today the only hint is the placeholder in `FloorHeader.tsx` [U4]
@@ -300,7 +301,7 @@ Test used: 2 agents × 10 calls per file.
 | 🟡 | `mappingMemory` | stores header→field only. No sheet, header row, date format or filename detection, so it is not a recipe (read) |
 | 🟡 | Account profile | closest thing to a recipe, but per account, not per file type (read) |
 | 🟡 | Main-thread work | confirm path = 0.87 s CPU at 300K rows in Node. Expect a 1–3 s hitch in Chrome; to be measured there (ran) |
-| 🟢 | Quality gates | `tsc` clean, 422/422 tests pass (2026-11-09), lint warnings only (ran) |
+| 🟢 | Quality gates | `tsc` clean, 429/429 tests pass (2026-11-09), lint warnings only (ran) |
 | 🟢 | Worker XLSX parse, Excel serial dates, sheet filtering | ran |
 | 🟢 | Repeated and Chronic Offenders modules | pure functions with tests (read) |
 | 🟢 | Alias engine in `importPolicy.ts` | only 1 of 11 real headers still prompts (ran) |

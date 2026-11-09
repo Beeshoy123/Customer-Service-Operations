@@ -176,6 +176,16 @@ When done, list every file changed and run the build to confirm it passes.
 
 ## 5. Headers and text
 
+**Status: header built 2026-11-09** (`FloorHeader.tsx`, `layout.css`, new `headerInfo.ts`). Checked in Chromium on fake data: 16 of 16 checks (ran, `tools/e2e_header.py`). The stat-card italic touch waits for step 4 (Cards).
+
+| Part | What it does now | Notes |
+|---|---|---|
+| Greeting | "Good morning / afternoon / evening" by the browser clock (12:00 and 18:00 switch) + today's date, day first ("Monday 9 November 2026") | `getGreeting`, `formatToday` |
+| Italic accent | Title is "Team A *Floor*": the word "Floor" in italic Georgia serif (system font, nothing to download) | The meaning does not depend on italic. "Smoothly" or "today" were not used: one is a claim the data does not prove, the other is wrong in monthly view |
+| "N agents need attention" | Count of Chronic Offenders (a KPI missed 3+ months in a row, same rule as that tab). Hidden when there is no data, fewer than 3 months, or nobody qualifies (never "0 agents") | Revisit when the two offender systems merge (X6). 3,000 agents x 12 months: chip shows 300, page loads in about 1 s (ran) |
+| Header card | Glass look from section 4's list (white 62%, blur 16px, 24px corners, soft shadow), left-aligned | Date arrows and search unchanged |
+
+
 **Preferences**
 - Greeting header, for example "Good afternoon" with today's date and a line such as "3 agents need attention".
 - Italic accent word in headlines: one word set in a curly italic serif for a premium feel (for example "Your floor is running *smoothly*").

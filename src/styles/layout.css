@@ -258,7 +258,13 @@ button, input, select, textarea { font-family: inherit; }
 /* ─── Workspace header (title + live headcount) ────────────────── */
 .workspace-header {
   display: block;
-  padding: 8px 0 4px;
+  text-align: left;
+  padding: 20px 24px;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, .62);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  box-shadow: var(--cso-shadow);
 }
 .workspace-header-top {
   display: flex;
@@ -275,14 +281,46 @@ button, input, select, textarea { font-family: inherit; }
   letter-spacing: -.01em;
   line-height: 1.2;
 }
+.workspace-greeting {
+  margin: 0 0 4px;
+  font-size: .85rem;
+  font-weight: 600;
+  color: #5b6b64;
+}
+/* One word in curly italic serif (system fonts, no web font). */
+.workspace-title-accent {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-style: italic;
+  font-weight: 400;
+  font-size: 1.08em;
+  color: var(--cso-forest);
+}
 .workspace-title-sep { color: #cbd5e1; font-weight: 400; margin: 0 6px; }
 .workspace-headcount {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   margin-top: 8px;
   font-size: .9rem;
   color: #64748b;
+}
+.headcount-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 12px;
+  border-radius: 999px;
+  background: var(--cso-tint-mint);
+  color: var(--cso-forest);
+}
+.attention-chip {
+  padding: 3px 12px;
+  border-radius: 999px;
+  background: var(--cso-tint-peach);
+  color: #7a4a2e;
+  font-size: .85rem;
+  font-weight: 700;
 }
 .headcount-dot {
   width: 8px;
@@ -292,7 +330,7 @@ button, input, select, textarea { font-family: inherit; }
   box-shadow: 0 0 0 3px rgba(16, 185, 129, .18);
   flex-shrink: 0;
 }
-.headcount-value { font-weight: 800; color: #0b0f19; font-variant-numeric: tabular-nums; }
+.headcount-value { font-weight: 800; color: var(--cso-forest); font-variant-numeric: tabular-nums; }
 .headcount-label { font-weight: 600; letter-spacing: .02em; }
 .filtered-chip {
   margin-left: 6px;
