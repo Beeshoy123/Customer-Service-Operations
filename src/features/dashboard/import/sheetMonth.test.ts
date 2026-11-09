@@ -3,7 +3,7 @@
 // hand: 1st of the month, month from the sheet name, year from the file name.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { planSheetDate, resolveSheetMonth, yearFromFileName } from './sheetMonth.ts';
+import { planSheetDate, readSheetDateSettings, resolveSheetMonth, yearFromFileName } from './sheetMonth.ts';
 import { mapTableToNormalizedRows, mapTableToNormalizedRowsAsync } from './schemaNormalizer.ts';
 import { validateNormalizedRows } from './validation.ts';
 import type { ImportWarning, SheetTable } from './types.ts';
@@ -55,6 +55,52 @@ describe('resolveSheetMonth', () => {
       assert.deepEqual(resolveSheetMonth(name, 'VOC_2026.xlsx'), { status: 'none' }, JSON.stringify(name));
     }
     assert.deepEqual(resolveSheetMonth(undefined, 'VOC_2026.xlsx'), { status: 'none' });
+  });
+});
+
+describe('resolveSheetMonth — year picked in the import preview', () => {
+  it('a picked year fills a bare month and wins over the file name', () => {
+    assert.deepEqual(resolveSheetMonth('Sep', 'VOC.xlsx', 2026), { status: 'ok', date: '2026-09-01', yearFrom: 'choice' });
+    assert.deepEqual(resolveSheetMonth('Sep', 'VOC_2025.xlsx', 2026), { status: 'ok', date: '2026-09-01', yearFrom: 'choice' });
+  });
+
+  it('an unusable picked year is ignored', () => {
+    assert.deepEqual(resolveSheetMonth('Sep', 'VOC.xlsx', 1999), { status: 'needsYear', month: 9 });
+    assert.deepEqual(resolveSheetMonth('Sep', 'VOC.xlsx', 2026.5), { status: 'needsYear', month: 9 });
+    assert.deepEqual(resolveSheetMonth('Sep', 'VOC_2025.xlsx', 1999), { status: 'ok', date: '2025-09-01', yearFrom: 'fileName' });
+  });
+
+  it('a sheet name that carries its own year ignores the picked year', () => {
+    assert.deepEqual(resolveSheetMonth('Sep-26', 'VOC.xlsx', 2025), { status: 'ok', date: '2026-09-01', yearFrom: 'sheetName' });
+  });
+
+  it('planSheetDate says the year was picked', () => {
+    const plan = planSheetDate('Sep', 'VOC.xlsx', false, 2026);
+    assert.equal(plan.date, '2026-09-01');
+    assert.match(plan.warning?.message ?? '', /year you picked in the import preview/);
+  });
+});
+
+describe('readSheetDateSettings — what the import preview attaches to a sheet', () => {
+  it('reads a valid day/month order and year', () => {
+    assert.deepEqual(readSheetDateSettings({ granularity: 'daily', dateOrder: 'monthFirst', sheetYear: 2026 }), {
+      dateOrder: 'monthFirst',
+      sheetYear: 2026,
+    });
+    assert.deepEqual(readSheetDateSettings({ dateOrder: 'dayFirst' }), { dateOrder: 'dayFirst' });
+  });
+
+  it('returns nothing when the preview set nothing', () => {
+    assert.deepEqual(readSheetDateSettings({ granularity: 'daily', columnMappings: {} }), {});
+    assert.deepEqual(readSheetDateSettings(undefined), {});
+    assert.deepEqual(readSheetDateSettings(null), {});
+    assert.deepEqual(readSheetDateSettings('x'), {});
+  });
+
+  it('drops values that are not valid', () => {
+    assert.deepEqual(readSheetDateSettings({ dateOrder: 'MM/DD', sheetYear: '2026' }), {});
+    assert.deepEqual(readSheetDateSettings({ dateOrder: 1, sheetYear: 1999 }), {});
+    assert.deepEqual(readSheetDateSettings({ sheetYear: 'skip' }), {});
   });
 });
 

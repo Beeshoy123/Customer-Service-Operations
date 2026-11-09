@@ -162,8 +162,8 @@ Format: `[ ]` open · `[x]` done. Codes in brackets point to sections below: **B
 
 ### Step 3: Dates
 - [x] `September 2026`, `Sep-26`, `Sep 5, 2026`, `9/2026` parse to the correct date in Cairo time [X1]
-- [x] Sheet name (e.g. "Sep") can supply the month [X1]. Only for a sheet with no date column; year from the file name (one distinct 20xx) or from the sheet name ("Sep-26"); otherwise rows stay undated with a visible warning. Open: asking for the year in the import preview (UI, mock-up first)
-- [ ] Per-file date-format setting (DD/MM vs MM/DD) [X7]. Done: the order is read from the file's own dates (any `13/09` or `9/13`), default day first, and the importer accepts a user choice (`dateOrder`). Open: the switch in the import preview (mock-up first), and a warning when a file gives no proof
+- [x] Sheet name (e.g. "Sep") can supply the month [X1]. Only for a sheet with no date column; year from the file name (one distinct 20xx) or from the sheet name ("Sep-26"); otherwise rows stay undated with a visible warning. The import preview also asks for the year when it is missing (pick this year, the 2 before, or skip)
+- [x] Per-file date-format setting (DD/MM vs MM/DD) [X7]. The order is read from the file's own dates (any `13/09` or `9/13`), default day first. The import preview has a Dates section per sheet: it shows how dates are read with 3 examples, warns when the file cannot prove the order, and lets you switch. Not yet checked in a real browser
 
 ### Step 4: Storage and privacy
 - [ ] Data lives in IndexedDB, not `localStorage` (no 5 MB cap, no silent loss) [B4]
@@ -297,13 +297,13 @@ Test used: 2 agents × 10 calls per file.
 
 | Sev | Finding | Evidence |
 |---|---|---|
-| ⛔ | **X1 Month-label dates land in the wrong month in Cairo time.** `September 2026` → **2026-08-31**. `Sep-26` → 2001-09-25. `Sep 5, 2026` → Sep 4. `9/2026` → null. A VOC sheet named "Sep" is never read as the month. **Update:** the date text is now parsed correctly (step 3, change 1, `import/dateText.ts`, 14 tests); the sheet-name part is fixed too (change 3, `import/sheetMonth.ts`, 18 tests); asking for the year in the import preview is not built. | ran |
+| ⛔ | **X1 Month-label dates land in the wrong month in Cairo time.** `September 2026` → **2026-08-31**. `Sep-26` → 2001-09-25. `Sep 5, 2026` → Sep 4. `9/2026` → null. A VOC sheet named "Sep" is never read as the month. **Update:** the date text is now parsed correctly (step 3, change 1, `import/dateText.ts`, 14 tests); the sheet-name part is fixed too (change 3, `import/sheetMonth.ts`); the import preview now shows the order and asks for a missing year (`DatesSection.tsx`). | ran |
 | 🔴 | **X2 Missing is saved as 0** for calls, AHT, VXS, resolve2hr, resolve3d. A Sales-only file would write VXS 0 and AHT 0. | read |
 | 🔴 | **X3 Invented survey counts.** When only a VXS % exists, `helpers.ts` sets surveys = max(1, round(calls × 5%)), which skews weighted CSAT. | read |
 | 🟡 | **X4** `isOff = calls === 0` drops absent and AUX-only days from rollups. | read |
 | 🟡 | **X5** Trend column compares a period with itself in monthly view, so it always shows "STABLE +0.00%". VXS only. | ran, seen live |
 | 🟡 | **X6** Two offender systems with different rules: Chronic Offenders (3+ months) and Repeated Offenders (2+ consecutive). | read |
-| 🟡 | **X7** Dates default to DD/MM silently, with no per-file setting. **Update:** order is now detected per sheet (`import/dateText.ts`, `detectDateOrder`); a sheet with no proof still defaults to DD/MM, and the preview switch is not built yet. | ran |
+| 🟡 | **X7** Dates default to DD/MM silently, with no per-file setting. **Update:** order is now detected per sheet (`import/dateText.ts`, `detectDateOrder`); a sheet with no proof still defaults to DD/MM, but the import preview now warns and lets you switch (`DatesSection.tsx`). | ran |
 | 🟡 | **X8** Repo hygiene: 5 Python scripts, 3 PNGs and `.tmp_test` in the root. README says 8 tabs; there are 9. | ran |
 | ⛔ | **X9 (new, found 2026-11-09)** In the Chronic Offenders tab, clicking the coaching-plan button throws `TypeError: setUploadStatus is not a function` (`FloorOffendersTab.tsx:106`). The tab reads `setUploadStatus` and `scheduleStatusClear` from the dashboard data, but the hook's returned object does not include them. Same failure class as C4, on `dashData` instead of `aiTools`. Not fixed yet; needs his OK. | ran |
 

@@ -10,7 +10,7 @@
 //      ("VOC_Sep_2026.xlsx"), and only when the file name has exactly one
 //      distinct year (20xx). Otherwise the rows stay undated and a warning says why.
 //   4. The date is the 1st of the month, the same convention as every month-level label.
-import { monthNumberFromWord, parseDateText } from './dateText';
+import { monthNumberFromWord, parseDateText, type DateOrder } from './dateText';
 import type { ImportWarning } from './types';
 
 export type SheetMonth =
@@ -100,4 +100,19 @@ export const planSheetDate = (
       message: `Sheet "${sheetName}" has no date column: every row is dated ${resolved.date} (taken from ${source}).`,
     },
   };
+};
+
+export type SheetDateSettings = { dateOrder?: DateOrder; sheetYear?: number };
+
+/**
+ * Reads the date settings the import preview attached to a sheet's config.
+ * The config comes from UI state, so anything that is not a valid value is dropped.
+ */
+export const readSheetDateSettings = (sheetConfig: unknown): SheetDateSettings => {
+  if (typeof sheetConfig !== 'object' || sheetConfig === null) return {};
+  const { dateOrder, sheetYear } = sheetConfig as { dateOrder?: unknown; sheetYear?: unknown };
+  const settings: SheetDateSettings = {};
+  if (dateOrder === 'dayFirst' || dateOrder === 'monthFirst') settings.dateOrder = dateOrder;
+  if (typeof sheetYear === 'number' && isUsableYear(sheetYear)) settings.sheetYear = sheetYear;
+  return settings;
 };

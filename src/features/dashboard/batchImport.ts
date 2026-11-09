@@ -26,7 +26,7 @@ import { aggregateTransactions } from './import/aggregateTransactions';
 import { validateNormalizedRows } from './import/validation';
 import { mergeNormalizedRows } from './import/mergeData';
 import { normalizeCellValue, normalizeHeaderToField, resolveSheetDateOrder } from './import/schemaNormalizer';
-import { planSheetDate } from './import/sheetMonth';
+import { planSheetDate, readSheetDateSettings } from './import/sheetMonth';
 import { FIELD_ALIASES } from './import/importPolicy';
 import { detectFileType } from './import/fileTypeDetector';
 import { saveAccountProfile } from '../accountSetup/account-profile-storage';
@@ -232,16 +232,18 @@ export const useBatchImport = (deps: BatchImportDeps) => {
 
           // One sheet is read with one day/month order: the user's choice, else
           // proven by the sheet's own dates (13/09 or 9/13), else day first.
+          const dateSettings = readSheetDateSettings(sheetConfig);
           const dateOrder = resolveSheetDateOrder(
             rows,
             mappedHeaders.map((header: any) => ({ index: header.colIdx, mappedField: header.mappedField })),
-            sheetConfig?.dateOrder,
+            dateSettings.dateOrder,
           );
           // A month-named sheet ("Sep") with no date column supplies the date.
           const sheetDatePlan = planSheetDate(
             sheet.sheetName,
             sheet.workbookName || importPreview.fileName || 'Upload',
             mappedHeaders.some((header: any) => FIELD_ALIASES[header.mappedField]?.kind === 'date'),
+            dateSettings.sheetYear,
           );
           if (sheetDatePlan.warning) warnings.push(sheetDatePlan.warning);
           const rawMappedRows = [];
