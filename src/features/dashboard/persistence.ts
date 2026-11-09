@@ -6,9 +6,10 @@
 // ⚠️ STANDING RULE — DO NOT FIX MAPPING BUGS IN THIS FILE. Mapping/alias fixes
 // belong in importPolicy.ts (FIELD_ALIASES), nowhere else.
 
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { DEFAULT_DATE } from './config';
 import { ALL_MONTHS } from './helpers';
+import { idbDelete, idbGet, idbSet } from './idbStore';
 // S6: all localStorage access goes through the shared safeStorage facade + key
 // registry (./storage). Key VALUES are unchanged — there is no migration code.
 import { safeStorage, storageKeys } from './storage';
@@ -21,13 +22,61 @@ const DASHBOARD_STORAGE_KEY = storageKeys.dashboardState;
 // view key below holds only the timeframe/date/month selections.
 const DASHBOARD_VIEW_STORAGE_KEY = storageKeys.dashboardView;
 
+// Step 4 (storage): the big data (agents, supervisors, daily history) now lives in
+// IndexedDB under this key. The old localStorage key above is only read once, to
+// copy an existing save across (see preloadPersistedDashboardState).
+const IDB_DASHBOARD_KEY = 'dashboard-state';
+
+type HeavyPayload = {
+  agents: any;
+  supervisors: any;
+  oamName: any;
+  historicalData: any;
+  hasUploadedData: any;
+};
+
+const pickHeavy = (source: any): HeavyPayload => ({
+  agents: source.agents,
+  supervisors: source.supervisors,
+  oamName: source.oamName,
+  historicalData: source.historicalData,
+  hasUploadedData: source.hasUploadedData,
+});
+
+// IndexedDB is async but React reads saved data synchronously on first render. So
+// main.tsx awaits preloadPersistedDashboardState() once, before the first render,
+// and readPersistedDashboardState() then returns what was loaded.
+let preloadedHeavy: any = null;
+
+export const preloadPersistedDashboardState = async (): Promise<void> => {
+  if (typeof window === 'undefined') return;
+
+  const fromIdb = await idbGet<any>(IDB_DASHBOARD_KEY);
+  if (fromIdb && typeof fromIdb === 'object') {
+    preloadedHeavy = fromIdb;
+    return;
+  }
+
+  // One-time copy of an older save from browser storage (localStorage).
+  try {
+    const raw = safeStorage.getItem(DASHBOARD_STORAGE_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return;
+    preloadedHeavy = parsed;
+    const saved = await idbSet(IDB_DASHBOARD_KEY, pickHeavy(parsed));
+    // Remove the old copy only after IndexedDB confirmed it holds the data.
+    if (saved) safeStorage.removeItem(DASHBOARD_STORAGE_KEY);
+  } catch (error) {
+    console.warn('Failed to load persisted dashboard state:', error);
+  }
+};
+
 export const readPersistedDashboardState = () => {
   if (typeof window === 'undefined') return null;
 
   try {
-    const raw = safeStorage.getItem(DASHBOARD_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
+    const parsed = preloadedHeavy;
     if (!parsed || typeof parsed !== 'object') return null;
 
     // View selections live under a separate, tiny key. Legacy snapshots kept
@@ -51,6 +100,32 @@ export const readPersistedDashboardState = () => {
     return null;
   }
 };
+
+// Saves are queued one at a time, newest wins: if three changes arrive while a
+// save is running, only the newest one is written next. Resolves true when saved
+// (or when a newer save took over), false when the browser refused it.
+let saveChain: Promise<unknown> = Promise.resolve();
+let latestPayload: HeavyPayload | null = null;
+
+export const saveDashboardPayload = (payload: HeavyPayload): Promise<boolean> => {
+  latestPayload = payload;
+  const run = saveChain.then(async () => {
+    if (latestPayload !== payload) return true; // a newer save is queued behind this one
+    return idbSet(IDB_DASHBOARD_KEY, payload);
+  });
+  saveChain = run.catch(() => undefined);
+  return run;
+};
+
+/** Tests only: forget what was preloaded and queued. */
+export const resetPersistenceForTests = (): void => {
+  preloadedHeavy = null;
+  latestPayload = null;
+  saveChain = Promise.resolve();
+};
+
+export const SAVE_FAILED_MESSAGE =
+  'Could not save your data in this browser. It stays on screen until you close or reload the page.';
 
 // The subset of the dashboard state that persistence needs. It is passed as one
 // object by useDashboardData so this module stays a pure function of what it is
@@ -125,6 +200,8 @@ export const useDashboardPersistence = (
     setSelectedMonthChosen(false);
 
     if (typeof window !== 'undefined') {
+      preloadedHeavy = null;
+      void idbDelete(IDB_DASHBOARD_KEY);
       safeStorage.removeItem(DASHBOARD_STORAGE_KEY);
       safeStorage.removeItem(DASHBOARD_VIEW_STORAGE_KEY);
     }
@@ -140,24 +217,40 @@ export const useDashboardPersistence = (
   ]);
 
   // Heavy data payload — rewritten only when the data itself changes (import /
-  // reset / roster edits). Selection changes never touch this key, so
-  // switching months no longer re-stringifies the whole historicalData.
+  // reset / roster edits). Selection changes never touch this, so switching
+  // months does not re-save the whole historicalData. It goes to IndexedDB; if the
+  // browser refuses, the user sees a message instead of silent loss.
+  // The first run (right after the page loads) is skipped: nothing changed yet, and
+  // it must never overwrite saved data with an empty start-up state.
+  const lastSeenRef = useRef({ agents, supervisors, oamName, historicalData, hasUploadedData });
+  const saveFailedShownRef = useRef(false);
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    try {
-      const payload = {
-        agents,
-        supervisors,
-        oamName,
-        historicalData,
-        hasUploadedData,
-      };
-      safeStorage.setItem(DASHBOARD_STORAGE_KEY, JSON.stringify(payload));
-    } catch (error) {
-      console.warn('Failed to persist dashboard state:', error);
+    const last = lastSeenRef.current;
+    if (
+      last.agents === agents && last.supervisors === supervisors && last.oamName === oamName &&
+      last.historicalData === historicalData && last.hasUploadedData === hasUploadedData
+    ) {
+      return;
     }
-  }, [agents, supervisors, oamName, historicalData, hasUploadedData]);
+    lastSeenRef.current = { agents, supervisors, oamName, historicalData, hasUploadedData };
+
+    let cancelled = false;
+    void saveDashboardPayload(pickHeavy({ agents, supervisors, oamName, historicalData, hasUploadedData })).then((ok) => {
+      if (ok) {
+        saveFailedShownRef.current = false;
+        return;
+      }
+      console.warn('Failed to persist dashboard state to IndexedDB.');
+      if (cancelled || saveFailedShownRef.current) return;
+      saveFailedShownRef.current = true;
+      setUploadStatus({ type: 'error', message: SAVE_FAILED_MESSAGE });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [agents, supervisors, oamName, historicalData, hasUploadedData, setUploadStatus]);
 
   // Tiny view payload (timeframe / date / month selections) — a few hundred
   // bytes, safe to rewrite on every selection change without jank.

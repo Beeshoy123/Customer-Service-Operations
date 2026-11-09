@@ -29,7 +29,7 @@ The owner (Beeshoy) is a call-center team leader and a **beginner at coding**. H
 3. **Edit the existing code. Do not rebuild.** No rewrites he didn't ask for.
 4. **UI:** follow `docs/frontend-design.md` (light mint look, his choice on 2026-11-09), keep color-coding. Never design without confirmation: show an HTML mock-up first.
 5. **Mapping and alias fixes go only in `importPolicy.ts`** (the repo's standing rule, full text in the Reference section below).
-6. **Before every commit run** `tsc -b`, `npm test`, `npm run lint` and `npm run build`. Baseline on 2026-11-09: tsc clean, 429/429 tests pass, lint 0 errors (105 warnings).
+6. **Before every commit run** `tsc -b`, `npm test`, `npm run lint` and `npm run build`. Baseline on 2026-11-09 (after the storage step): tsc clean, 443/443 tests pass, lint 0 errors (105 warnings).
 7. **Commit straight to `main`. No branches, no pull requests** (his decision). One commit per step. Tick that step's `[ ]` box in this file in the same commit.
 8. If a step changes the plan, update this file and say so.
 
@@ -60,7 +60,7 @@ The owner (Beeshoy) is a call-center team leader and a **beginner at coding**. H
 | Today | What it means for you |
 |---|---|
 | ✅ Fixed in step 2: a second file for the same agent and day **replaces** the first | This is why you merge everything into one CSV by hand |
-| Data is saved in the browser's small storage (~5 MB). Yours needs ~10 MB. | When it's full, the browser forgets silently. That is probably why you re-upload. |
+| ✅ Fixed in step 4 (storage part): data was saved in the browser's small storage (~5 MB). Yours needs ~10 MB. | When it was full, the browser forgot silently. That is why you re-uploaded. Now it goes to IndexedDB. |
 | ✅ Fixed in step 1: counts get divided by the number of calls | 2 handoffs in 10 calls is saved as 0.2. That is the Transfer_logs bug. |
 | ✅ Fixed in step 2: same agent and day in two files doesn't merge if one file lacks Supervisor | Rows stay split and numbers come out wrong |
 | Only call-center metrics exist | Sales, Absenteeism, AUX and floor-level VOC have nowhere to go |
@@ -81,7 +81,7 @@ The owner (Beeshoy) is a call-center team leader and a **beginner at coding**. H
 | 2 | ✅ done | **Step 1** (2026-11-08): counts stay counts | Wrong numbers on screen today |
 | 3 | ✅ done | **Step 2** (2026-11-09): merge without losing data | A second upload erases the first; rows don't merge |
 | 4 | ✅ done | **Step 3** (2026-11-09): dates | `September 2026` becomes Aug 31 in Cairo |
-| 5 | ⛔ P0 | **Step 4**: storage (silent data loss) **and AI off by default** (data leaving the PC) | Both break a rule of yours |
+| 5 | ⛔ P0 | **Step 4**: ✅ storage done (2026-11-09); **AI off by default** (data leaving the PC) still open | The open half breaks a rule of yours |
 | 6 | 🟡 P1 | **Steps 5–7b**: recipes, folder link, live refresh, Google Sheets | The goal features, built on the fixed foundation |
 | 7 | 🟡 P1 | **Step 8**: Sales, Absenteeism, AUX, floor-level rows | New data types |
 | 8 | 🟢 P2 | **Step 9**: combined view and redesign (includes the UX and design-gap items) | Look and usability; do after the data is right |
@@ -178,7 +178,7 @@ Format: `[ ]` open · `[x]` done. Codes in brackets point to sections below: **B
 - [x] Per-file date-format setting (DD/MM vs MM/DD) [X7]. The order is read from the file's own dates (any `13/09` or `9/13`), default day first. The import preview has a Dates section per sheet: it shows how dates are read with 3 examples, warns when the file cannot prove the order, and lets you switch. Not yet checked in a real browser
 
 ### Step 4: Storage and privacy
-- [ ] Data lives in IndexedDB, not `localStorage` (no 5 MB cap, no silent loss) [B4]
+- [x] Data lives in IndexedDB, not `localStorage` (no 5 MB cap, no silent loss) [B4]. Done 2026-11-09: new `idbStore.ts` (tiny IndexedDB helper); `persistence.ts` saves the big data (agents, supervisors, daily history) there, newest save wins; `main.tsx` loads it before the first screen (`preloadPersistedDashboardState`); an older save in localStorage is copied over once, then removed; a refused save shows a red message instead of silence. Small keys (view choices, learned mappings, account profiles, sidebar) stay in localStorage. Browser test, 150,000 fake agent-days, reload the page (ran): before 0 of 150,000 survived (localStorage held 105 bytes); after 150,000 of 150,000 and calls 3,675,000 = 3,675,000. Two-file 300K merge test still 10/10. 14 new unit tests (`idbStore.test.ts`, `persistence.test.ts`, with the `fake-indexeddb` dev package). Re-run: `tools/e2e_storage_reload.mjs` (header says how). Not tested: a real browser with real data on your PC.
 - [ ] AI off by default: a visible switch, default off; no AI request without a click [C1]
 - [ ] Remove the three auto-calls on tab open: `FloorAnalysisTab`, `FloorCorrelationTab`, `FloorDowTab` each call their report function inside a mount effect [C1]
 - [ ] Remove the browser → `api.anthropic.com` call (`hooks.ts`, `executeGeminiAction`). If AI is ever wanted: a small server holds the key, never a `VITE_` variable (those end up readable in the page); send aggregates, not the roster; show a visible error state on failure [C1]
@@ -291,7 +291,7 @@ Test used: 2 agents × 10 calls per file.
 | ✅ | **B1** A second upload replaces the same agent+day | `batchImport.ts:183` assigns the whole record (read) **Fixed 2026-11-09** (step 2): `mergeDayRecord` merges into the stored day; browser-tested (ran). |
 | ⛔ | **B2** Rows with no agent name are deleted | `validation.ts` drops them (read) |
 | ✅ | **B3** Merge key includes supervisor + location + ID | the same agent+day from two files doesn't merge (ran) **Fixed 2026-11-09** (step 2): key = agent (ID or name) + date (ran). |
-| ⛔ | **B4** `localStorage` cap | ~10.7 MB for 100 agents × 12 months vs ~5 MB cap. On overflow it keeps data in RAM only and loses it on reload (ran, size measured on synthetic data) |
+| ✅ | **B4** `localStorage` cap | ~10.7 MB for 100 agents × 12 months vs ~5 MB cap. On overflow it kept data in RAM only and lost it on reload (ran, size measured on synthetic data) **Fixed 2026-11-09** (step 4): big data now in IndexedDB; 150,000 of 150,000 agent-days survive a reload (ran). |
 | ✅ | **B5** Count fields divided by row count | see bugs 1 and 2 (ran) **Fixed 2026-11-08** (step 1) (ran). |
 | ⛔ | **C1** AI: data leaves the browser | `hooks.ts:236` posts dashboard data (roster, supervisors, series) to `api.anthropic.com` from the browser, with no key and no backend. Three tabs fire it on open (read). The old effect that fired on every state change is gone. |
 | 🔴 | File System Access API, IndexedDB, `lastModified` polling, recipes | 0 hits in the repo (ran) |
@@ -467,7 +467,7 @@ When a dashboard metric (handoffs, 2HR, 3DR, CSAT, AHT, or any other field) show
 |---|---|
 | `dashboard/hooks.ts` | Composes the pieces below; `useAiTools`; the dashboard context |
 | `dashboard/state.ts` | The `useState` values, import-preview wrappers, `scheduleStatusClear` |
-| `dashboard/persistence.ts`, `storage.ts`, `storageMemory.ts` | Save/load to browser storage, one safe facade plus key registry, in-memory fallback |
+| `dashboard/persistence.ts`, `idbStore.ts`, `storage.ts`, `storageMemory.ts` | Big data saves to IndexedDB (`idbStore.ts`, loaded before first render from `main.tsx`); small values use the safe localStorage facade plus key registry, in-memory fallback |
 | `dashboard/timeframe.ts` | Month/week/day/DOW selectors and the agent-data cache |
 | `dashboard/uploadFlow.ts` | Drag/drop, multi-file, automatic import routing |
 | `dashboard/batchImport.ts` | `applyBatchImport`, `confirmImportPreview`, `processFile` (owns the replace-on-upload code, step 2) |

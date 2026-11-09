@@ -9,9 +9,16 @@ import './styles/dashboard.css'
 // Frontend redesign: two-column shell (sidebar + workspace) overrides.
 import './styles/layout.css'
 import App from './App.tsx'
+import { preloadPersistedDashboardState } from './features/dashboard/persistence'
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-)
+// Saved data now lives in IndexedDB (async), so load it before the first screen.
+// A failed load must never block the app: it just starts empty, as before.
+preloadPersistedDashboardState()
+  .catch((error) => console.warn('Could not load saved dashboard data:', error))
+  .finally(() => {
+    createRoot(document.getElementById('root')!).render(
+      <StrictMode>
+        <App />
+      </StrictMode>,
+    )
+  })
