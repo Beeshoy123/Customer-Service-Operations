@@ -234,6 +234,12 @@ button, input, select, textarea { font-family: inherit; }
   }
   /* Tab switch: the new panel fades in with a small rise (the key on it in App.tsx replays this) */
   .roster-container.tab-panel { animation-name: cso-tab-in; animation-duration: .28s; animation-delay: 0s; }
+  /* Glass KPI cards rise 5px on hover (step 4); none of this runs with reduced motion */
+  .metric-card { transition: transform .25s ease, box-shadow .25s ease; }
+  .metric-card:hover {
+    transform: translateY(-5px);
+    box-shadow: var(--cso-shadow-hover), inset 0 1px 0 rgba(255, 255, 255, .8);
+  }
   .sidebar-toggle { transition: background-color .2s ease; }
   .sidebar-toggle svg { transition: transform .28s ease; }
   .sidebar-chevron-icon { transition: transform .15s ease; }
@@ -371,9 +377,77 @@ button, input, select, textarea { font-family: inherit; }
   margin: 0;
   font-size: 1.25rem;
   font-weight: 800;
-  color: #ffffff;
+  color: var(--cso-forest-deep);
   letter-spacing: -.01em;
 }
+
+/* ─── Glass KPI cards (step 4 of docs/frontend-design.md) ───────────
+   The card itself is .metric-card in dashboard.css. Everything below is
+   what sits inside it: header chips, divider, gauge parts, metric tiles. */
+.kpi-chip {
+  font-size: .7rem;
+  color: #1d4f7a;
+  background: var(--cso-tint-blue);
+  padding: 4px 12px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.kpi-chip strong { color: #123a5c; }
+/* The "MONTH-END STRATEGY" / "DAILY EXECUTION" label: peach tint with its dark ink */
+.kpi-pill {
+  font-size: .65rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  color: var(--cso-bad-ink);
+  background: var(--cso-tint-peach);
+  padding: 5px 12px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.kpi-divider { border-bottom: 1px solid rgba(31, 77, 63, .1); }
+
+/* Metric tile: mint = on target, peach = off target, white = no value or no target */
+.kpi-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px;
+  border-radius: var(--cso-radius-tile);
+  background: var(--cso-tint-mint);
+}
+.kpi-tile.is-bad { background: var(--cso-tint-peach); }
+.kpi-tile.is-neutral { background: rgba(255, 255, 255, .6); }
+.kpi-tile-label {
+  font-size: .7rem;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: #2f5a4b;
+}
+.kpi-tile-value { font-size: 1.1rem; font-weight: 700; color: var(--cso-good-ink); }
+.kpi-tile-delta { font-size: .7rem; font-weight: 600; color: var(--cso-good-ink); }
+.kpi-tile.is-bad .kpi-tile-value,
+.kpi-tile.is-bad .kpi-tile-delta { color: var(--cso-bad-ink); }
+.kpi-tile.is-neutral .kpi-tile-value { color: var(--cso-ink-muted); }
+
+/* Gauge (DonutChart in components/shared.tsx) */
+.donut-ring { width: 80px; height: 80px; }
+.donut-track { stroke: var(--cso-ring-track); }
+.donut-value { color: var(--cso-forest-deep); }
+.donut-value.is-missing { color: var(--cso-ink-muted); }
+/* max-width beats the old 80px .max-w-80 so "HAND-OFFS" is no longer cut off */
+.donut-label { color: var(--cso-ink-muted); max-width: 110px; }
+.donut-tag {
+  display: block;
+  width: fit-content;
+  margin: 4px auto 0;
+  font-size: .65rem;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+.donut-tag.is-good { color: var(--cso-good-ink); background: var(--cso-tint-mint); }
+.donut-tag.is-bad { color: var(--cso-bad-ink); background: var(--cso-tint-peach); }
 
 /* ─── Chronic Offenders placeholder ────────────────────────────── */
 .offenders-placeholder {

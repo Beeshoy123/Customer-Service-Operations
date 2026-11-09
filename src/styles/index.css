@@ -30,6 +30,21 @@
   --cso-tint-peach: #fce3d4;
   --cso-tint-blue: #dcebf7;
   --cso-shadow: 0 10px 30px rgba(31, 77, 63, 0.1);
+  /* Glass cards (step 4 of docs/frontend-design.md). Text and ring colors are
+     for LIGHT surfaces only. Contrast (ran 2026-11-09, worst case over the four
+     canvas colors): ink-muted 5.4:1, forest-deep 11.5:1 on the glass; good-ink
+     6.3:1 on the mint tint; bad-ink 5.1:1 on the peach tint; rings 3.1:1 and 3.4:1
+     on the glass (rings need 3:1). */
+  --cso-glass: rgba(255, 255, 255, 0.58);
+  --cso-radius-card: 28px;
+  --cso-radius-tile: 20px;
+  --cso-shadow-hover: 0 18px 40px rgba(31, 77, 63, 0.16);
+  --cso-ink-muted: #4a6b5f;     /* secondary text on glass */
+  --cso-good-ink: #13624a;      /* "on target" text on the mint tint */
+  --cso-bad-ink: #a93d16;       /* "off target" text on the peach tint */
+  --cso-ring-good: #2f9d77;     /* gauge ring, on target */
+  --cso-ring-bad: #d9622f;      /* gauge ring, off target */
+  --cso-ring-track: #cfe3d9;    /* empty part of the gauge ring */
   /* Soft frosted gradient behind the whole app: mint bottom-left, a hint of
      peach top-right, a hint of light blue bottom-right, over the base. */
   --cso-canvas:

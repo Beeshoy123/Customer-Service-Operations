@@ -193,24 +193,30 @@ export const DonutChart = ({ value, target, label, format = '', reverse = false,
   const isMissing = value === null || value === undefined || value === '' || isNaN(value);
   const isGood = reverse ? value <= target : value >= target;
   const displayValue = isMissing ? '-' : (isInteger ? Math.round(Number(value)) : Number(value).toFixed(2));
-  const color = isMissing ? '#334155' : (isGood ? '#10B981' : '#ef4444');
+  // Ring colors are hex copies of --cso-ring-good / --cso-ring-bad / --cso-ring-track
+  // (index.css): an SVG attribute cannot read a CSS variable. A missing value draws a
+  // zero-length round dot, so it gets the track color and disappears into the track.
+  const color = isMissing ? '#cfe3d9' : (isGood ? '#2f9d77' : '#d9622f');
   const pct = isMissing ? 0 : Math.min(100, Math.max(0, (value / max) * 100));
+  // Show the tag only when there is a value and a real number to compare it with.
+  const showTag = !isMissing && typeof target === 'number' && Number.isFinite(target);
 
   return (
     <div className="flex flex-col items-center gap-2 transition-transform duration-300 hover:scale-105 cursor-default">
-      <div className="relative w-16 h-16">
+      <div className="relative donut-ring">
         <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
-          <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" className="fill-none stroke-slate-800 stroke-3" />
+          <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" className="fill-none donut-track stroke-3" />
           <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" className="fill-none stroke-3 rounded-stroke transition-stroke" stroke={color} strokeDasharray={`${pct}, 100`} />
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="font-extrabold leading-none text-base" style={{ color: isMissing ? '#94a3b8' : '#ffffff' }}>{displayValue}</span>
+          <span className={`font-extrabold leading-none text-base donut-value${isMissing ? ' is-missing' : ''}`}>{displayValue}</span>
           {!isMissing && <span className="text-xs text-slate-400">{format}</span>}
         </div>
       </div>
       <div className="text-center">
-        <span className="text-xs text-slate-300 uppercase font-bold tracking-wide block max-w-80 whitespace-nowrap overflow-hidden text-ellipsis">{label}</span>
+        <span className="text-xs donut-label uppercase font-bold tracking-wide block max-w-80 whitespace-nowrap overflow-hidden text-ellipsis">{label}</span>
         <span className="text-xs text-slate-500 font-semibold">TGT: {target}{format}</span>
+        {showTag && <span className={`donut-tag ${isGood ? 'is-good' : 'is-bad'}`}>{isGood ? 'On target' : 'Off target'}</span>}
       </div>
     </div>
   );
