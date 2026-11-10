@@ -1,11 +1,9 @@
-// @ts-nocheck
 // ============================================================================
 // FILE STRUCTURE:
 // ├── Timeframe Selection Menu
 // └── Column Visibility Settings Menu
 // ============================================================================
 
-import React from 'react';
 import { COL_DEFINITIONS } from '../features/dashboard/config';
 import { monthLabel } from '../features/dashboard/helpers';
 
@@ -14,7 +12,22 @@ import { monthLabel } from '../features/dashboard/helpers';
 const TIMEFRAME_BTN_BASE = 'flex-1 min-w-[70px] p-2 text-xs rounded-lg cursor-pointer transition-all';
 const TIMEFRAME_BTN_ON = 'bg-slate-700 shadow-sm font-bold text-white border border-slate-600';
 const TIMEFRAME_BTN_OFF = 'bg-slate-900/60 font-semibold text-slate-300 border border-slate-700 hover:bg-slate-800 hover:text-white';
-const timeframeBtnClass = (isActive) => `${TIMEFRAME_BTN_BASE} ${isActive ? TIMEFRAME_BTN_ON : TIMEFRAME_BTN_OFF}`;
+const timeframeBtnClass = (isActive: boolean) => `${TIMEFRAME_BTN_BASE} ${isActive ? TIMEFRAME_BTN_ON : TIMEFRAME_BTN_OFF}`;
+
+type TimeframeMenuProps = {
+  activeTimeframe: string;
+  setActiveTimeframe: (value: string) => void;
+  selectedWeek: string;
+  setSelectedWeek: (value: string) => void;
+  selectedDate: string;
+  setSelectedDate: (value: string) => void;
+  selectedDow: string;
+  setSelectedDow: (value: string) => void;
+  selectedMonth: string;
+  setSelectedMonth: (value: string) => void;
+  loadedMonths?: string[];
+  closeMenu: () => void;
+};
 
 export const TimeframeMenu = ({
   activeTimeframe,
@@ -29,7 +42,7 @@ export const TimeframeMenu = ({
   setSelectedMonth,
   loadedMonths = [],
   closeMenu,
-}) => (
+}: TimeframeMenuProps) => (
   <>
     <span className="block text-xs font-extrabold text-slate-300 uppercase mb-3 tracking-wide">Timeframe Filter</span>
     <div className="flex gap-2 mb-4 flex-wrap">
@@ -112,7 +125,13 @@ export const TimeframeMenu = ({
 );
 
 // ─── Column Visibility Settings Menu ──────────────────────────────────────
-export const SettingsMenu = ({ visibleCols, toggleCol, closeMenu }) => (
+type SettingsMenuProps = {
+  visibleCols: Record<string, boolean>;
+  toggleCol: (colKey: string) => void;
+  closeMenu?: () => void; // passed by TopNavbar; this menu stays open, so it is not used here
+};
+
+export const SettingsMenu = ({ visibleCols, toggleCol }: SettingsMenuProps) => (
   <>
     <span className="block text-xs font-extrabold text-slate-300 uppercase mb-3 tracking-wide">Toggle Metrics</span>
     <div className="grid grid-cols-2 gap-x-4 gap-y-3 mb-4">
