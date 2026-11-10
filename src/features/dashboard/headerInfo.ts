@@ -1,8 +1,7 @@
 // headerInfo.ts: the small pure pieces behind the workspace header
 // (greeting, today's date, the "need attention" count). No React in here,
 // so every piece can be tested on its own.
-import { computeChronicOffenders, type ChronicTargets } from './chronicOffenders';
-import type { HistoricalData, RepeatOffenderAgentRef } from './repeatOffenders';
+import { computeRepeatOffenders, type HistoricalData, type RepeatOffenderAgentRef, type RepeatOffenderTargets } from './repeatOffenders';
 
 /** 0-11 morning, 12-17 afternoon, 18-23 evening (the browser's own clock). */
 export const getGreeting = (now: Date): string => {
@@ -20,18 +19,18 @@ export const formatToday = (now: Date): string => {
 };
 
 /**
- * Agents who missed a KPI target 3+ months in a row (the same rule as the
- * Chronic Offenders tab). Returns null when the data cannot say: no data
- * loaded, or fewer than 3 months of history. Null means "show nothing";
- * 0 is never shown as "0 agents", because missing is not 0.
+ * Agents who missed a KPI target in 2 or more of the latest 3 months (the same
+ * rule as the Repeated Offenders tab). Returns null when the data cannot say:
+ * no data loaded, or nobody qualifies. Null means "show nothing"; 0 is never
+ * shown as "0 agents", because missing is not 0.
  */
 export const countNeedAttention = (
   agents: RepeatOffenderAgentRef[] | undefined | null,
   historicalData: HistoricalData | undefined | null,
-  targets: ChronicTargets
+  targets: RepeatOffenderTargets
 ): number | null => {
   if (!Array.isArray(agents) || agents.length === 0 || !historicalData) return null;
-  const { rows } = computeChronicOffenders(agents, historicalData, targets);
+  const { rows } = computeRepeatOffenders(agents, historicalData, targets);
   return rows.length > 0 ? rows.length : null;
 };
 

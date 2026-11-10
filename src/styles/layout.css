@@ -449,7 +449,7 @@ button, input, select, textarea { font-family: inherit; }
 .donut-tag.is-good { color: var(--cso-good-ink); background: var(--cso-tint-mint); }
 .donut-tag.is-bad { color: var(--cso-bad-ink); background: var(--cso-tint-peach); }
 
-/* ─── Chronic Offenders placeholder ────────────────────────────── */
+/* ─── Repeated Offenders placeholder ────────────────────────────── */
 .offenders-placeholder {
   display: flex;
   flex-direction: column;

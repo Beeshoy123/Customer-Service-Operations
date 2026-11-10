@@ -1,44 +1,57 @@
-// Chronic Offenders — agents who missed KPI targets for MORE than 2
-// CONSECUTIVE calendar months (3+ in a row). Pure detection logic lives in
-// ../../chronicOffenders.ts (reuses repeatOffenders.ts primitives so month
-// parsing, per-month aggregation and pass/fail polarity match the rest of
-// the app exactly). This view renders summary cards, filters/sorting, the
-// historical trend badges and per-agent coaching actions.
+// Repeated Offenders — agents who missed a KPI target in 2 or more of the latest
+// 3 months loaded (not necessarily back-to-back). The detection lives in
+// ../../repeatOffenders.ts and is computed ONCE in metrics.ts, so this tab, the
+// roster badges, the agent modal and the header chip always agree. This view
+// renders summary cards, filters/sorting, the latest-months badges and
+// per-agent coaching actions.
 import React, { useCallback, useMemo, useState } from 'react';
 import { useDashboard } from '../../hooks';
-import { METRIC_CONFIG, getDynamicTarget } from '../../config';
 import {
-  computeChronicOffenders,
+  REPEAT_MIN_MISSES,
+  REPEAT_WINDOW_MONTHS,
+  missLabel,
   shortMonthLabel,
-  streakLabel,
-  type ChronicMetricHit,
-  type ChronicOffenderRow,
-} from '../../chronicOffenders';
+  type RepeatOffenderMetricHit,
+  type RepeatOffenderRow,
+  type RepeatOffendersSummary,
+} from '../../repeatOffenders';
 
 const EMPTY_COACHING: Record<string, string> = {};
+const NO_ROWS: RepeatOffenderRow[] = [];
 
 const formatValue = (value: number, format: string): string => {
   if (format === '%') return `${Math.round(value)}%`;
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
 };
 
-const TrendBadges = ({ hit }: { hit: ChronicMetricHit }) => (
-  <div className="flex flex-wrap items-center gap-1" title={`${hit.label}: missed target ${hit.streakMonths.join(', ')}`}>
-    {hit.streakMonths.map((month, i) => (
-      <span
-        key={month}
-        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-50 border border-red-200 text-xs font-bold text-red-700"
-      >
-        {shortMonthLabel(month)} <span aria-hidden="true">❌</span>
-        <span className="font-semibold text-red-600/80">{formatValue(hit.values[i]?.value ?? NaN, hit.format)}</span>
-      </span>
-    ))}
+const TrendBadges = ({ hit }: { hit: RepeatOffenderMetricHit }) => (
+  <div
+    className="flex flex-wrap items-center gap-1"
+    title={`${hit.label}: missed target in ${hit.windowMonths.filter((m) => m.missed).map((m) => m.month).join(', ')}`}
+  >
+    {hit.windowMonths.map((m) =>
+      m.value === null ? (
+        <span key={m.month} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-50 border border-slate-200 text-xs font-bold text-slate-400">
+          {shortMonthLabel(m.month)} <span className="font-semibold">no data</span>
+        </span>
+      ) : m.missed ? (
+        <span key={m.month} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-50 border border-red-200 text-xs font-bold text-red-700">
+          {shortMonthLabel(m.month)} <span aria-hidden="true">❌</span>
+          <span className="font-semibold text-red-600/80">{formatValue(m.value, hit.format)}</span>
+        </span>
+      ) : (
+        <span key={m.month} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 border border-emerald-200 text-xs font-bold text-emerald-700">
+          {shortMonthLabel(m.month)} <span aria-hidden="true">✅</span>
+          <span className="font-semibold text-emerald-600/80">{formatValue(m.value, hit.format)}</span>
+        </span>
+      )
+    )}
   </div>
 );
 
 export const FloorOffendersTab = React.memo(() => {
-  const { dashData, uiState } = useDashboard();
-  const { agents, historicalData, hasUploadedData, setUploadStatus, scheduleStatusClear } = dashData;
+  const { dashData, metrics, uiState } = useDashboard();
+  const { hasUploadedData, setUploadStatus, scheduleStatusClear } = dashData;
 
   const [supervisorFilter, setSupervisorFilter] = useState('all');
   const [kpiFilter, setKpiFilter] = useState('all');
@@ -46,36 +59,23 @@ export const FloorOffendersTab = React.memo(() => {
   // Action Status store: ccms -> ISO timestamp when coaching was assigned.
   const [coachingAssigned, setCoachingAssigned] = useState<Record<string, string>>(EMPTY_COACHING);
 
-  // Evaluate ALL targeted KPIs (this view is not gated on the Settings
-  // repeatOffenderMetrics selection — chronic = 3+ consecutive misses).
-  const { rows, summary } = useMemo(() => {
-    if (!hasUploadedData) return { rows: [] as ChronicOffenderRow[], summary: null };
-    const targets: Record<string, { target: number; reverse: boolean; label?: string; format?: string }> = {};
-    for (const [key, cfg] of Object.entries(METRIC_CONFIG as Record<string, any>)) {
-      if (!cfg || !Number.isFinite(cfg.target)) continue;
-      const target = getDynamicTarget(key, 1);
-      if (target === undefined) continue;
-      targets[key] = {
-        target,
-        reverse: Boolean(cfg.reverse),
-        label: cfg.label,
-        format: cfg.format ?? '',
-      };
-    }
-    return computeChronicOffenders(agents, historicalData, targets);
-  }, [agents, historicalData, hasUploadedData]);
+  // One shared result (metrics.ts): every KPI that has a target, latest 3 months.
+  const result = metrics.repeatOffenders;
+  const rows: RepeatOffenderRow[] = hasUploadedData && result ? result.rows : NO_ROWS;
+  const summary: RepeatOffendersSummary | null = hasUploadedData && result ? result.summary : null;
+  const windowLength: number = hasUploadedData && result ? result.windowMonths.length : 0;
 
   const visibleRows = useMemo(() => {
     let filtered = rows;
     if (supervisorFilter !== 'all') filtered = filtered.filter((r) => (r.supervisor || '') === supervisorFilter);
     if (kpiFilter !== 'all') filtered = filtered.filter((r) => r.hits.some((h) => h.metric === kpiFilter));
     const sorted = [...filtered].sort(
-      (a, b) => b.maxStreak - a.maxStreak || String(a.name || '').localeCompare(String(b.name || ''))
+      (a, b) => b.maxMisses - a.maxMisses || String(a.name || '').localeCompare(String(b.name || ''))
     );
     return sortDir === 'desc' ? sorted : sorted.slice().reverse();
   }, [rows, supervisorFilter, kpiFilter, sortDir]);
 
-  const handleAssignCoaching = useCallback((row: ChronicOffenderRow) => {
+  const handleAssignCoaching = useCallback((row: RepeatOffenderRow) => {
     setCoachingAssigned((prev) => (prev[row.ccms] ? prev : { ...prev, [row.ccms]: new Date().toISOString() }));
     setUploadStatus(`✅ Coaching plan assigned to ${row.name || row.ccms}.`);
     scheduleStatusClear();
@@ -92,20 +92,20 @@ export const FloorOffendersTab = React.memo(() => {
       {/* ── Summary KPI cards ─────────────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <div className="text-xs uppercase font-extrabold tracking-wide text-slate-500 mb-1">Total Chronic Offenders</div>
+          <div className="text-xs uppercase font-extrabold tracking-wide text-slate-500 mb-1">Total Repeated Offenders</div>
           <div className="text-3xl font-black text-red-600">{summary ? summary.totalOffenders : '—'}</div>
-          <div className="text-xs text-slate-500 mt-1">Missed target 3+ consecutive months</div>
+          <div className="text-xs text-slate-500 mt-1">Missed target in {REPEAT_MIN_MISSES}+ of the latest {REPEAT_WINDOW_MONTHS} months</div>
         </div>
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <div className="text-xs uppercase font-extrabold tracking-wide text-slate-500 mb-1">Avg Streak Duration</div>
-          <div className="text-3xl font-black text-amber-600">{summary ? `${summary.avgStreak} mo` : '—'}</div>
-          <div className="text-xs text-slate-500 mt-1">Average longest miss-run per offender</div>
+          <div className="text-xs uppercase font-extrabold tracking-wide text-slate-500 mb-1">Missed Every Month</div>
+          <div className="text-3xl font-black text-amber-600">{summary && windowLength > 0 ? summary.missedAllCount : '—'}</div>
+          <div className="text-xs text-slate-500 mt-1">Missed target in all {windowLength || REPEAT_WINDOW_MONTHS} latest months</div>
         </div>
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
           <div className="text-xs uppercase font-extrabold tracking-wide text-slate-500 mb-1">Primary Issue Area</div>
           <div className="text-3xl font-black text-blue-700">{summary ? summary.topKpiLabel : '—'}</div>
           <div className="text-xs text-slate-500 mt-1">
-            {summary && summary.topKpiCount > 0 ? `Driving ${summary.topKpiCount} chronic streak${summary.topKpiCount === 1 ? '' : 's'}` : 'No chronic streaks detected'}
+            {summary && summary.topKpiCount > 0 ? `Driving ${summary.topKpiCount} repeat${summary.topKpiCount === 1 ? '' : 's'}` : 'No repeated misses detected'}
           </div>
         </div>
       </div>
@@ -114,9 +114,9 @@ export const FloorOffendersTab = React.memo(() => {
       <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
         <div className="mb-4 border-b border-slate-100 pb-4 flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h3 className="text-xl font-extrabold flex items-center gap-2 mb-1 text-red-700"><span>🚨</span> Chronic Offenders</h3>
+            <h3 className="text-xl font-extrabold flex items-center gap-2 mb-1 text-red-700"><span>🔁</span> Repeated Offenders</h3>
             <p className="text-sm text-slate-500 m-0">
-              Agents failing KPI targets for more than 2 consecutive months, ranked by streak length.
+              Agents who missed a KPI target in {REPEAT_MIN_MISSES} or more of the latest {REPEAT_WINDOW_MONTHS} months (not necessarily in a row), most misses first.
             </p>
           </div>
           {/* Filters + sort */}
@@ -152,20 +152,20 @@ export const FloorOffendersTab = React.memo(() => {
               data-testid="offenders-sort-toggle"
               onClick={() => setSortDir((d) => (d === 'desc' ? 'asc' : 'desc'))}
               className="ml-2 inline-flex items-center gap-1 border border-slate-300 rounded-md px-3 py-1.5 text-sm font-semibold text-slate-700 bg-white hover:bg-slate-50"
-              title="Toggle streak sort direction"
+              title="Toggle misses sort direction"
             >
-              Streak {sortDir === 'desc' ? '↓ (worst first)' : '↑ (best first)'}
+              Misses {sortDir === 'desc' ? '↓ (most first)' : '↑ (fewest first)'}
             </button>
           </div>
         </div>
 
-        {!hasUploadedData ? (
+        {!hasUploadedData || windowLength < 2 ? (
           <div className="text-center p-8 text-slate-500 italic">
-            Import at least three months of workbook data to detect chronic patterns.
+            Import at least two months of workbook data to detect repeated misses.
           </div>
         ) : rows.length === 0 ? (
           <div className="text-center p-8 text-slate-500 italic">
-            No agents have failed a KPI target for more than 2 consecutive months. 🎉
+            No agents missed a KPI target in {REPEAT_MIN_MISSES} or more of the latest {REPEAT_WINDOW_MONTHS} months. 🎉
           </div>
         ) : visibleRows.length === 0 ? (
           <div className="text-center p-8 text-slate-500 italic">
@@ -179,8 +179,8 @@ export const FloorOffendersTab = React.memo(() => {
                   <th className="px-4 py-3 text-left font-extrabold text-slate-600 uppercase text-xs">Agent Name</th>
                   <th className="px-4 py-3 text-left font-extrabold text-slate-600 uppercase text-xs">Supervisor</th>
                   <th className="px-4 py-3 text-left font-extrabold text-slate-600 uppercase text-xs">Failed KPI Category</th>
-                  <th className="px-4 py-3 text-left font-extrabold text-slate-600 uppercase text-xs">Current Streak</th>
-                  <th className="px-4 py-3 text-left font-extrabold text-slate-600 uppercase text-xs">Historical Trend</th>
+                  <th className="px-4 py-3 text-left font-extrabold text-slate-600 uppercase text-xs">Misses</th>
+                  <th className="px-4 py-3 text-left font-extrabold text-slate-600 uppercase text-xs">Latest Months</th>
                   <th className="px-4 py-3 text-left font-extrabold text-slate-600 uppercase text-xs">Action Status</th>
                   <th className="px-4 py-3 text-right font-extrabold text-slate-600 uppercase text-xs">Action</th>
                 </tr>
@@ -212,12 +212,12 @@ export const FloorOffendersTab = React.memo(() => {
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <span className="font-extrabold text-red-700">{streakLabel(row.maxStreak)}</span>
+                        <span className="font-extrabold text-red-700">{missLabel(row.maxMisses, windowLength)}</span>
                       </td>
                       <td className="px-4 py-3">
                         <TrendBadges hit={row.primaryHit} />
                         {row.hits.length > 1 && (
-                          <div className="text-xs text-slate-400 mt-1">+{row.hits.length - 1} other KPI streak{row.hits.length - 1 === 1 ? '' : 's'}</div>
+                          <div className="text-xs text-slate-400 mt-1">+{row.hits.length - 1} other KPI{row.hits.length - 1 === 1 ? '' : 's'}</div>
                         )}
                       </td>
                       <td className="px-4 py-3">

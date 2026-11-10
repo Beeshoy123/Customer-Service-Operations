@@ -34,7 +34,7 @@ This is not a generic analytics app; it is a floor-performance and operations-mo
 2. **Normalize** — standardize column names, date formats, and value shapes, then group records by agent and date.
 3. **Aggregate** — roll data up from agent to supervisor to OAM/manager to floor level, across daily, weekly, monthly, and day-of-week timeframes.
 4. **Compare to targets** — every metric is evaluated against the thresholds defined in the central metric configuration.
-5. **Explore** — nine floor tabs: Roster, Outliers, Apprentice, Analysis, Trends, Correlation (Integrity Match-ups), Burnout (Behavioral Scan), DoW Analysis, and Chronic Offenders.
+5. **Explore** — nine floor tabs: Roster, Outliers, Apprentice, Analysis, Trends, Correlation (Integrity Match-ups), Burnout (Behavioral Scan), DoW Analysis, and Repeated Offenders (missed target in 2+ of the latest 3 months).
 6. **Act** — the AI assistant (Claude, called from the browser via the Anthropic API) generates team, apprentice-track, and supervisor expert reports plus chart action plans, either automatically per view or on demand via Ask AI.
 7. **Persist** — view state survives reloads via `localStorage` (heavy state and view state are stored under separate keys). There is no backend: all data and business logic stay in the browser.
 

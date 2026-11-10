@@ -35,15 +35,22 @@ describe('headerInfo: date', () => {
 describe('headerInfo: need-attention count', () => {
   const agents = [{ ccms: 'A1', name: 'Fake One' }, { ccms: 'A2', name: 'Fake Two' }] as any[];
 
-  it('counts agents with a 3-month miss streak', () => {
+  it('counts agents who missed 2 or more of the latest 3 months', () => {
     const history: HistoricalData = {
-      A1: missFor(['2026-07', '2026-08', '2026-09']),
-      A2: missFor(['2026-08', '2026-09']),
+      A1: missFor(['2026-07', '2026-08', '2026-09']), // 3 of 3
+      A2: { ...missFor(['2026-07', '2026-09']), '2026-08-15': { calls: 100, vxs: 95 } }, // miss, pass, miss = 2 of 3
     };
-    assert.equal(countNeedAttention(agents, history, TARGETS), 1);
+    assert.equal(countNeedAttention(agents, history, TARGETS), 2);
+  });
+  it('an agent with only 1 miss in the latest 3 months is not counted', () => {
+    const history: HistoricalData = {
+      A1: { '2026-07-15': { calls: 100, vxs: 95 }, '2026-08-15': { calls: 100, vxs: 70 }, '2026-09-15': { calls: 100, vxs: 95 } },
+      A2: { '2026-07-15': { calls: 100, vxs: 95 }, '2026-08-15': { calls: 100, vxs: 95 }, '2026-09-15': { calls: 100, vxs: 95 } },
+    };
+    assert.equal(countNeedAttention(agents, history, TARGETS), null);
   });
   it('returns null (not 0) when nobody qualifies', () => {
-    const history: HistoricalData = { A1: missFor(['2026-08', '2026-09']) };
+    const history: HistoricalData = { A1: { '2026-08-15': { calls: 100, vxs: 95 }, '2026-09-15': { calls: 100, vxs: 95 } } };
     assert.equal(countNeedAttention(agents, history, TARGETS), null);
   });
   it('returns null with no data loaded', () => {

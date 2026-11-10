@@ -35,6 +35,14 @@ PROFILE = {
 
 
 def seed(page):
+    # Imported data now persists in IndexedDB (not localStorage), so a "fresh start"
+    # must wipe it as well, or scenario 2 would reload straight into scenario 1's data.
+    page.evaluate(
+        """() => new Promise((resolve) => {
+            const req = indexedDB.deleteDatabase('cs-ops-data');
+            req.onsuccess = req.onerror = req.onblocked = () => resolve();
+        })"""
+    )
     page.evaluate(
         """(profile) => {
             localStorage.clear();

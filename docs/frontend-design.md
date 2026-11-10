@@ -216,7 +216,7 @@ When done, list every file changed and run the build to confirm it passes.
 |---|---|---|
 | Greeting | "Good morning / afternoon / evening" by the browser clock (12:00 and 18:00 switch) + today's date, day first ("Monday 9 November 2026") | `getGreeting`, `formatToday` |
 | Italic accent | Title is "Team A *Floor*": the word "Floor" in italic Georgia serif (system font, nothing to download) | The meaning does not depend on italic. "Smoothly" or "today" were not used: one is a claim the data does not prove, the other is wrong in monthly view |
-| "N agents need attention" | Count of Chronic Offenders (a KPI missed 3+ months in a row, same rule as that tab). Hidden when there is no data, fewer than 3 months, or nobody qualifies (never "0 agents") | Revisit when the two offender systems merge (X6). 3,000 agents x 12 months: chip shows 300, page loads in about 1 s (ran) |
+| "N agents need attention" | Count of Repeated Offenders (a KPI missed in 2 or more of the latest 3 months, the same shared result as that tab). Hidden when there is no data or nobody qualifies (never "0 agents") | The two offender systems were merged into one on 2026-11-09 (X6). 3,000 agents x 12 months: chip shows 300, page loads in about 1 s (ran) |
 | Header card | Glass look from section 4's list (white 62%, blur 16px, 24px corners, soft shadow), left-aligned | Date arrows and search unchanged |
 
 
@@ -231,7 +231,7 @@ When done, list every file changed and run the build to confirm it passes.
 I am revamping my React 19 + TypeScript + Vite dashboard (plain CSS, no UI or icon libraries, no new dependencies). I will upload the repo zip.
 
 Task: Add the greeting header and the italic accent typography.
-- Add a greeting header at the top of the main workspace: "Good morning / afternoon / evening" based on the current time, today's date, and a one-line summary such as "N agents need attention". Compute N from existing data only (for example the outliers or chronic offenders already calculated in the app). If the data is not available on a tab, show only the greeting and date.
+- Add a greeting header at the top of the main workspace: "Good morning / afternoon / evening" based on the current time, today's date, and a one-line summary such as "N agents need attention". Compute N from existing data only (for example the outliers or repeated offenders already calculated in the app). If the data is not available on a tab, show only the greeting and date.
 - Use an italic accent word in headlines: set one word in a curly italic serif font (use a system serif stack such as "Georgia, 'Times New Roman', serif" in italic; no web-font dependency) while the rest stays in the normal sans-serif.
 - Apply the same italic accent to the main headline of the stat cards.
 - Keep headings readable and accessible (do not rely on italic alone to convey meaning).

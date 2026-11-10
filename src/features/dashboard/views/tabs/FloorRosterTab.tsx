@@ -110,7 +110,7 @@ export const FloorRosterTab = () => {
                               <span
                                 className="text-xs font-extrabold px-1.5 py-0.5 rounded cursor-help"
                                 style={{ color: '#b91c1c', background: '#fee2e2', border: '1px solid #fecaca' }}
-                                title={`Repeated Offenders: ${roSup.agentNames.join(', ')}`}
+                                title={`Repeated Offenders (missed target in 2+ of the latest 3 months): ${roSup.agentNames.join(', ')}`}
                               >
                                 🔁 {roSup.agentCount}
                               </span>

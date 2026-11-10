@@ -75,7 +75,7 @@ const AskAiContent = ({ aiTools, uiState, uiHandlers }: any) => {
 const SupervisorModalContent = () => {
   const { dashData, metrics, aiTools, uiState, uiHandlers } = useDashboard();
   const supName = uiState.selectedSupervisorObj?.name;
-  // Repeated Offenders: which agent's month-by-month detail row is open
+  // Repeated Offenders (2+ misses in the latest 3 months): which agent's month-by-month detail row is open
   const [expandedRepeatOffenderCcms, setExpandedRepeatOffenderCcms] = React.useState(null);
 
   // ── Memoized: only recomputes when supervisor, timeframe, or sort changes ──
@@ -193,8 +193,9 @@ const SupervisorModalContent = () => {
                        <div className="flex items-center gap-2">
                          <span>{item.agent.name}</span>
                          {roHits.length > 0 && (() => {
-                           const maxStreak = Math.max(...roHits.map(h => h.streakLength));
-                           const detail = roHits.map(h => `${h.label}: below target ${h.target} for ${h.streakLength} consecutive months (${h.streakMonths.map(monthLabel).join(' → ')})`).join('\n');
+                           const maxMisses = Math.max(...roHits.map(h => h.missCount));
+                           const windowLength = roHits[0].windowMonths.length;
+                           const detail = roHits.map(h => `${h.label}: below target ${h.target} in ${h.missCount} of ${h.windowMonths.length} months (${h.windowMonths.filter((m: any) => m.missed).map((m: any) => monthLabel(m.month)).join(', ')})`).join('\n');
                            return (
                              <button
                                type="button"
@@ -203,7 +204,7 @@ const SupervisorModalContent = () => {
                                className="text-xs font-extrabold px-1.5 py-0.5 rounded cursor-pointer"
                                style={{ color: '#b91c1c', background: '#fee2e2', border: '1px solid #fecaca' }}
                              >
-                               🔁 {maxStreak}mo {roExpanded ? '▴' : '▾'}
+                               🔁 {maxMisses}/{windowLength}mo {roExpanded ? '▴' : '▾'}
                              </button>
                            );
                          })()}
@@ -218,11 +219,11 @@ const SupervisorModalContent = () => {
                   {roExpanded && roHits.length > 0 && (
                     <tr>
                       <td colSpan={visibleColCount + 1} className="px-6 py-3" style={{ background: '#fffbeb', borderBottom: '1px solid #fde68a' }}>
-                        <div className="text-xs font-extrabold uppercase mb-1" style={{ color: '#92400e' }}>🔁 Repeated Offender — consecutive months below target</div>
+                        <div className="text-xs font-extrabold uppercase mb-1" style={{ color: '#92400e' }}>🔁 Repeated Offender — below target in 2+ of the latest 3 months</div>
                         {roHits.map(hit => (
                           <div key={hit.metric} className="text-xs" style={{ color: '#334155' }}>
-                            <span className="font-bold">{hit.label}</span>: {hit.streakLength} consecutive months below target {hit.target} —{' '}
-                            {hit.values.map((v: any) => `${monthLabel(v.month)}: ${Number.isInteger(v.value) ? v.value : Number(v.value.toFixed(1))}${hit.format || ''}`).join('  ·  ')}
+                            <span className="font-bold">{hit.label}</span>: below target {hit.target} in {hit.missCount} of {hit.windowMonths.length} months —{' '}
+                            {hit.windowMonths.map((m: any) => `${monthLabel(m.month)}: ${m.value === null ? 'no data' : `${Number.isInteger(m.value) ? m.value : Number(m.value.toFixed(1))}${hit.format || ''} ${m.missed ? '❌' : '✅'}`}`).join('  ·  ')}
                           </div>
                         ))}
                       </td>

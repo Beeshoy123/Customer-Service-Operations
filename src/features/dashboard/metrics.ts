@@ -34,7 +34,6 @@ export const useDashboardMetrics = ({
   runChartMetric,
   isCumulative,
   heatmapViewType,
-  repeatOffenderMetrics = [],
 }) => {
   const parsedQueries = useMemo(
     () => searchQuery.toLowerCase().split(',').map((q) => q.trim()).filter((q) => q),
@@ -398,28 +397,22 @@ export const useDashboardMetrics = ({
     return result;
   }, [supervisorStats, parsedQueries, sortConfig]);
 
-  // Repeated Offenders — agents below target for 2+ CONSECUTIVE calendar
-  // months, for the metrics picked in Settings (empty selection = off).
-  // Deliberately spans ALL loaded months (a streak is multi-month) and reads
-  // real per-month aggregates from repeatOffenders.ts — never the blended
-  // selectedMonth view and never gated on selectedMonth.
+  // Repeated Offenders — ONE rule for every screen: an agent who missed target in
+  // 2 or more of the LATEST 3 months loaded (not necessarily back-to-back), checked
+  // on every metric that has a target. The roster badge, the agent modal, the
+  // Repeated Offenders tab and the header chip all read this one result, so they
+  // can never disagree. It spans the loaded months and reads real per-month
+  // aggregates from repeatOffenders.ts — never the blended selectedMonth view.
   const repeatOffenders = useMemo(() => {
-    if (!hasUploadedData || !Array.isArray(repeatOffenderMetrics) || repeatOffenderMetrics.length === 0) {
-      return computeRepeatOffenders([], historicalData, {}, []);
-    }
     const targets: Record<string, { target: number; reverse: boolean; label?: string; format?: string }> = {};
-    for (const key of repeatOffenderMetrics) {
-      const cfg = (METRIC_CONFIG as Record<string, any>)[key];
-      if (!cfg) continue;
-      targets[key] = {
-        target: getDynamicTarget(key, 1),
-        reverse: Boolean(cfg.reverse),
-        label: cfg.label,
-        format: cfg.format ?? '',
-      };
+    for (const [key, cfg] of Object.entries(METRIC_CONFIG as Record<string, any>)) {
+      if (!cfg || !Number.isFinite(cfg.target)) continue;
+      const target = getDynamicTarget(key, 1);
+      if (target === undefined) continue;
+      targets[key] = { target, reverse: Boolean(cfg.reverse), label: cfg.label, format: cfg.format ?? '' };
     }
-    return computeRepeatOffenders(agents, historicalData, targets, repeatOffenderMetrics);
-  }, [agents, historicalData, hasUploadedData, repeatOffenderMetrics]);
+    return computeRepeatOffenders(hasUploadedData ? agents : [], historicalData, targets);
+  }, [agents, historicalData, hasUploadedData]);
 
   // S3 — memoized return: every key above is a useMemo result (or derived
   // synchronously from one), so this object keeps its identity until an input

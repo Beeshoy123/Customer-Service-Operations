@@ -74,7 +74,7 @@ FLOORS.forEach((fl, f) => {
 });
 const order = shuffle(agents.map((_, i) => i));
 const take = (n, profile, fn) => order.splice(0, n).forEach((i) => { agents[i].profile = profile; fn && fn(agents[i]); });
-take(12, 'chronic');
+take(12, 'persistent_low');
 take(15, 'improving');
 take(10, 'declining');
 take(20, 'new_hire', (a) => { a.start = AUG3; });
@@ -92,7 +92,7 @@ agents.forEach((a) => {
 
 const rates = (a, m) => {
   let pTop = a.pTop, p2h = a.p2h, aht = a.aht * (m === 2 ? 1.03 : 1);
-  if (a.profile === 'chronic') { pTop = 0.56 - 0.02 * m; p2h = 0.68 - 0.01 * m; aht *= 1.15; }
+  if (a.profile === 'persistent_low') { pTop = 0.56 - 0.02 * m; p2h = 0.68 - 0.01 * m; aht *= 1.15; }
   if (a.profile === 'improving') { pTop += 0.06 * m; p2h += 0.03 * m; }
   if (a.profile === 'declining') { pTop -= 0.07 * m; p2h -= 0.04 * m; aht *= 1 + 0.04 * m; }
   return { pTop: clamp(pTop, 0.3, 0.97), p2h: clamp(p2h, 0.4, 0.97), aht };
@@ -184,7 +184,7 @@ const floorSales = [0, 1, 2].map(() => [0, 0, 0]);
 agents.forEach((a) => {
   for (let m = 0; m < 3; m++) {
     const t = T.get(`${a.id}|${m}`); if (!t) continue;
-    const units = Math.max(0, Math.round(t.calls * (a.profile === 'chronic' ? 0.02 : 0.045) + normal() * 2));
+    const units = Math.max(0, Math.round(t.calls * (a.profile === 'persistent_low' ? 0.02 : 0.045) + normal() * 2));
     floorSales[a.floor][m] += units;
     salesLines.push(line([a.name, MON[m], units, Math.round(units * 1.2), units * (180 + Math.floor(rnd() * 90)), 40]));
   }
@@ -252,7 +252,7 @@ Built-in traps
   - 20 new hires start Aug 3 (half volume for 2 weeks); 15 leavers stop mid-quarter
   - ~half the agents have 2 August training days: present, AUX Training, zero calls (not "off")
   - 8% have a vacation block; 5% of scheduled days are absences
-  - 12 chronic low performers (all 3 months), 15 improving, 10 declining
+  - 12 persistent low performers (all 3 months), 15 improving, 10 declining
   - 9 junk rows (blank name, test agent, blank date, negative handle time) - 3 per month
   - Survey/VXS cells are blank when no survey came back (missing is not 0)
 `);

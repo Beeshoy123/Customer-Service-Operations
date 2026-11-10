@@ -229,8 +229,9 @@ export interface AccountProfile {
   customMetrics?: CustomMetricConfig[];
   ignoredCustomMetricColumns?: string[];
   /**
-   * Repeated Offenders: which metric keys count toward the "below target for
-   * 2+ consecutive months" flag. Absent/empty = feature off (the default).
+   * Retired 2026-11-09: Repeated Offenders now checks every metric that has a
+   * target, so this tick-list is no longer read. The field stays optional so an
+   * account profile saved earlier still loads; the value is ignored.
    */
   repeatOffenderMetrics?: string[];
   /** Optional account-specific calculation branches; existing defaults remain unchanged. */

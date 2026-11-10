@@ -1,5 +1,6 @@
 # e2e_header.py: real-browser check of the workspace header (greeting, italic
-# accent word, "need attention" chip). FAKE data only.
+# accent word, "need attention" chip = Repeated Offenders count: missed target in
+# 2+ of the latest 3 months loaded). FAKE data only.
 # Run: npm run dev (port 5173), then: python3 tools/e2e_header.py
 import asyncio, json, re, sys, time, datetime
 from playwright.async_api import async_playwright
@@ -15,7 +16,8 @@ SMALL = seed(SMALL_AGENTS, {
     "E100": {f"2026-0{i}-15": {"calls": 100, "vxs": 70, "aht": 900} for i in (1, 2, 3)},
     "E200": {f"2026-0{i}-15": {"calls": 100, "vxs": 70, "aht": 900} for i in (1, 2)},
     "E300": {f"2026-0{i}-15": {"calls": 100, "vxs": 95, "aht": 1250} for i in (1, 2, 3, 4)}})
-NONE = seed(SMALL_AGENTS, {"E200": {f"2026-0{i}-15": {"calls": 100, "vxs": 70, "aht": 900} for i in (1, 2)}})
+# Nobody qualifies: one miss and one pass in the two months loaded (1 of 2).
+NONE = seed(SMALL_AGENTS, {"E200": {"2026-01-15": {"calls": 100, "vxs": 70, "aht": 900}, "2026-02-15": {"calls": 100, "vxs": 95, "aht": 900}}})
 
 def big():
     agents, hist = [], {}
@@ -28,6 +30,13 @@ def big():
 
 async def load(page, data):
     await page.goto("http://localhost:5173", wait_until="networkidle")
+    # Saved data now lives in IndexedDB, and an older save in localStorage is copied over
+    # only when IndexedDB is empty. So wipe IndexedDB first, then seed the old key (this
+    # also exercises the one-time copy). Needed because this script loads several times.
+    await page.evaluate("""() => new Promise((resolve) => {
+        const req = indexedDB.deleteDatabase('cs-ops-data');
+        req.onsuccess = req.onerror = req.onblocked = () => resolve();
+    })""")
     await page.evaluate("""(d) => {
         localStorage.setItem('customer-service-dashboard-state-v1', JSON.stringify(d));
         localStorage.setItem('customer-service-dashboard-view-v1', JSON.stringify({selectedMonth:'all'}));
@@ -57,7 +66,7 @@ async def main():
         check("accent word 'Floor' is italic serif", em[0] == "Floor" and em[1] == "italic" and "Georgia" in em[2], str(em))
         check("title reads 'Team A Floor'", (await page.inner_text(".workspace-title")).strip() == "Team A Floor")
         chip = await page.inner_text(".attention-chip")
-        check("attention chip counts 2 chronic agents (Alice, Cara; not Bob)", chip == "2 agents need attention", chip)
+        check("attention chip counts 2 repeated agents (Alice, Cara; not Bob)", chip == "2 agents need attention", chip)
         # Same number as before this change: agents active on the selected date / all agents.
         check("headcount chip unchanged (1 / 3)", "1 / 3" in await page.inner_text(".headcount-chip"))
         check("date arrows and search still there", await page.locator(".date-step-btn").count() == 2 and await page.locator(".workspace-controls .search-input").count() == 1)
@@ -76,17 +85,17 @@ async def main():
         await page.screenshot(path="/tmp/header_390.png")
         await page.set_viewport_size({"width": 1366, "height": 768})
         # header survives tab switching
-        for label in ("Chronic Offenders", "Team Roster"):
+        for label in ("Repeated Offenders", "Team Roster"):
             try:
                 await page.get_by_text(label, exact=False).first.click(timeout=4000)
                 await page.wait_for_timeout(400)
                 check(f"header still shown on tab '{label}'", await page.locator(".workspace-greeting").count() == 1)
             except Exception as e:
                 check(f"tab '{label}' click", False, str(e)[:80])
-        # no chronic agents -> no chip, greeting stays
+        # no repeated agents -> no chip, greeting stays
         await load(page, NONE)
-        check("no chronic agents: no attention chip (not '0 agents')", await page.locator(".attention-chip").count() == 0)
-        check("no chronic agents: greeting still shown", await page.locator(".workspace-greeting").count() == 1)
+        check("no repeated agents: no attention chip (not '0 agents')", await page.locator(".attention-chip").count() == 0)
+        check("no repeated agents: greeting still shown", await page.locator(".workspace-greeting").count() == 1)
         # scale
         secs = await load(page, big())
         chip = await page.inner_text(".attention-chip")

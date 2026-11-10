@@ -29,7 +29,7 @@ The owner (Beeshoy) is a call-center team leader and a **beginner at coding**. H
 3. **Edit the existing code. Do not rebuild.** No rewrites he didn't ask for.
 4. **UI:** follow `docs/frontend-design.md` (light mint look, his choice on 2026-11-09), keep color-coding. Never design without confirmation: show an HTML mock-up first.
 5. **Mapping and alias fixes go only in `importPolicy.ts`** (the repo's standing rule, full text in the Reference section below).
-6. **Before every commit run** `tsc -b`, `npm test`, `npm run lint` and `npm run build`. Baseline on 2026-11-09 (after the storage step): tsc clean, 443/443 tests pass, lint 0 errors (105 warnings).
+6. **Before every commit run** `tsc -b`, `npm test`, `npm run lint` and `npm run build`. Baseline on 2026-11-09 (after the Repeated rule, X6): tsc clean, 460/460 tests pass, lint 0 errors (105 warnings).
 7. **Commit straight to `main`. No branches, no pull requests** (his decision). One commit per step. Tick that step's `[ ]` box in this file in the same commit.
 8. If a step changes the plan, update this file and say so.
 
@@ -142,7 +142,7 @@ Suggested sequence: 1 → 2 → 3, then 4–7 as one small cleanup, then everyth
 Format: `[ ]` open · `[x]` done. Codes in brackets point to sections below: **B** = blocker (Backend scorecard), **K** = known bug, **X** = extra finding, **F** = frontend, **C** = AI/safety item, **U** = usability item.
 
 ### Bugs found during work (fix when he approves)
-- [ ] **X9** Chronic Offenders coaching-plan button crashes: `setUploadStatus is not a function` (`FloorOffendersTab.tsx:106`). Make the hook return `setUploadStatus` and `scheduleStatusClear`, add a test, then re-check every tab for the same kind of missing member. Details in "Also found".
+- [ ] **X9** Repeated Offenders (tab was called Chronic) coaching-plan button crashes: `setUploadStatus is not a function` (`FloorOffendersTab.tsx:80`). Make the hook return `setUploadStatus` and `scheduleStatusClear`, add a test, then re-check every tab for the same kind of missing member. Details in "Also found".
 
 ### Step 0: Safety net for the math (tests only)
 - [ ] Tests for `calculateBonus`: every tier boundary, missing and partial inputs [C3]
@@ -224,7 +224,7 @@ Show an HTML mock-up and get his OK before building any of this.
 - [ ] One light mint canvas with forest green, mint glow and peach accents (per `docs/frontend-design.md`), 4 domain colors, SVG icons instead of emoji (about 51 emoji-led labels, per the old audit) [F5, U1]. In progress 2026-11-09: 1a and 1b done (shared `--cso-` colors, background gradient, top bar, cards, table header and blue accents recolored, sidebar already on SVG icons). Still open in this box: the other emoji labels, the 4 domain colors, the 19 inline colors listed in `docs/frontend-design.md`
 - [x] Collapsible icon rail [F6]. Done 2026-11-09 (sidebar only; the rest of Step 9 is still open): floating forest-green panel, one round toggle between full (264 px) and a slim icon pill (76 px), choice remembered in browser storage (`storageKeys.sidebarCollapsed`), hover and keyboard-focus names in the pill, 9 line SVG icons instead of emoji, narrow screens (1024 px and below) always show the pill, and the workspace now moves with the panel (before, it sat under the panel on narrow screens). Optional number badge supported but none shown, because the app has no number for it. Search box and profile block were left out: the app has no data for them. Checked in Chromium on fake data: 30 of 30 checks passed (ran).
 - [x] Animation layer, parts A and B (frontend-design.md section 6). Done 2026-11-09: two KPI cards and the tab panel rise in, the tab panel fades in on every tab change, one mint glow slides to the active sidebar item, KPI numbers count up over 800ms (`CountUp.tsx`); all of it off for reduced motion. Checked in Chromium on fake data: 15 of 15 checks passed (ran). Part C (sparkline draw-in) is parked until sparklines exist (F4/F7).
-- [x] Workspace header, first part of frontend-design.md section 5. Done 2026-11-09: greeting by the clock + today's date, the word "Floor" in italic serif, a "N agents need attention" chip (Chronic Offenders rule, hidden when it cannot be known), glass card look. 7 new unit tests; Chromium check on fake data 16 of 16, including 3,000 agents x 12 months (ran). Open: italic touch on the stat cards (waits for Cards, step 4). The chip uses the Chronic rule, so revisit it with X6.
+- [x] Workspace header, first part of frontend-design.md section 5. Done 2026-11-09: greeting by the clock + today's date, the word "Floor" in italic serif, a "N agents need attention" chip (it now counts Repeated Offenders, hidden when it cannot be known), glass card look. 7 new unit tests; Chromium check on fake data 16 of 16, including 3,000 agents x 12 months (ran). Open: italic touch on the stat cards (waits for Cards, step 4).
 - [x] Cards, section 4 of frontend-design.md (cards only). Done 2026-11-09: both KPI cards are frosted glass with 28px corners, soft shadow and a 5px hover lift (off for reduced motion); header chips and a visible peach label tag; gauges with light-card ring colors and an On/Off target tag; metric tiles mint/peach/white with a "vs target" line; one `KpiTile` component instead of two copied blocks. Checked in Chromium on fake data (ran). **Still to run:** `npx tsc -b`, `npm test`, `npm run lint`, `npm run build` (the session had no `node_modules`). Left open on purpose: trend badge and sparkline (no real trend data, F4/X5), italic accent word on the stat cards.
 - [x] Page layout, section 3 of frontend-design.md (shell, table box, compact cards). Done 2026-11-09: page locked to the screen height, only the tab panel scrolls, Team Roster table scrolls in its own box with a sticky header row, KPI cards 496 px to 281 px and header 149 px to 108 px at 1366x768. Browser check on fake data 31 of 31 (`tools/e2e_page_layout.py`, ran); tsc clean, 447/447 tests, lint 0 errors, build OK (ran). Open: bento tiles for the 5 chart tabs, sticky header row in Apprentice, Day of Week and Offenders.
 - [ ] Bar charts, sparklines, daily drill-down, 4 domain tiles [F7]
@@ -233,7 +233,7 @@ Show an HTML mock-up and get his OK before building any of this.
 - [ ] A loading state for the first metric cards (a real "resolving" flag, no fake timer) [U5]
 - [ ] Red is for problems only: about 10 places use red as a neutral label color (old audit count, recheck) [U3]
 - [ ] One button shape in the header (round ◀ ▶ next to rectangular tabs) [U6]
-- [ ] Merge the two offender systems (Chronic 3+ vs Repeated 2+) into one rule set [X6]
+- [x] Merge the two offender systems into one rule set [X6]. Done 2026-11-09, his decision: ONE concept named "Repeated" (the word "Chronic" is gone from the app). Rule: missed target in 2 or more of the LATEST 3 months loaded, not necessarily back-to-back, on every metric that has a target. Edge cases (his OK): a month with no data is not a miss; only 2 months loaded and both missed = flagged; only 1 month = never flagged; equal to target passes; a month nobody loaded is skipped. What changed: `repeatOffenders.ts` holds the one rule (`chronicOffenders.ts` and its tests deleted); it is computed once in `metrics.ts` and read by the roster badge, the agent modal, the Repeated Offenders tab and the header chip, so they cannot disagree; the Settings tick-list is removed (an old saved `repeatOffenderMetrics` value is ignored). Tab: cards Total Repeated Offenders / Missed Every Month / Primary Issue Area, column "Misses" ("2 of 3 months") and per-month ✅/❌ badges. 43 offender unit tests (worked out by hand first) plus 2 new header tests; Chromium on fake data: `tools/e2e_repeated_offenders.py` 23/24 (the 1 failure is X9), `tools/e2e_header.py` 16/16 including 3,000 agents x 12 months = 300 flagged (ran); the rule takes 96 ms for 225,000 agent-days (ran, Node). Test scripts that reload the page now clear IndexedDB first. Still open: past months are judged against today's targets (parked); the rule is fixed at 2 of 3 (not a setting).
 - [ ] Frontend debt: undefined Tailwind-style classes, 74 inline styles, Vite template CSS, dead `if (false …)` block in `App.tsx` (line 308, hides a ~60-line account-setup screen), a ref written during render (`aiResetRef.current = …`, `App.tsx` line 224), unused CSS classes (about 48 per the old audit, recheck)
 - Collect while rewriting these files, do not open a separate pass: 74 inline `style={{}}` [S15], many inline arrow handlers [S16].
 - [x] Long conditional `className` chains → named class constants [S18] (done 2026-11-09, ahead of Step 9 at his request): 12 long chains in `menus.tsx`, `shared.tsx`, `MainModal.tsx` and `FloorRosterTab.tsx` now use named constants. Class output is identical: live-app crawl of 206 screen states / 76,192 elements, 0 differences before vs after (ran). The 10 short chains (`x${on ? ' active' : ''}` style in `SidebarNav`, `ImportLanding`, `ImportPreviewModal`, `FloorApprenticeTab`, `MainStatsRow`) were left as they are readable.
@@ -306,7 +306,7 @@ Test used: 2 agents × 10 calls per file.
 | 🟡 | Main-thread work | confirm path = 0.87 s CPU at 300K rows in Node. Expect a 1–3 s hitch in Chrome; to be measured there (ran) |
 | 🟢 | Quality gates | `tsc` clean, 429/429 tests pass (2026-11-09), lint warnings only (ran) |
 | 🟢 | Worker XLSX parse, Excel serial dates, sheet filtering | ran |
-| 🟢 | Repeated and Chronic Offenders modules | pure functions with tests (read) |
+| 🟢 | Repeated Offenders module (the one offender rule since 2026-11-09) | pure functions with tests (ran) |
 | 🟢 | Alias engine in `importPolicy.ts` | only 1 of 11 real headers still prompts (ran) |
 | 🟢 | Storage facade, AI-tools members, memoized hook returns, import-folder structure | landed since the old audit; no action (read, plus 274 tests) |
 
@@ -321,10 +321,10 @@ Test used: 2 agents × 10 calls per file.
 | ✅ | **X3 Invented survey counts.** When only a VXS % exists, `helpers.ts` sets surveys = max(1, round(calls × 5%)), which skews weighted CSAT. | read **Fixed 2026-11-09** (step 2): the 5% rule is gone; floor figures use real counts only (ran). |
 | 🟡 | **X4** `isOff = calls === 0` drops absent and AUX-only days from rollups. | read |
 | 🟡 | **X5** Trend column compares a period with itself in monthly view, so it always shows "STABLE +0.00%". VXS only. | ran, seen live |
-| 🟡 | **X6** Two offender systems with different rules: Chronic Offenders (3+ months) and Repeated Offenders (2+ consecutive). | read |
+| ✅ | **X6** Two offender systems with different rules (Chronic 3+ in a row, Repeated 2+ in a row). **Fixed 2026-11-09**: one rule, named Repeated, 2 of the latest 3 months. | ran |
 | 🟡 | **X7** Dates default to DD/MM silently, with no per-file setting. **Update:** order is now detected per sheet (`import/dateText.ts`, `detectDateOrder`); a sheet with no proof still defaults to DD/MM, but the import preview now warns and lets you switch (`DatesSection.tsx`). | ran |
 | ✅ | **X8** Repo hygiene: 5 Python scripts, 3 PNGs and `.tmp_test` in the root. README says 8 tabs; there are 9. | ran **Fixed** (step 10, commit 5108eb0): scripts moved to `tools/`, PNGs and `.tmp_test` removed, README says 9 tabs. |
-| ⛔ | **X9 (new, found 2026-11-09)** In the Chronic Offenders tab, clicking the coaching-plan button throws `TypeError: setUploadStatus is not a function` (`FloorOffendersTab.tsx:106`). The tab reads `setUploadStatus` and `scheduleStatusClear` from the dashboard data, but the hook's returned object does not include them. Same failure class as C4, on `dashData` instead of `aiTools`. Not fixed yet; needs his OK. | ran |
+| ⛔ | **X9 (new, found 2026-11-09)** In the Repeated Offenders tab (then named Chronic), clicking the coaching-plan button throws `TypeError: setUploadStatus is not a function` (`FloorOffendersTab.tsx:80`). Confirmed again in a real browser after the X6 change. The tab reads `setUploadStatus` and `scheduleStatusClear` from the dashboard data, but the hook's returned object does not include them. Same failure class as C4, on `dashData` instead of `aiTools`. Not fixed yet; needs his OK. | ran |
 
 ---
 
@@ -474,7 +474,7 @@ When a dashboard metric (handoffs, 2HR, 3DR, CSAT, AHT, or any other field) show
 | `dashboard/uploadFlow.ts` | Drag/drop, multi-file, automatic import routing |
 | `dashboard/batchImport.ts` | `applyBatchImport`, `confirmImportPreview`, `processFile` (owns the replace-on-upload code, step 2) |
 | `dashboard/metrics.ts`, `helpers.ts`, `config.ts`, `emptyColumns.ts` | Floor metrics, rollups, bonus/VSF math, column definitions |
-| `dashboard/chronicOffenders.ts`, `repeatOffenders.ts` | The two offender rule sets (X6) |
+| `dashboard/repeatOffenders.ts` | The one offender rule: 2 of the latest 3 months (X6, done) |
 | `dashboard/uiReducer.ts` | Modal and UI reducers |
 | `dashboard/views/{chrome,tabs,modals}` | The 9 tabs, navbar, header, stats row, main modal |
 | `dashboard/import/fileTypeDetector`, `csvParser`, `workbookLoader`, `workbookWorker`, `sheetSelector` | Read files; Excel parsing runs in a Web Worker |

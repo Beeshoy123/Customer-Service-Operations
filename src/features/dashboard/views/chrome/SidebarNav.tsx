@@ -38,7 +38,7 @@ const NAV_MODEL: NavFolder[] = [
     items: [
       { id: 'apprentice', label: 'Apprentice Track' },
       { id: 'burnout',    label: 'Behavioral Scan' },
-      { id: 'offenders',  label: 'Chronic Offenders' },
+      { id: 'offenders',  label: 'Repeated Offenders' },
     ],
   },
 ];

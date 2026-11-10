@@ -1,23 +1,9 @@
 // Frontend redesign: FloorHeader is now the Right Workspace header —
   // department title + live headcount summary, plus the date-step controls and
   // search that used to sit beside the (removed) floating pill tab bar.
-import React, { useMemo } from 'react';
+import React from 'react';
 import { useDashboard } from '../../hooks';
-import { METRIC_CONFIG, getDynamicTarget } from '../../config';
-import type { ChronicTargets } from '../../chronicOffenders';
-import { getGreeting, formatToday, countNeedAttention, attentionLabel } from '../../headerInfo';
-
-// Same KPI targets the Chronic Offenders tab uses (every KPI that has a target).
-const buildTargets = (): ChronicTargets => {
-  const targets: ChronicTargets = {};
-  for (const [key, cfg] of Object.entries(METRIC_CONFIG as Record<string, any>)) {
-    if (!cfg || !Number.isFinite(cfg.target)) continue;
-    const target = getDynamicTarget(key, 1);
-    if (target === undefined) continue;
-    targets[key] = { target, reverse: Boolean(cfg.reverse), label: cfg.label, format: cfg.format ?? '' };
-  }
-  return targets;
-};
+import { getGreeting, formatToday, attentionLabel } from '../../headerInfo';
 
 // ─── Workspace Header ──────────────────────────────────────────
 export const FloorHeader = React.memo(() => {
@@ -30,14 +16,11 @@ export const FloorHeader = React.memo(() => {
   const totalCount = dashData.agents.length;
 
   // Greeting and date come from the browser clock. The "need attention" count
-  // uses existing chronic-offender data only; null means show nothing.
+  // is the Repeated Offenders count, read from the one shared result (the same
+  // numbers as the tab); null means show nothing.
   const now = new Date();
-  const needAttention = useMemo(
-    () => (dashData.hasUploadedData
-      ? countNeedAttention(dashData.agents, dashData.historicalData, buildTargets())
-      : null),
-    [dashData.agents, dashData.historicalData, dashData.hasUploadedData]
-  );
+  const repeatTotal = metrics.repeatOffenders?.summary?.totalOffenders ?? 0;
+  const needAttention = dashData.hasUploadedData && repeatTotal > 0 ? repeatTotal : null;
 
   return (
     <div className="roster-header workspace-header">
@@ -52,7 +35,7 @@ export const FloorHeader = React.memo(() => {
               <span className="headcount-label">Agents Online</span>
             </span>
             {needAttention !== null && (
-              <span className="attention-chip" title="Agents who missed a KPI target 3 or more months in a row (same rule as the Chronic Offenders tab)">
+              <span className="attention-chip" title="Agents who missed a KPI target in 2 or more of the latest 3 months (same rule as the Repeated Offenders tab)">
                 {attentionLabel(needAttention)}
               </span>
             )}
