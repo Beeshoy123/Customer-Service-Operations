@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AI_ENABLED, AI_UNDER_CONSTRUCTION_TEXT } from './aiSwitch';
-import { executeGeminiAction } from './hooks';
+import { executeAiAction } from './hooks';
 
 const SRC = fileURLToPath(new URL('../..', import.meta.url));
 
@@ -34,7 +34,7 @@ describe('AI is frozen: nothing is sent to any AI model (under construction)', (
     const statuses: string[] = [];
     const loadings: boolean[] = [];
     try {
-      await executeGeminiAction(
+      await executeAiAction(
         '{"agents":["Fake Agent One"],"supervisors":["Fake Sup A"]}',
         'system prompt',
         (t: string) => statuses.push(t),

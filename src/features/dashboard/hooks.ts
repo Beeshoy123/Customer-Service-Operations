@@ -223,7 +223,7 @@ const fetchWithRetry = async (url, options, retries = 2, timeoutMs = 30000) => {
   throw lastError || new Error('AI request failed');
 };
 
-export const executeGeminiAction = async (context, systemPrompt, setStatusFn, setLoadingFn, errorMsg) => {
+export const executeAiAction = async (context, systemPrompt, setStatusFn, setLoadingFn, errorMsg) => {
   // AI is frozen (see aiSwitch.ts): build no request, show "under construction" in the panel.
   if (!AI_ENABLED) {
     setStatusFn(AI_UNDER_CONSTRUCTION_TEXT);
@@ -390,7 +390,7 @@ export const useAiTools = ({
     const v = varsRef.current;
     if (!v.agents?.length) return;
     const systemPrompt = `${PERSONA} Produce a UNIFIED STRATEGY REPORT for the whole floor: overall trajectory, top wins, biggest risks per supervisor team, and 3 concrete next actions for the OAM. Use simple everyday English.`;
-    executeGeminiAction(buildDashboardContext(v), systemPrompt, setTeamReport, setLoadingTeam, 'Unable to generate team report.');
+    executeAiAction(buildDashboardContext(v), systemPrompt, setTeamReport, setLoadingTeam, 'Unable to generate team report.');
   }, []);
 
   // Supervisor modal → per-team expert report.
@@ -399,7 +399,7 @@ export const useAiTools = ({
     if (!supObj) return;
     const systemPrompt = `${PERSONA} Write an EXPERT SUPERVISOR REPORT for "${supObj.name}". Cover team performance vs targets, standouts, concerns, and a coaching plan for the next week. Use simple everyday English.`;
     const context = JSON.stringify({ supObj, timeframe: v.activeTimeframe, selectedDate: v.selectedDate, agents: slimAgents(v.agents) }, null, 1);
-    executeGeminiAction(context, systemPrompt, setReport, setLoading, 'Unable to generate supervisor report.');
+    executeAiAction(context, systemPrompt, setReport, setLoading, 'Unable to generate supervisor report.');
   }, []);
 
   // Trends tab heatmap → targeted action plan for the selected metric.
@@ -408,7 +408,7 @@ export const useAiTools = ({
     if (!v.runChartData?.length) return;
     const systemPrompt = `${PERSONA} You receive a heatmap of daily "${v.runChartMetric}" performance. Identify the weakest days/segments and write a TARGETED ACTION PLAN: root-cause hypotheses plus specific interventions, owners and deadlines. Use simple everyday English.`;
     const context = JSON.stringify({ metric: v.runChartMetric, dates: v.allActiveDates, runChartData: v.runChartData, leaderData: v.activeLeaderData }, null, 1);
-    executeGeminiAction(context, systemPrompt, setChartActionPlan, setLoadingChartActionPlan, 'Unable to generate action plan.');
+    executeAiAction(context, systemPrompt, setChartActionPlan, setLoadingChartActionPlan, 'Unable to generate action plan.');
   }, []);
 
   // Correlation tab report.
@@ -416,14 +416,14 @@ export const useAiTools = ({
     const v = varsRef.current;
     if (!v.agents?.length) return;
     const systemPrompt = `${PERSONA} Analyze CORRELATIONS between floor metrics (e.g. AHT vs Sales, Hold vs CSat). Call out the strongest positive/negative relationships, likely causes, and what the OAM should change. Use simple everyday English.`;
-    executeGeminiAction(buildDashboardContext(v), systemPrompt, setCorrelationReport, setLoadingCorrelation, 'Unable to generate correlation report.');
+    executeAiAction(buildDashboardContext(v), systemPrompt, setCorrelationReport, setLoadingCorrelation, 'Unable to generate correlation report.');
   }, []);
 
   // Apprentice tab comparison report (group A vs group B).
   const generateApprenticeReport = useCallback((viewMode, dataA, dataB, titleA, titleB) => {
     const systemPrompt = `${PERSONA} Compare two teams ("${titleA}" vs "${titleB}") in ${viewMode || 'default'} view mode. Highlight who leads on each metric, gaps that matter, and one concrete coaching takeaway per team. Use simple everyday English.`;
     const context = JSON.stringify({ viewMode, titleA, titleB, dataA, dataB }, null, 1);
-    executeGeminiAction(context, systemPrompt, setApprenticeReport, setLoadingApprentice, 'Unable to generate apprentice report.');
+    executeAiAction(context, systemPrompt, setApprenticeReport, setLoadingApprentice, 'Unable to generate apprentice report.');
   }, []);
 
   // Day-of-week tab report.
@@ -431,7 +431,7 @@ export const useAiTools = ({
     const v = varsRef.current;
     const systemPrompt = `${PERSONA} Analyze DAY-OF-WEEK performance patterns. Identify the strongest and weakest days, probable drivers (volume, staffing, intent mix) and a schedule/coverage recommendation. Use simple everyday English.`;
     const context = JSON.stringify({ dowData: dowInput ?? v.dowData, oamName: v.oamName, activeLeaderData: v.activeLeaderData }, null, 1);
-    executeGeminiAction(context, systemPrompt, setDowReport, setLoadingDow, 'Unable to generate day-of-week report.');
+    executeAiAction(context, systemPrompt, setDowReport, setLoadingDow, 'Unable to generate day-of-week report.');
   }, []);
 
   // Mirror the query into a ref so handleAskAiSubmit stays referentially stable.
@@ -448,7 +448,7 @@ export const useAiTools = ({
     if (!q || !q.trim()) return;
     const systemPrompt = `${PERSONA} You are a DATA ASSISTANT with access to the dashboard context below. Answer the user's question strictly from this data; if the data cannot answer it, say so. Use simple everyday English.`;
     const context = `QUESTION: ${q}\n\nDASHBOARD CONTEXT:\n${buildDashboardContext(v)}`;
-    executeGeminiAction(context, systemPrompt, setAskAiResponse, setAskAiLoading, 'Unable to answer right now. Please try again.');
+    executeAiAction(context, systemPrompt, setAskAiResponse, setAskAiLoading, 'Unable to answer right now. Please try again.');
   }, []);
 
   // S3 — memoized return: the 15 report/loading/query state values plus

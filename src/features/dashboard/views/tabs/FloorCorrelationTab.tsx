@@ -1,5 +1,5 @@
 // Extracted from App.tsx (Phase 3 move-only refactor) — behavior must stay identical.
-import { FormattedText, GeminiLoader, CopyReportButton } from '../../../../components/shared';
+import { FormattedText, AiLoader, CopyReportButton } from '../../../../components/shared';
 import { useDashboard } from '../../hooks';
 import { useEffect } from 'react';
 
@@ -24,7 +24,7 @@ export const FloorCorrelationTab = () => {
 
 
         {aiTools.loadingCorrelation ? (
-           <div className="flex justify-center p-10"><GeminiLoader color="#f59e0b" message="Scanning data for all Integrity Match-ups..." icon="🧠" /></div>
+           <div className="flex justify-center p-10"><AiLoader color="#f59e0b" message="Scanning data for all Integrity Match-ups..." icon="🧠" /></div>
         ) : aiTools.correlationReport ? (
            <div className="report-body text-[1.05rem] leading-relaxed mt-0">
              <FormattedText text={aiTools.correlationReport} linkedEntities={uiState.linkedEntities} onEntityClick={uiHandlers.handleAiLinkClick} />

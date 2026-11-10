@@ -19,7 +19,7 @@ import { getDynamicTarget, METRIC_CONFIG } from '../features/dashboard/config';
 // buttons (Analysis / Apprentice / Correlation / DOW tabs) plus the Action
 // Plan modal's copy button. None of the originals handled clipboard failure,
 // so a denied permission was silent — this version surfaces an error state.
-export const CopyReportButton = ({ text, label = 'Copy', className = 'gemini-btn btn-alt px-3 py-1.5 text-xs' }) => {
+export const CopyReportButton = ({ text, label = 'Copy', className = 'ai-btn btn-alt px-3 py-1.5 text-xs' }) => {
   // 'idle' | 'copied' | 'error'
   const [copyState, setCopyState] = useState('idle');
   const resetTimerRef = useRef(null);
@@ -52,7 +52,7 @@ export const CopyReportButton = ({ text, label = 'Copy', className = 'gemini-btn
 };
 
 // ─── Loading Spinner Component ──────────────────────────────────────
-export const GeminiLoader = ({ message = 'Cooking it up...', color = '#3b82f6', icon = '✨' }) => (
+export const AiLoader = ({ message = 'Cooking it up...', color = '#3b82f6', icon = '✨' }) => (
   <div className="flex flex-col items-center justify-center p-8 gap-4">
     <div className="flex items-center justify-center">
       <div

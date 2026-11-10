@@ -1,6 +1,6 @@
 import { useDashboard } from '../features/dashboard/hooks';
 import { METRIC_CONFIG } from '../features/dashboard/config';
-import { GeminiLoader, FormattedText, CopyReportButton } from '../components/shared';
+import { AiLoader, FormattedText, CopyReportButton } from '../components/shared';
 
 // Extracted from App.tsx (Phase 1 move-only refactor) — behavior must stay identical.
 
@@ -13,7 +13,7 @@ export const ChartActionPlanModal = () => {
       {aiTools.loadingChartActionPlan && (
         <div className="modal-backdrop open">
           <div className="main-modal bg-transparent shadow-none border-none flex justify-center items-center">
-            <GeminiLoader message="Cooking up a targeted action plan..." color="#10B981" />
+            <AiLoader message="Cooking up a targeted action plan..." color="#10B981" />
           </div>
         </div>
       )}
@@ -30,7 +30,7 @@ export const ChartActionPlanModal = () => {
             <div className="p-8 whitespace-pre-wrap leading-relaxed text-slate-700 text-sm">
               <FormattedText text={aiTools.chartActionPlan} linkedEntities={uiState.linkedEntities} onEntityClick={uiHandlers.handleAiLinkClick} />
               <div className="mt-8 text-right">
-                <CopyReportButton text={aiTools.chartActionPlan} label="📋 Copy Action Plan" className="gemini-btn inline-block w-auto" />
+                <CopyReportButton text={aiTools.chartActionPlan} label="📋 Copy Action Plan" className="ai-btn inline-block w-auto" />
               </div>
             </div>
           </div>

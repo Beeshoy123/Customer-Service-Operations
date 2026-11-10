@@ -1,5 +1,5 @@
 // Extracted from App.tsx (Phase 3 move-only refactor) — behavior must stay identical.
-import { FormattedText, GeminiLoader, MetricCell, CopyReportButton } from '../../../../components/shared';
+import { FormattedText, AiLoader, MetricCell, CopyReportButton } from '../../../../components/shared';
 import { COL_DEFINITIONS, getDynamicTarget } from '../../config';
 import { useDashboard } from '../../hooks';
 import { useEffect } from 'react';
@@ -72,7 +72,7 @@ export const FloorDowTab = () => {
 
 
         {aiTools.loadingDow ? (
-           <div className="mt-8 flex justify-center"><GeminiLoader message="Analyzing systemic day vulnerabilities..." color="#0d9488" icon="📅" /></div>
+           <div className="mt-8 flex justify-center"><AiLoader message="Analyzing systemic day vulnerabilities..." color="#0d9488" icon="📅" /></div>
         ) : aiTools.dowReport && (
            <div className="bg-[#fff1f2] border border-[#fecdd3] rounded-xl p-8 mt-8 shadow-sm">
               <div className="report-body text-[1.05rem] leading-relaxed text-red-950 mt-0">

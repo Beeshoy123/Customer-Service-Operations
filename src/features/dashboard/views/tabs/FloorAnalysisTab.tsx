@@ -1,5 +1,5 @@
 // Extracted from App.tsx (Phase 3 move-only refactor) — behavior must stay identical.
-import { FormattedText, GeminiLoader, CopyReportButton } from '../../../../components/shared';
+import { FormattedText, AiLoader, CopyReportButton } from '../../../../components/shared';
 import { useDashboard } from '../../hooks';
 import { useEffect } from 'react';
 
@@ -21,7 +21,7 @@ export const FloorAnalysisTab = () => {
           </div>
           {aiTools.teamReport && <CopyReportButton text={aiTools.teamReport} />}
         </div>
-        {aiTools.loadingTeam ? ( <GeminiLoader message="Brewing up your Unified Strategy Report..." color="#3b82f6" /> ) : aiTools.teamReport ? (
+        {aiTools.loadingTeam ? ( <AiLoader message="Brewing up your Unified Strategy Report..." color="#3b82f6" /> ) : aiTools.teamReport ? (
            <div className="report-body text-[1.05rem] leading-relaxed mt-0">
              <FormattedText text={aiTools.teamReport} linkedEntities={uiState.linkedEntities} onEntityClick={uiHandlers.handleAiLinkClick} />
            </div>

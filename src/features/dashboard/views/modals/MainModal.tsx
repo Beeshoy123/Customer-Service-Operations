@@ -1,7 +1,7 @@
 // Extracted from App.tsx (Phase 4 move-only refactor) — behavior must stay identical.
 import React, { useMemo } from 'react';
 import { METRIC_CONFIG, getDynamicTarget, COL_DEFINITIONS } from '../../config';
-import { GeminiLoader, FormattedText, SubMetricCard, MetricCell } from '../../../../components/shared';
+import { AiLoader, FormattedText, SubMetricCard, MetricCell } from '../../../../components/shared';
 import { useDashboard } from '../../hooks';
 import { monthLabel } from '../../helpers';
 
@@ -39,7 +39,7 @@ const AskAiContent = ({ aiTools, uiState, uiHandlers }: any) => {
             type="text" className="chat-input border-none bg-transparent flex-1 text-slate-900 placeholder:text-slate-400 !outline-none !shadow-none" placeholder="e.g. Which supervisor has the highest AHT? or What is my overall C-Sat?"
             value={aiTools.askAiQuery} onChange={(e) => aiTools.setAskAiQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && aiTools.handleAskAiSubmit()} disabled={aiTools.askAiLoading}
           />
-          <button className="gemini-btn w-auto !m-1" style={{ background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)', boxShadow: '0 4px 12px rgba(59, 130, 246, 0.2)' }} onClick={() => aiTools.handleAskAiSubmit()} disabled={aiTools.askAiLoading || !aiTools.askAiQuery.trim()}>Ask</button>
+          <button className="ai-btn w-auto !m-1" style={{ background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)', boxShadow: '0 4px 12px rgba(59, 130, 246, 0.2)' }} onClick={() => aiTools.handleAskAiSubmit()} disabled={aiTools.askAiLoading || !aiTools.askAiQuery.trim()}>Ask</button>
         </div>
         
         {/* Smart Chips Section */}
@@ -57,7 +57,7 @@ const AskAiContent = ({ aiTools, uiState, uiHandlers }: any) => {
         </div>
         
         {aiTools.askAiLoading && (
-          <div className="flex justify-center p-6 mt-4"><GeminiLoader message="Analyzing dashboard data..." icon="🧠" color="#3b82f6" /></div>
+          <div className="flex justify-center p-6 mt-4"><AiLoader message="Analyzing dashboard data..." icon="🧠" color="#3b82f6" /></div>
         )}
         
         {aiTools.askAiResponse && !aiTools.askAiLoading && (
@@ -412,7 +412,7 @@ const SupervisorModalContent = () => {
                 </div>
                 <div className="report-body mt-0 p-6 text-[1.05rem]">
                   {aiTools.loading ? (
-                    <div className="flex justify-center p-6"><GeminiLoader message="Brewing up Trajectory Report..." /></div>
+                    <div className="flex justify-center p-6"><AiLoader message="Brewing up Trajectory Report..." /></div>
                   ) : <FormattedText text={aiTools.report} linkedEntities={uiState.linkedEntities} onEntityClick={uiHandlers.handleAiLinkClick} />}
                 </div>
               </div>

@@ -126,7 +126,7 @@ Most critical first. Codes in bold are the old item numbers; the checklist below
 
 | # | Code | What | Fix | Size | Step |
 |---|---|---|---|---|---|
-| 17 | **C2** | "Gemini" names (28 hits in 10 files) | Rename to `executeAiAction`, `AiLoader`, `.ai-btn`; do it with Step 4 if the AI code stays | S | 10 |
+| 17 | **C2** | ✅ Done 2026-11-10: "Gemini" names (30 hits in 11 files) | Renamed to `executeAiAction`, `AiLoader`, `.ai-btn` | S | 10 |
 | 18 | **S4c** | `ImportPreviewModal.tsx` is 1,347 lines | Move its state and handlers into a hook. Move only. | M | 10 |
 | 19 | **S20** | `COL_DEFINITIONS` used in 25 places in 8 files | Tidy only when touching them | S | 10 |
 | 20 | **S23** | `runChartData` rebuilds its date list each time (`metrics.ts`) | Only if it measures slow | S | 10 |
@@ -179,10 +179,10 @@ Format: `[ ]` open · `[x]` done. Codes in brackets point to sections below: **B
 
 ### Step 4: Storage and privacy
 - [x] Data lives in IndexedDB, not `localStorage` (no 5 MB cap, no silent loss) [B4]. Done 2026-11-09: new `idbStore.ts` (tiny IndexedDB helper); `persistence.ts` saves the big data (agents, supervisors, daily history) there, newest save wins; `main.tsx` loads it before the first screen (`preloadPersistedDashboardState`); an older save in localStorage is copied over once, then removed; a refused save shows a red message instead of silence. Small keys (view choices, learned mappings, account profiles, sidebar) stay in localStorage. Browser test, 150,000 fake agent-days, reload the page (ran): before 0 of 150,000 survived (localStorage held 105 bytes); after 150,000 of 150,000 and calls 3,675,000 = 3,675,000. Two-file 300K merge test still 10/10. 14 new unit tests (`idbStore.test.ts`, `persistence.test.ts`, with the `fake-indexeddb` dev package). Re-run: `tools/e2e_storage_reload.mjs` (header says how). Not tested: a real browser with real data on your PC.
-- [x] **AI frozen as "under construction" (interim, his decision 2026-11-09).** `dashboard/aiSwitch.ts` has `AI_ENABLED = false`. `executeGeminiAction` and `fetchWithRetry` (the only network call in the app) stop before any request is built. The 7 AI features stay in the app (team report, supervisor report, action plan, correlation, day-of-week, apprentice, Ask AI) and show "Under construction: this feature is not yet developed. Nothing from your data is sent to any AI." Tests in `aiSwitch.test.ts`: zero `fetch` calls, the only network call in `src/` sits behind the switch, no provider address anywhere else. Browser check with fake data (ran): 0 requests to outside servers while opening Floor Analysis, Integrity Match Up (the correlation tab), DOW and the Data Assistant; before the freeze, opening Floor Analysis sent 2 POSTs with agent names to `api.anthropic.com`. Not clicked in the browser (they need richer data) but they use the same guarded function: Apprentice, Create Action Plan, supervisor report.
+- [x] **AI frozen as "under construction" (interim, his decision 2026-11-09).** `dashboard/aiSwitch.ts` has `AI_ENABLED = false`. `executeAiAction` and `fetchWithRetry` (the only network call in the app) stop before any request is built. The 7 AI features stay in the app (team report, supervisor report, action plan, correlation, day-of-week, apprentice, Ask AI) and show "Under construction: this feature is not yet developed. Nothing from your data is sent to any AI." Tests in `aiSwitch.test.ts`: zero `fetch` calls, the only network call in `src/` sits behind the switch, no provider address anywhere else. Browser check with fake data (ran): 0 requests to outside servers while opening Floor Analysis, Integrity Match Up (the correlation tab), DOW and the Data Assistant; before the freeze, opening Floor Analysis sent 2 POSTs with agent names to `api.anthropic.com`. Not clicked in the browser (they need richer data) but they use the same guarded function: Apprentice, Create Action Plan, supervisor report.
 - [ ] AI off by default: a visible switch, default off; no AI request without a click [C1] (still open: the final design is not decided; the freeze above is the interim state)
 - [ ] Remove the three auto-calls on tab open: `FloorAnalysisTab`, `FloorCorrelationTab`, `FloorDowTab` each call their report function inside a mount effect [C1]
-- [ ] Remove the browser → `api.anthropic.com` call (`hooks.ts`, `executeGeminiAction`). If AI is ever wanted: a small server holds the key, never a `VITE_` variable (those end up readable in the page); send aggregates, not the roster; show a visible error state on failure [C1] (still open; frozen in the meantime)
+- [ ] Remove the browser → `api.anthropic.com` call (`hooks.ts`, `executeAiAction`). If AI is ever wanted: a small server holds the key, never a `VITE_` variable (those end up readable in the page); send aggregates, not the roster; show a visible error state on failure [C1] (still open; frozen in the meantime)
 - Alternative (see Decisions): if he does not use the AI reports, delete the AI tabs and code instead. Simplest and safest.
 
 ### Step 5: Recipes
@@ -240,7 +240,7 @@ Show an HTML mock-up and get his OK before building any of this.
 - [x] Long conditional `className` chains → named class constants [S18] (done 2026-11-09, ahead of Step 9 at his request): 12 long chains in `menus.tsx`, `shared.tsx`, `MainModal.tsx` and `FloorRosterTab.tsx` now use named constants. Class output is identical: live-app crawl of 206 screen states / 76,192 elements, 0 differences before vs after (ran). The 10 short chains (`x${on ? ' active' : ''}` style in `SidebarNav`, `ImportLanding`, `ImportPreviewModal`, `FloorApprenticeTab`, `MainStatsRow`) were left as they are readable.
 
 ### Step 10: Cleanup (rolling, alongside steps 1–9)
-Remove `@ts-nocheck` [K5], file by file (8 files, 2,529 lines). Best done when a step already edits the file; the UI files get rewritten in step 9, so skip them until then.
+Remove `@ts-nocheck` [K5], file by file (10 files, 3,606 lines, counted 2026-11-10). Best done when a step already edits the file; the UI files get rewritten in step 9, so skip them until then.
 - [x] `helpers.ts` (do after step 0 tests are green)
 - [x] `emptyColumns.ts`
 - [x] `config.ts`
@@ -249,10 +249,11 @@ Remove `@ts-nocheck` [K5], file by file (8 files, 2,529 lines). Best done when a
 - [ ] `components/shared.tsx`
 - [ ] `components/menus.tsx`
 - [ ] `App.tsx`
+- [ ] `batchImport.ts`, `persistence.ts`, `state.ts`, `timeframe.ts`, `uploadFlow.ts` (missing from this list until 2026-11-10; counted: 10 files in all, ran)
 
 Other cleanup:
 - [ ] Typed dashboard context: replace `createContext<any>` in `hooks.ts` with a real type, and add a test that fails if a component uses an AI member the hook does not return [C4]
-- [ ] Rename Gemini names to neutral ones: `executeGeminiAction` → `executeAiAction`, `GeminiLoader` → `AiLoader`, `.gemini-btn` → `.ai-btn` (28 hits in 10 files). Do it with step 4 if the AI code stays [C2]
+- [x] Rename Gemini names to neutral ones: `executeGeminiAction` → `executeAiAction`, `GeminiLoader` → `AiLoader`, `.gemini-btn` → `.ai-btn` [C2]. Done 2026-11-10: names only, no logic change. 30 lines in 11 files (`hooks.ts`, `shared.tsx`, the 6 AI tabs and modals, `chartActionPlanModal.tsx`, `aiSwitch.test.ts`, `dashboard.css`); 0 "gemini" left in `src/` (ran). tsc clean, 460/460 tests, lint 0 errors, build OK (ran). Chromium on fake data: `tools/e2e_page_layout.py` 66 of 66 incl. no JavaScript errors (ran); built CSS holds `.ai-btn`, built CSS and JS hold no "gemini" (ran). Not run: `tools/e2e_s12_copy_button.py` (hard-coded browser path), and the AI buttons were not clicked (the AI is frozen).
 - [ ] Split `ImportPreviewModal.tsx` (1,347 lines) further: move its state and handlers into a hook. Move only; do not fix its 4 `setState`-in-effect warnings in the same commit [S4]
 - [ ] `COL_DEFINITIONS` is referenced from 25 places in 8 files; tidy only when touching them [S20]
 - [ ] `runChartData` rebuilds its date list on every recompute (`metrics.ts`); only if it measures slow [S23]

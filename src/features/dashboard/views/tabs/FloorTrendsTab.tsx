@@ -51,7 +51,7 @@ export const FloorTrendsTab = () => {
             </div>
 
 
-            <button className="gemini-btn text-xs py-1.5 px-3 ml-2" onClick={aiTools.generateChartActionPlan} disabled={aiTools.loadingChartActionPlan || metrics.runChartData.length === 0} style={{ background: 'linear-gradient(135deg, #0b0f19 0%, #111827 100%)', boxShadow: '0 4px 12px rgba(11, 15, 25, 0.2)' }}>
+            <button className="ai-btn text-xs py-1.5 px-3 ml-2" onClick={aiTools.generateChartActionPlan} disabled={aiTools.loadingChartActionPlan || metrics.runChartData.length === 0} style={{ background: 'linear-gradient(135deg, #0b0f19 0%, #111827 100%)', boxShadow: '0 4px 12px rgba(11, 15, 25, 0.2)' }}>
               {aiTools.loadingChartActionPlan ? '✨ Analyzing...' : '✨ Create Action Plan'}
             </button>
           </div>

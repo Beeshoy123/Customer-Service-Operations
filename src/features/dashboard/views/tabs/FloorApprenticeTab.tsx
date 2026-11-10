@@ -1,5 +1,5 @@
 // Extracted from App.tsx (Phase 3 move-only refactor) — behavior must stay identical.
-import { FormattedText, GeminiLoader, CopyReportButton } from '../../../../components/shared';
+import { FormattedText, AiLoader, CopyReportButton } from '../../../../components/shared';
 import { METRIC_CONFIG, getDynamicTarget } from '../../config';
 import { aggregateTeamMetrics } from '../../helpers';
 import { useDashboard } from '../../hooks';
@@ -148,7 +148,7 @@ export const FloorApprenticeTab = () => {
 
        {aiTools.loadingApprentice ? (
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-8 flex justify-center">
-             <GeminiLoader message="Analyzing track performance..." color="#8b5cf6" icon="🧠" />
+             <AiLoader message="Analyzing track performance..." color="#8b5cf6" icon="🧠" />
           </div>
        ) : aiTools.apprenticeReport && (
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
