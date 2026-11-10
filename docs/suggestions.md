@@ -142,7 +142,7 @@ Suggested sequence: 1 → 2 → 3, then 4–7 as one small cleanup, then everyth
 Format: `[ ]` open · `[x]` done. Codes in brackets point to sections below: **B** = blocker (Backend scorecard), **K** = known bug, **X** = extra finding, **F** = frontend, **C** = AI/safety item, **U** = usability item.
 
 ### Bugs found during work (fix when he approves)
-- [ ] **X9** Repeated Offenders (tab was called Chronic) coaching-plan button crashes: `setUploadStatus is not a function` (`FloorOffendersTab.tsx:80`). Make the hook return `setUploadStatus` and `scheduleStatusClear`, add a test, then re-check every tab for the same kind of missing member. Details in "Also found".
+- [ ] **X9** Repeated Offenders (tab was called Chronic) coaching-plan button crashes: `setUploadStatus is not a function` (`FloorOffendersTab.tsx:80`). Make the hook return `setUploadStatus` and `scheduleStatusClear`, add a test, then re-check every tab for the same kind of missing member. Details in "Also found". **Status 2026-11-10: still open. He chose "not now" (deferred); do not fix until he asks.** Small fix: about one function hand-out in the hook plus a test. The browser test `tools/e2e_repeated_offenders.py` shows it as its 1 failing check (23/24) until then.
 
 ### Step 0: Safety net for the math (tests only)
 - [ ] Tests for `calculateBonus`: every tier boundary, missing and partial inputs [C3]
@@ -325,7 +325,7 @@ Test used: 2 agents × 10 calls per file.
 | ✅ | **X6** Two offender systems with different rules (Chronic 3+ in a row, Repeated 2+ in a row). **Fixed 2026-11-09**: one rule, named Repeated, 2 of the latest 3 months. | ran |
 | 🟡 | **X7** Dates default to DD/MM silently, with no per-file setting. **Update:** order is now detected per sheet (`import/dateText.ts`, `detectDateOrder`); a sheet with no proof still defaults to DD/MM, but the import preview now warns and lets you switch (`DatesSection.tsx`). | ran |
 | ✅ | **X8** Repo hygiene: 5 Python scripts, 3 PNGs and `.tmp_test` in the root. README says 8 tabs; there are 9. | ran **Fixed** (step 10, commit 5108eb0): scripts moved to `tools/`, PNGs and `.tmp_test` removed, README says 9 tabs. |
-| ⛔ | **X9 (new, found 2026-11-09)** In the Repeated Offenders tab (then named Chronic), clicking the coaching-plan button throws `TypeError: setUploadStatus is not a function` (`FloorOffendersTab.tsx:80`). Confirmed again in a real browser after the X6 change. The tab reads `setUploadStatus` and `scheduleStatusClear` from the dashboard data, but the hook's returned object does not include them. Same failure class as C4, on `dashData` instead of `aiTools`. Not fixed yet; needs his OK. | ran |
+| ⛔ | **X9 (new, found 2026-11-09)** In the Repeated Offenders tab (then named Chronic), clicking the coaching-plan button throws `TypeError: setUploadStatus is not a function` (`FloorOffendersTab.tsx:80`). Confirmed again in a real browser after the X6 change. The tab reads `setUploadStatus` and `scheduleStatusClear` from the dashboard data, but the hook's returned object does not include them. Same failure class as C4, on `dashData` instead of `aiTools`. Not fixed yet; he deferred it on 2026-11-10 ("not now"), so it waits for his OK. | ran |
 
 ---
 
