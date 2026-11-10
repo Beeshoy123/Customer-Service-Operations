@@ -23,8 +23,8 @@ export const TopNavbar = React.memo(() => {
 
   // Frontend redesign: the department title + headcount moved into the Right
   // Workspace header (FloorHeader). This bar is now a slim utility strip:
-  // account/batch summary on the left, tool buttons (Assistant / Timeframe /
-  // Metrics / Exit) on the right. Navigation lives in SidebarNav.
+  // account/batch summary on the left, tool buttons (Timeframe /
+  // Metrics / Exit; the Data Assistant now lives in the sidebar) on the right. Navigation lives in SidebarNav.
 
 
   return (
@@ -45,17 +45,6 @@ export const TopNavbar = React.memo(() => {
                 <span>{batchSummary.rows?.length ?? 0} rows</span>
               </div>
             )}
-
-            <button 
-              title="Data Assistant"
-              className="py-1 px-4 rounded-full cursor-pointer transition-all flex items-center justify-center text-lg text-white"
-              style={{ background: 'transparent', border: '1px solid transparent', opacity: 0.7 }}
-              onClick={() => uiHandlers.setActiveModal('askAi')}
-              onMouseOver={(e) => e.currentTarget.style.opacity = '1'}
-              onMouseOut={(e) => e.currentTarget.style.opacity = '0.7'}
-            >
-              🔍
-            </button>
 
             <button
               type="button"

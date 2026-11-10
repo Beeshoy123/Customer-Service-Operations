@@ -3,7 +3,9 @@
 # Run: npm run dev -- --port 5173, then: python3 tools/e2e_page_layout.py
 # Checks at 1366x768, 1920x1080 and 1024x768: the page never scrolls, the workspace
 # does not scroll, the Team Roster table scrolls inside its own box with its header
-# row sticking, every tab opens inside the panel with no sideways overflow.
+# row sticking, every tab opens inside the panel with no sideways overflow, plus the
+# sidebar edge toggle, the assistant box, the one-card KPI switch, the Outliers toggle
+# and the rounded table header row.
 import asyncio
 from playwright.async_api import async_playwright
 
@@ -54,7 +56,48 @@ async def main():
             await page.wait_for_timeout(150)
             top1 = await page.evaluate("document.querySelector('.roster-table th').getBoundingClientRect().top")
             check(f"{tag} header row sticks while scrolling", abs(top1 - top0) < 2, f"{top0:.0f} -> {top1:.0f}")
-            check(f"{tag} cards stay put while table scrolls", await page.evaluate("document.querySelector('.metric-card').getBoundingClientRect().top") > 0)
+            check(f"{tag} cards stay put while table scrolls", await page.evaluate("document.querySelector('.kpi-switch-card').getBoundingClientRect().top") > 0)
+            # --- sidebar edge toggle, assistant box, top bar
+            check(f"{tag} top bar has no assistant button", await page.locator('.top-navbar [title="Data Assistant"]').count() == 0)
+            edge = page.locator(".sidebar-edge-toggle")
+            if await edge.count():
+                bb = await edge.bounding_box()
+                check(f"{tag} edge toggle fully on screen", bb is not None and bb["x"] >= 0 and bb["x"] + bb["width"] <= w and bb["y"] >= 0, str(bb))
+                await edge.click(); await page.wait_for_timeout(500)
+                check(f"{tag} edge toggle collapses the sidebar", await page.locator(".sidebar-nav.collapsed").count() == 1)
+                bb2 = await edge.bounding_box()
+                check(f"{tag} edge toggle follows the panel edge", bb2 is not None and bb2["x"] < bb["x"], f"{bb['x']:.0f} -> {bb2['x']:.0f}")
+                await edge.click(); await page.wait_for_timeout(500)
+                check(f"{tag} edge toggle expands it again", await page.locator(".sidebar-nav.collapsed").count() == 0)
+            await page.locator(".sidebar-ask").click(); await page.wait_for_timeout(500)
+            check(f"{tag} assistant box opens the Data Assistant window", await page.locator(".modal-backdrop.open").count() == 1)
+            await page.keyboard.press("Escape")
+            if await page.locator(".modal-backdrop.open").count():
+                await page.locator(".modal-backdrop.open .close-btn").first.click()
+            await page.wait_for_timeout(400)
+            # --- one KPI card with a Month-End / Daily switch
+            t0 = await page.locator(".kpi-switch-title").inner_text()
+            await page.get_by_role("button", name="Daily", exact=True).click(); await page.wait_for_timeout(300)
+            t1 = await page.locator(".kpi-switch-title").inner_text()
+            saved = await page.evaluate("localStorage.getItem('cs-ops:kpi-view')")
+            check(f"{tag} KPI switch changes the card and is remembered", t0 != t1 and saved == "daily", f"'{t0}' -> '{t1}', saved={saved}")
+            await page.get_by_role("button", name="Month-End", exact=True).click(); await page.wait_for_timeout(200)
+            ch = await page.evaluate("document.querySelector('.kpi-switch-card').getBoundingClientRect().height")
+            check(f"{tag} KPI card stays slim (<= 110 px)", ch <= 110, f"{ch:.0f} px")
+            r = await page.evaluate("getComputedStyle(document.querySelector('.roster-table th')).borderTopLeftRadius")
+            check(f"{tag} table header row is rounded", r == "14px", r)
+            nr = await page.evaluate("getComputedStyle(document.querySelector('.top-navbar')).borderBottomLeftRadius")
+            check(f"{tag} top bar is rounded", nr == "24px", nr)
+            # --- Floor Outliers: toggle, three tiles, no scrolling of the panel
+            await page.locator(".sidebar-item", has_text="Floor Outliers").click(); await page.wait_for_timeout(500)
+            g = page.locator(".outliers-grid")
+            check(f"{tag} outliers shows 3 tiles (offenders)", await g.count() == 1 and await g.locator("> *").count() == 3 and "is-offenders" in (await g.get_attribute("class")))
+            pm = await page.evaluate("(e => [e.scrollHeight, e.clientHeight])(document.querySelector('.roster-container'))")
+            check(f"{tag} outliers panel does not scroll", pm[0] <= pm[1] + 1, str(pm))
+            await page.get_by_role("button", name="Top performers", exact=True).click(); await page.wait_for_timeout(400)
+            check(f"{tag} Top performers toggle shows the other 3 tiles", "is-performers" in (await page.locator(".outliers-grid").get_attribute("class")))
+            await page.get_by_role("button", name="Below performers", exact=True).click(); await page.wait_for_timeout(300)
+            await page.locator(".sidebar-item", has_text="Team Roster").click(); await page.wait_for_timeout(400)
             if (w, h) == (1366, 768):
                 items = page.locator(".sidebar-item")
                 n = await items.count()

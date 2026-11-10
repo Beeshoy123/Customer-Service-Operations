@@ -115,4 +115,6 @@ export const storageKeys = {
   dashboardView: 'customer-service-dashboard-view-v1',
   /** Sidebar expanded/collapsed choice ('true' = collapsed). A look-only preference, not data. */
   sidebarCollapsed: 'cs-ops:sidebar-collapsed',
+  /** KPI card choice: 'month' (Month-End) or 'daily'. A look-only preference. */
+  kpiView: 'cs-ops:kpi-view',
 } as const;

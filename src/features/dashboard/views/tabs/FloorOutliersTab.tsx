@@ -21,9 +21,9 @@ export const FloorOutliersTab = () => {
 
 
   return (
-    <div className="flex flex-col gap-8 p-8 bg-slate-50 border-t border-slate-200">
-      <div className="bg-white rounded-xl p-8 border border-slate-200 shadow-sm">
-        <div className="flex justify-between items-center mb-6 gap-4 border-b border-slate-100 pb-4 overflow-x-auto">
+    <div className="outliers-tab">
+      <div className="outliers-card">
+        <div className="outliers-toolbar">
           <h3 className="text-lg md:text-xl m-0 flex items-center gap-2 font-extrabold text-slate-900 whitespace-nowrap flex-shrink-0">
             <span>{uiState.outlierMode === 'offenders' ? '⚠️' : '🌟'}</span> Top 10 {uiState.outlierMode === 'offenders' ? 'Offenders' : 'Performers'} ({uiState.outlierLevel === 'agent' ? 'Agents' : 'Supervisors'})
           </h3>
@@ -47,29 +47,29 @@ export const FloorOutliersTab = () => {
                 onClick={() => uiHandlers.setOutlierMode('offenders')}
                 className="px-4 py-2 border-none font-bold cursor-pointer text-sm transition-all rounded-md"
                 style={{ background: uiState.outlierMode === 'offenders' ? '#fee2e2' : 'transparent', color: uiState.outlierMode === 'offenders' ? '#991b1b' : '#64748b', boxShadow: uiState.outlierMode === 'offenders' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }}
-              >Negative (Offenders)</button>
+              >Below performers</button>
               <button 
                 onClick={() => uiHandlers.setOutlierMode('performers')}
                 className="px-4 py-2 border-none font-bold cursor-pointer text-sm transition-all rounded-md"
                 style={{ background: uiState.outlierMode === 'performers' ? '#d1fae5' : 'transparent', color: uiState.outlierMode === 'performers' ? '#065f46' : '#64748b', boxShadow: uiState.outlierMode === 'performers' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }}
-              >Positive (Performers)</button>
+              >Top performers</button>
             </div>
           </div>
         </div>
 
 
-        <p className="text-sm m-0 mb-6 leading-relaxed text-slate-500">
+        <p className="outliers-note">
           {uiState.outlierMode === 'offenders' ? `Focus coaching and intervention on these specific ${uiState.outlierLevel}s.` : `Analyze and duplicate the successful behaviors of these top ${uiState.outlierLevel}s.`}
         </p>
         
         {uiState.outlierMode === 'offenders' ? (
-          <div className="grid grid-cols-auto-300 gap-6">
+          <div className="outliers-grid is-offenders">
              <ParetoColumn title="Top CSAT Detractor Drivers" icon="💔" data={metrics.paretoData[uiState.outlierLevel].offenders.byDetractors} colorObj={{ light: '#fecaca', dark: '#dc2626' }} valKey="detractors" labelFn={(i: any) => `${Math.round(i.data.detractors)} Detractors`} onItemClick={(item: any) => handleOutlierClick(item, 'vxs', 'asc')} />
              <ParetoColumn title="Top 3DR Repeat Drivers" icon="🔁" data={metrics.paretoData[uiState.outlierLevel].offenders.byRepeats} colorObj={{ light: '#fecaca', dark: '#dc2626' }} valKey="repeats3d" labelFn={(i: any) => i.data.resolve3d != null ? Number(i.data.resolve3d).toFixed(2) + '%' : '-'} onItemClick={(item: any) => handleOutlierClick(item, 'resolve3d', 'asc')} />
              <ParetoColumn title="Top Hand-off Drivers" icon="🤝" data={metrics.paretoData[uiState.outlierLevel].offenders.byHandoffs} colorObj={{ light: '#fecaca', dark: '#dc2626' }} valKey="handoffsCount" labelFn={(i: any) => `${Math.round(i.data.handoffsCount)} Hand-offs`} onItemClick={(item: any) => handleOutlierClick(item, 'handoffs', 'desc')} />
           </div>
         ) : (
-          <div className="grid grid-cols-auto-300 gap-6">
+          <div className="outliers-grid is-performers">
              <ParetoColumn title={uiState.outlierLevel === 'agent' ? "Clean CSAT (100%)" : "Top CSAT Promoters"} icon="🌟" data={metrics.paretoData[uiState.outlierLevel].performers.byPromoters} colorObj={{ light: '#a7f3d0', dark: '#059669' }} valKey="promoters" labelFn={(i: any) => `${Math.round(i.data.promoters)} Promoters`} onItemClick={(item: any) => handleOutlierClick(item, 'vxs', 'desc')} />
              <ParetoColumn title="Top 3DR %" icon="✅" data={metrics.paretoData[uiState.outlierLevel].performers.byResolves} colorObj={{ light: '#a7f3d0', dark: '#059669' }} valKey="resolveTotalContacts3d" labelFn={(i: any) => `${Number(i.data.resolve3d).toFixed(2)}%`} onItemClick={(item: any) => handleOutlierClick(item, 'resolve3d', 'desc')} />
              <ParetoColumn title="Top Sellers (Sales)" icon="📱" data={metrics.paretoData[uiState.outlierLevel].performers.byPhoneAdds} colorObj={{ light: '#a7f3d0', dark: '#059669' }} valKey="phoneAdds" labelFn={(i: any) => `${Math.round(i.data.phoneAdds || 0)} Units`} onItemClick={(item: any) => handleOutlierClick(item, 'phoneAdds', 'desc')} />

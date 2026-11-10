@@ -45,9 +45,9 @@ Review each step in the browser before moving to the next.
 | # | Part | Status | Still open |
 |---|---|---|---|
 | 1 | Background and colors | done (1a, 1b) | 19 inline colors; hard borders to soft shadows (left over from step 1) |
-| 2 | Sidebar | done | search box and profile block (no data for them) |
-| 3 | Page layout | done (shell, table box, compact cards) | bento tiles for the 5 chart tabs; sticky header row in the 3 other table tabs |
-| 4 | Cards | done (cards only) | trend badge and sparkline (no real trend data yet, F4/F7); italic accent on stat cards |
+| 2 | Sidebar | done (+ edge toggle, assistant box 2026-11-10) | profile block (no data for it) |
+| 3 | Page layout | done (shell, table box, one KPI card, Outliers tiles, rounded headers) | sticky header row in the 3 other table tabs; Trends chart to fill the panel |
+| 4 | Cards | done (the two cards became one slim card with a Month-End / Daily switch; gauges became chips) | trend badge and sparkline (no real trend data yet, F4/F7); italic accent on stat cards |
 | 5 | Headers and text | partly done (header) | italic accent on the stat cards (waits with the trend badge) |
 | 6 | Animation | A and B done | C (sparkline draw-in) waits for sparklines |
 
@@ -135,7 +135,10 @@ When done, list every file changed and run the build to confirm it passes.
 - KPI cards and header made compact (all content kept): cards 496 px to 281 px, header 149 px to 108 px at 1366x768 (ran, fake data).
 - Panel height now: 1366x768 = 265 px, 1920x1080 = 577 px, 1024x768 = 261 px (ran). The approved mock-up promised about 294 px at 1366x768; the real cards hold more than the mock-up showed (up to 4 gauges plus tiles), so they could not shrink to 170 px.
 - Checked: `tools/e2e_page_layout.py`, 31 of 31 (3 sizes, all 9 tabs, no page scroll, no sideways overflow, sticky header).
-- Still open: bento tiles for the 5 chart tabs (own mock-up first); sticky header row in Apprentice, Day of Week and Offenders (their tables sit inside clipping wrappers).
+- Built 2026-11-10 (approved mock-up): the sidebar toggle is a round button on the panel edge (outside the scrolling `<nav>`, so it is not clipped); the Data Assistant moved from the top bar into a search-style box in the sidebar (same window, icon only when slim; the AI itself is still paused); the two KPI cards became one slim card with a Month-End / Daily switch (choice remembered; the four gauges and the tiles became coloured chips, the "vs target" difference is in the tooltip); Floor Outliers shows 3 tiles per view with the Below performers / Top performers toggle (the toggle already existed as Negative / Positive; relabelled), tiles scroll inside themselves; table header rows and the top bar are rounded.
+- Measured (ran, fake data): panel at 1366x768 = 451 px (was 265), at 1920x1080 = 796 px, at 1024x768 = 467 px. The KPI card is 2 rows (95 px) when the sidebar is open at 1366 and 1 row (62 px) when it is slim or the screen is wider.
+- Checked: `tools/e2e_page_layout.py`, 66 of 66.
+- Still open: sticky header row in Apprentice, Day of Week and Offenders (their tables sit inside clipping wrappers); Trends chart filling the panel; unused gauge and tile CSS (`.donut-*`, `.kpi-tile*`) to sweep in step 10; the five tabs other than Roster and Outliers were only checked for no page scroll and no sideways overflow, not restyled.
 
 **Preferences**
 - The page is locked to the screen height with no page-level scrolling.
