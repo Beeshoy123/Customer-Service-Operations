@@ -5,6 +5,7 @@
 import React from 'react';
 import { useDashboard } from '../../hooks';
 import { safeStorage, storageKeys } from '../../storage';
+import { AI_ENABLED } from '../../aiSwitch';
 
 export type MainTabId =
   | 'roster' | 'outliers' | 'integrity'
@@ -42,6 +43,13 @@ const NAV_MODEL: NavFolder[] = [
     ],
   },
 ];
+
+// The two AI-only pages are hidden while the AI is switched off (they only say "under
+// construction"). Flip AI_ENABLED in aiSwitch.ts and they come back by themselves.
+const AI_ONLY_TABS: ReadonlyArray<MainTabId> = ['integrity', 'analysis'];
+const VISIBLE_NAV: NavFolder[] = NAV_MODEL
+  .map((folder) => ({ ...folder, items: folder.items.filter((item) => AI_ENABLED || !AI_ONLY_TABS.includes(item.id)) }))
+  .filter((folder) => folder.items.length > 0);
 
 // Line icons drawn as inline SVG (no icon library). 24x24 grid, stroke only.
 const ICON_SHAPES: Record<MainTabId, React.ReactNode> = {
@@ -194,7 +202,7 @@ export const SidebarNav = React.memo(() => {
         <span className="sidebar-ask-label">Ask the assistant</span>
       </button>
 
-      {NAV_MODEL.map(folder => {
+      {VISIBLE_NAV.map(folder => {
         const open = openFolders[folder.title];
         // Collapsed pill always lists every icon, whatever the folder state.
         const showItems = open || collapsed;

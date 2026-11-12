@@ -3,6 +3,7 @@ import { FormattedText, AiLoader, CopyReportButton } from '../../../../component
 import { METRIC_CONFIG, getDynamicTarget } from '../../config';
 import { aggregateTeamMetrics } from '../../helpers';
 import { useDashboard } from '../../hooks';
+import { TabFrame, Segmented } from '../chrome/TabFrame';
 import { useEffect, useMemo } from 'react';
 
 // ─── Floor Apprentice Tab ──────────────────────────────────────
@@ -62,105 +63,85 @@ export const FloorApprenticeTab = () => {
 
 
   return (
-    <div className="flex flex-col gap-6 p-8 bg-slate-50 border-t border-slate-200">
-       <div className="flex justify-between items-start flex-wrap gap-4">
-           <div>
-             <h3 className="text-2xl m-0 flex items-center gap-2 font-extrabold text-slate-900">
-               <span>🎓</span> Apprentice Track Impact
-             </h3>
-             <p className="text-sm m-0 mt-1 text-slate-500">
-               The race between {isCoding ? 'New Hires and Transitions' : 'OJT and Nesting'}.
-             </p>
-           </div>
-           
-           <div className="flex bg-slate-50 rounded-lg border border-slate-200 overflow-hidden shadow-sm p-1 gap-1">
-              <button 
-                onClick={() => uiHandlers.setApprenticeViewMode('coding')}
-                className="px-4 py-2 border-none font-bold cursor-pointer text-sm transition-all rounded-md"
-                style={{ background: uiState.apprenticeViewMode === 'coding' ? '#ffffff' : 'transparent', color: uiState.apprenticeViewMode === 'coding' ? '#0b0f19' : '#64748b', boxShadow: uiState.apprenticeViewMode === 'coding' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }}
-              >Coding Track</button>
-              <button 
-                onClick={() => uiHandlers.setApprenticeViewMode('phase')}
-                className="px-4 py-2 border-none font-bold cursor-pointer text-sm transition-all rounded-md"
-                style={{ background: uiState.apprenticeViewMode === 'phase' ? '#ffffff' : 'transparent', color: uiState.apprenticeViewMode === 'phase' ? '#0b0f19' : '#64748b', boxShadow: uiState.apprenticeViewMode === 'phase' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }}
-              >Operational Phase</button>
-            </div>
-       </div>
-
-
-       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <table className="w-full text-left border-collapse">
-            <thead>
-               <tr className="bg-slate-50 border-b border-slate-200">
-                  <th className="p-4 px-6 text-slate-700 font-bold uppercase text-xs w-1/3">Metric</th>
-                  <th 
-                    className="p-4 px-6 text-center border-l border-slate-200 w-1/3 cursor-pointer hover:bg-slate-100 transition-colors"
-                    onClick={() => handleCohortClick(isCoding ? 'New Hire' : 'OJT')}
-                    title={`Click to deeply filter floor roster by ${titleA}`}
-                  >
-                      <div className="text-slate-900 font-extrabold text-base">{titleA}</div>
-                      <div className="text-slate-400 text-xs font-normal mt-1">{groupA.length} Agents</div>
-                  </th>
-                  <th 
-                    className="p-4 px-6 text-center border-l border-slate-200 w-1/3 cursor-pointer hover:bg-slate-100 transition-colors"
-                    onClick={() => handleCohortClick(isCoding ? 'Transition' : 'Nesting')}
-                    title={`Click to deeply filter floor roster by ${titleB}`}
-                  >
-                      <div className="text-slate-900 font-extrabold text-base">{titleB}</div>
-                      <div className="text-slate-400 text-xs font-normal mt-1">{groupB.length} Agents</div>
-                  </th>
-               </tr>
-            </thead>
-            <tbody>
-               {metricsToRender.map((m, idx) => {
-                  const target = getDynamicTarget(m.key, 1);
-                  const isReverse = (METRIC_CONFIG as Record<string, any>)[m.key]?.reverse;
-                  
-                  const formatVal = (v: any, type: any) => type === 'count' ? Math.round(v) : Number(v).toFixed(1) + '%';
-                  const getColor = (v: any) => {
-                      if (!target || v === 0) return '#0b0f19';
-                      return (isReverse ? v <= target : v >= target) ? '#059669' : '#dc2626';
-                  };
-
-
-                  return (
-                    <tr key={m.key} className={idx !== metricsToRender.length - 1 ? "border-b border-slate-100" : ""}>
-                       <td className="p-5 px-6 font-bold text-slate-800 bg-slate-50">{m.label}</td>
-                       <td className="p-5 px-6 text-center border-l border-slate-100">
-                           <div className="flex flex-col items-center justify-center">
-                              <span className="text-lg font-extrabold" style={{ color: m.key === 'calls' ? '#0b0f19' : getColor(m.aVal) }}>{formatVal(m.aVal, m.type)}</span>
-                              {m.aSub && <span className="text-xs text-slate-400 font-normal mt-1">{m.aSub}</span>}
-                           </div>
-                       </td>
-                       <td className="p-5 px-6 text-center border-l border-slate-100">
-                           <div className="flex flex-col items-center justify-center">
-                              <span className="text-lg font-extrabold" style={{ color: m.key === 'calls' ? '#0b0f19' : getColor(m.bVal) }}>{formatVal(m.bVal, m.type)}</span>
-                              {m.bSub && <span className="text-xs text-slate-400 font-normal mt-1">{m.bSub}</span>}
-                           </div>
-                       </td>
-                    </tr>
-                  );
-               })}
-            </tbody>
-          </table>
-       </div>
-
-
-       {aiTools.loadingApprentice ? (
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-8 flex justify-center">
-             <AiLoader message="Analyzing track performance..." color="#8b5cf6" icon="🧠" />
+    <TabFrame
+      icon="apprentice"
+      title="Apprentice track impact"
+      subtitle={`The race between ${isCoding ? 'New Hires and Transitions' : 'OJT and Nesting'}.`}
+      controls={
+        <Segmented
+          label="Track"
+          value={uiState.apprenticeViewMode}
+          options={[{ value: 'coding', label: 'Coding Track' }, { value: 'phase', label: 'Operational Phase' }]}
+          onChange={(next) => uiHandlers.setApprenticeViewMode(next)}
+        />
+      }
+    >
+      <table className="cso-table cso-table-thirds">
+        <thead>
+          <tr>
+            <th className="is-left">Metric</th>
+            <th
+              className="is-clickable"
+              onClick={() => handleCohortClick(isCoding ? 'New Hire' : 'OJT')}
+              title={`Click to deeply filter floor roster by ${titleA}`}
+            >
+              <div className="cohort-name">{titleA}</div>
+              <div className="cohort-count">{groupA.length} Agents</div>
+            </th>
+            <th
+              className="is-clickable"
+              onClick={() => handleCohortClick(isCoding ? 'Transition' : 'Nesting')}
+              title={`Click to deeply filter floor roster by ${titleB}`}
+            >
+              <div className="cohort-name">{titleB}</div>
+              <div className="cohort-count">{groupB.length} Agents</div>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {metricsToRender.map((m) => {
+            const target = getDynamicTarget(m.key, 1);
+            const isReverse = (METRIC_CONFIG as Record<string, any>)[m.key]?.reverse;
+            const formatVal = (v: any, type: any) => type === 'count' ? Math.round(v) : Number(v).toFixed(1) + '%';
+            const getColor = (v: any) => {
+              if (!target || v === 0) return '#0b0f19';
+              return (isReverse ? v <= target : v >= target) ? '#059669' : '#dc2626';
+            };
+            return (
+              <tr key={m.key}>
+                <td className="is-left cso-cell-strong">{m.label}</td>
+                <td>
+                  <div className="flex flex-col items-center justify-center">
+                    <span className="cso-cell-value" style={{ color: m.key === 'calls' ? '#0b0f19' : getColor(m.aVal) }}>{formatVal(m.aVal, m.type)}</span>
+                    {m.aSub && <span className="cso-cell-sub">{m.aSub}</span>}
+                  </div>
+                </td>
+                <td>
+                  <div className="flex flex-col items-center justify-center">
+                    <span className="cso-cell-value" style={{ color: m.key === 'calls' ? '#0b0f19' : getColor(m.bVal) }}>{formatVal(m.bVal, m.type)}</span>
+                    {m.bSub && <span className="cso-cell-sub">{m.bSub}</span>}
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {aiTools.loadingApprentice ? (
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-8 flex justify-center mt-6">
+          <AiLoader message="Analyzing track performance..." color="#8b5cf6" icon="🧠" />
+        </div>
+      ) : aiTools.apprenticeReport && (
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mt-6">
+          <div className="p-5 px-6 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+            <h3 className="text-lg font-extrabold m-0 text-slate-900">AI impact analysis</h3>
+            <CopyReportButton text={aiTools.apprenticeReport} />
           </div>
-       ) : aiTools.apprenticeReport && (
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-             <div className="p-5 px-6 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
-                <h3 className="text-lg font-extrabold flex items-center gap-2 m-0 text-slate-900"><span>🤖</span> AI Impact Analysis</h3>
-                <CopyReportButton text={aiTools.apprenticeReport} />
-             </div>
-             <div className="report-body text-[1.05rem] leading-relaxed m-0 p-6 px-8">
-               <FormattedText text={aiTools.apprenticeReport} linkedEntities={uiState.linkedEntities} onEntityClick={uiHandlers.handleAiLinkClick} />
-             </div>
+          <div className="report-body text-[1.05rem] leading-relaxed m-0 p-6 px-8">
+            <FormattedText text={aiTools.apprenticeReport} linkedEntities={uiState.linkedEntities} onEntityClick={uiHandlers.handleAiLinkClick} />
           </div>
-       )}
-    </div>
+        </div>
+      )}
+    </TabFrame>
   );
 };

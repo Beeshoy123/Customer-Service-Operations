@@ -88,7 +88,7 @@ async def main():
         check("sort toggle flips order (Dina top, Cara last)", "Dina Gap" in first_name_asc)
         await page.click("[data-testid=offenders-sort-toggle]")
         # Settings menu: the old tick-list is gone
-        await page.locator("button:has-text('⚙️')").first.click()
+        await page.locator("[aria-label=\"Toggle metrics\"]").first.click()
         await page.wait_for_timeout(300)
         menu = await page.inner_text(".column-menu-dropdown")
         check("Settings menu has no Repeated Offenders tick-list", "Repeated Offenders" not in menu and "consecutive" not in menu.lower())

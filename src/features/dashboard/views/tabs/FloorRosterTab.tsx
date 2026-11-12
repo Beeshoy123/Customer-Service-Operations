@@ -4,6 +4,7 @@ import { MetricCell } from '../../../../components/shared';
 import { COL_DEFINITIONS, getDynamicTarget } from '../../config';
 import { calculateTrend } from '../../helpers';
 import { useDashboard } from '../../hooks';
+import { TabFrame } from '../chrome/TabFrame';
 
 // S18: the long shared row class, named once.
 const ROSTER_ROW_BASE = 'roster-row transition-all duration-300 hover:-translate-y-1 hover:shadow-md relative z-10';
@@ -12,6 +13,7 @@ const ROSTER_ROW_BASE = 'roster-row transition-all duration-300 hover:-translate
 export const FloorRosterTab = () => {
   const { dashData, metrics, aiTools, uiState, uiHandlers } = useDashboard();
   return (
+  <TabFrame icon="roster" title="Team roster">
   <div className="table-scroll-area">
     <table className="roster-table" style={{ minWidth: '100%', margin: 0 }}>
       <thead className="bg-slate-50">
@@ -40,7 +42,7 @@ export const FloorRosterTab = () => {
             <tr key="oam-rollup-row" className="bg-slate-200 border-b-2 border-slate-300 font-extrabold cursor-default transition-all duration-300 hover:-translate-y-1 hover:shadow-md">
               <td className="p-3 px-6 text-slate-800">
                 <div className="flex items-center gap-2">
-                  <span className="text-xl">🎯</span>
+                  
                   <div className="flex flex-col">
                      <span>{activeOamName} (OAM Overall)</span>
                      <span className="text-xs text-slate-500 font-normal mt-0.5">{metrics.sortedSupervisors.length} Supervisors</span>
@@ -156,5 +158,6 @@ export const FloorRosterTab = () => {
       </tbody>
     </table>
   </div>
+  </TabFrame>
 );
 };

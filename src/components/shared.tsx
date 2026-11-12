@@ -11,6 +11,7 @@
 // └── Performance Heatmap Grid
 // ============================================================================
 
+import { EmptyState } from '../features/dashboard/views/chrome/TabFrame';
 import React, { useState, useEffect, useRef } from 'react';
 import { getDynamicTarget, METRIC_CONFIG } from '../features/dashboard/config';
 
@@ -19,7 +20,7 @@ import { getDynamicTarget, METRIC_CONFIG } from '../features/dashboard/config';
 // buttons (Analysis / Apprentice / Correlation / DOW tabs) plus the Action
 // Plan modal's copy button. None of the originals handled clipboard failure,
 // so a denied permission was silent — this version surfaces an error state.
-export const CopyReportButton = ({ text, label = 'Copy', className = 'ai-btn btn-alt px-3 py-1.5 text-xs' }) => {
+export const CopyReportButton = ({ text, label = 'Copy', className = 'cso-btn cso-btn-line' }) => {
   // 'idle' | 'copied' | 'error'
   const [copyState, setCopyState] = useState('idle');
   const resetTimerRef = useRef(null);
@@ -243,37 +244,46 @@ const LIST_ITEM_CLICKABLE = 'cursor-pointer hover:bg-slate-50 transition-colors 
 const TABLE_CELL_BASE = 'p-3 border-b border-slate-200 text-center font-bold';
 const TABLE_CELL_CLICKABLE = 'cursor-pointer hover:bg-slate-100 transition-colors';
 
-export const ParetoColumn = ({ title, icon, data, colorObj, valKey, labelFn, onItemClick }) => (
-  <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col gap-3 transition-all duration-300 hover:-translate-y-1 hover:shadow-md">
-    <div className="text-sm font-extrabold uppercase mb-2 flex items-center gap-2" style={{ color: colorObj.dark }}>
-      <span className="text-lg">{icon}</span> {title}
-    </div>
-    <div className="flex flex-col gap-2">
-      {data && data.length > 0 ? data.map((item, idx) => (
-        <div
-          key={item.agent.ccms || idx}
-          className={`${LIST_ITEM_BASE} ${onItemClick ? LIST_ITEM_CLICKABLE : ''}`}
-          onClick={() => onItemClick && onItemClick(item)}
-          title={onItemClick ? 'Click to drill down into Supervisor overview' : ''}
-        >
-          <div className="flex flex-col pointer-events-none">
-            <span className="font-bold text-slate-800">{item.agent.name}</span>
-            <span className="text-xs text-slate-500">Sup: {item.agent.supervisor}</span>
-          </div>
-          <span className="font-extrabold text-lg pointer-events-none" style={{ color: colorObj.dark }}>
-            {labelFn(item)}
-          </span>
+export const ParetoColumn = ({ title, data, colorObj, valKey, labelFn, onItemClick }) => {
+  // Bars show the value the column is ranked by (valKey, found in item.data), scaled to the
+  // biggest one in this column, so the longest bar is always full. The number printed next
+  // to the bar is labelFn's text, which is not always the ranking value (e.g. a rate).
+  const rankValue = (item) => Number(item.data?.[valKey] ?? item[valKey]) || 0;
+  const max = Math.max(0, ...(data || []).map(rankValue));
+  return (
+    <div className="pareto-tile" style={{ '--pareto-color': colorObj.dark, '--pareto-light': colorObj.light }}>
+      <h3 className="pareto-title"><i className="pareto-dot" aria-hidden="true" />{title}</h3>
+      {data && data.length > 0 ? (
+        <div className="pareto-rows">
+          {data.map((item, idx) => {
+            const width = max > 0 ? Math.max(4, Math.round((rankValue(item) / max) * 100)) : 0;
+            return (
+              <div
+                key={item.agent.ccms || idx}
+                className={`pareto-row${onItemClick ? ' is-clickable' : ''}`}
+                onClick={() => onItemClick && onItemClick(item)}
+                title={onItemClick ? 'Click to drill down into Supervisor overview' : ''}
+              >
+                <div className="pareto-name">
+                  <strong>{item.agent.name}</strong>
+                  <small>Sup: {item.agent.supervisor}</small>
+                </div>
+                <span className="pareto-bar" aria-hidden="true"><i style={{ width: `${width}%` }} /></span>
+                <span className="pareto-value">{labelFn(item)}</span>
+              </div>
+            );
+          })}
         </div>
-      )) : (
-        <div className="text-sm text-slate-400 italic py-4 text-center border border-dashed border-slate-200 rounded-lg">No outliers found</div>
+      ) : (
+        <EmptyState icon="outliers" title="No outliers found" hint="Nothing to flag for this view." />
       )}
     </div>
-  </div>
-);
+  );
+};
 
 // ─── Performance Heatmap Grid ──────────────────────────────────────
 export const PerformanceHeatmap = ({ activeDates, chartData, metricConfig, baseTarget, onCellClick }) => {
-  if (!chartData || chartData.length === 0) return <div className="text-slate-500 text-sm mt-4">No data available for trend chart.</div>;
+  if (!chartData || chartData.length === 0) return <EmptyState icon="trends" title="No trend to show yet" hint="Load more days of data, or pick another metric, to see the heatmap." />;
 
   return (
     <div className="mt-4 overflow-x-auto border border-slate-200 rounded-lg shadow-sm">

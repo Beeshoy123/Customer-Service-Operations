@@ -1,9 +1,19 @@
-// Frontend redesign: FloorHeader is now the Right Workspace header —
-  // department title + live headcount summary, plus the date-step controls and
-  // search that used to sit beside the (removed) floating pill tab bar.
+// The floating header (forest, like the sidebar): department title + live headcount summary,
+// search, the date steps with the period shown between the arrows, and the tool buttons
+// (Add workbook / Timeframe / Metrics / Exit). The old top bar was merged into it.
 import React from 'react';
 import { useDashboard } from '../../hooks';
 import { getGreeting, formatToday, attentionLabel } from '../../headerInfo';
+import { HeaderTools } from './HeaderTools';
+import { Icon } from './TabFrame';
+
+// What the date arrows are currently stepping through, in words.
+const formatDay = (isoDay: string): string => {
+  const parsed = new Date(`${isoDay}T00:00:00`);
+  return Number.isNaN(parsed.getTime())
+    ? isoDay
+    : parsed.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+};
 
 // ─── Workspace Header ──────────────────────────────────────────
 export const FloorHeader = React.memo(() => {
@@ -22,10 +32,16 @@ export const FloorHeader = React.memo(() => {
   const repeatTotal = metrics.repeatOffenders?.summary?.totalOffenders ?? 0;
   const needAttention = dashData.hasUploadedData && repeatTotal > 0 ? repeatTotal : null;
 
+  const period =
+    dashData.activeTimeframe === 'monthly' ? (dashData.selectedMonth === 'all' ? 'All months' : dashData.monthLabel(dashData.selectedMonth))
+    : dashData.activeTimeframe === 'weekly' ? dashData.selectedWeek
+    : dashData.activeTimeframe === 'dow' ? dashData.selectedDow
+    : formatDay(dashData.selectedDate);
+
   return (
-    <div className="roster-header workspace-header">
+    <div className="roster-header workspace-header floor-header">
       <div className="workspace-header-top">
-        <div>
+        <div className="floor-header-main">
           <p className="workspace-greeting">{getGreeting(now)} <span aria-hidden="true">·</span> {formatToday(now)}</p>
           <h1 className="workspace-title">{headerName} <em className="workspace-title-accent">Floor</em></h1>
           <div className="workspace-headcount">
@@ -43,18 +59,26 @@ export const FloorHeader = React.memo(() => {
           </div>
         </div>
 
-        <div className="workspace-controls">
+        <div className="workspace-controls floor-header-tools">
+          <label className="header-search">
+            <Icon name="search" size={16} />
+            <input
+              type="text"
+              className="search-input"
+              placeholder="Search agents"
+              title="Search several agents at once, separated by commas"
+              aria-label="Search agents (separate several with commas)"
+              value={uiState.inputValue}
+              onChange={(e) => uiHandlers.setInputValue(e.target.value)}
+            />
+          </label>
           <div className="workspace-date-steps">
-            <button onClick={() => dashData.handleDateChange(-1)} className="date-step-btn" title="Previous Day">‹</button>
-            <button onClick={() => dashData.handleDateChange(1)} className="date-step-btn" title="Next Day">›</button>
+            <button type="button" onClick={() => dashData.handleDateChange(-1)} className="date-step-btn" title="Previous Day" aria-label="Previous day">‹</button>
+            <span className="date-step-label" aria-live="polite">{period}</span>
+            <button type="button" onClick={() => dashData.handleDateChange(1)} className="date-step-btn" title="Next Day" aria-label="Next day">›</button>
           </div>
-          <input
-            type="text"
-            className="search-input"
-            placeholder="Search multiple (comma separated)..."
-            value={uiState.inputValue}
-            onChange={(e) => uiHandlers.setInputValue(e.target.value)}
-          />
+          <span className="header-sep" aria-hidden="true" />
+          <HeaderTools />
         </div>
       </div>
     </div>

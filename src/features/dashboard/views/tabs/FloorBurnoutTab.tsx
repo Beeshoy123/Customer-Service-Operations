@@ -1,21 +1,19 @@
 // Extracted from App.tsx (Phase 3 move-only refactor) — behavior must stay identical.
 import { COL_DEFINITIONS, getDynamicTarget } from '../../config';
 import { useDashboard } from '../../hooks';
+import { TabFrame, EmptyState } from '../chrome/TabFrame';
 
 // ─── Burnout Tab ──────────────────────────────────────
 export const FloorBurnoutTab = () => {
   const { metrics, uiState, uiHandlers } = useDashboard();
   return (
-    <div className="flex flex-col gap-6 p-6 bg-slate-50 border-t border-slate-200 rounded-b-xl">
-      <div className="bg-white border border-slate-200 rounded-xl p-8 shadow-sm">
-        <div className="mb-6 border-b border-slate-100 pb-4">
-          <h3 className="text-xl font-extrabold flex items-center gap-2 mb-1 text-red-700"><span>🧠</span> Behavioral Scan Watchlist</h3>
-          <p className="text-sm text-slate-500 m-0">Floor-wide agents flagged for extreme operational strain. Rank priority: AHT &gt; Net OCC &gt; DPC &gt; Hold.</p>
-        </div>
-
-
+    <TabFrame
+      icon="pulse"
+      title="Behavioral scan watchlist"
+      subtitle="Floor-wide agents flagged for extreme operational strain. Rank priority: AHT > Net OCC > DPC > Hold."
+    >
         {metrics.orgBurnoutList.length === 0 ? (
-          <div className="text-center p-5 text-slate-500 italic">No agents currently flagged for high behavioral risk on the floor.</div>
+          <EmptyState icon="pulse" title="No agents flagged" hint="Nobody is currently flagged for high behavioral risk on the floor." />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {metrics.orgBurnoutList.map((item: any, idx: any) => {
@@ -74,7 +72,6 @@ export const FloorBurnoutTab = () => {
             })}
           </div>
         )}
-      </div>
-    </div>
+    </TabFrame>
   );
 };

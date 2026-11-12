@@ -48,7 +48,7 @@ async def main():
             check(f"{tag} page does not scroll", s["docH"] == s["winH"], f"doc {s['docH']} / window {s['winH']}")
             check(f"{tag} workspace does not scroll", s["ws"][0] <= s["ws"][1] + 1, str(s["ws"]))
             check(f"{tag} roster panel has room (>=240 px)", s["panel"][0] >= 240, f"{s['panel'][0]} px")
-            box = page.locator(".roster-container > .table-scroll-area")
+            box = page.locator(".roster-container .tab-content")
             m = await box.evaluate("e => [e.scrollHeight, e.clientHeight]")
             check(f"{tag} roster table scrolls inside its own box", m[0] > m[1], str(m))
             top0 = await page.evaluate("document.querySelector('.roster-table th').getBoundingClientRect().top")
@@ -58,7 +58,14 @@ async def main():
             check(f"{tag} header row sticks while scrolling", abs(top1 - top0) < 2, f"{top0:.0f} -> {top1:.0f}")
             check(f"{tag} cards stay put while table scrolls", await page.evaluate("document.querySelector('.kpi-switch-card').getBoundingClientRect().top") > 0)
             # --- sidebar edge toggle, assistant box, top bar
-            check(f"{tag} top bar has no assistant button", await page.locator('.top-navbar [title="Data Assistant"]').count() == 0)
+            check(f"{tag} header has no assistant button (it lives in the sidebar)", await page.locator('.floor-header [title="Data Assistant"]').count() == 0)
+            icons = await page.evaluate("document.querySelectorAll('.header-tools svg').length")
+            check(f"{tag} header tools use line icons (4 svg, no emoji)", icons == 4 and not await page.evaluate("/\\p{Extended_Pictographic}/u.test(document.querySelector('.header-tools').textContent)"), f"{icons} svg")
+            check(f"{tag} add-workbook button and hidden file input exist", await page.locator('.header-tools [aria-label="Add workbook"]').count() == 1 and await page.locator('.header-tools input[type=file][multiple]').count() == 1)
+            lab = (await page.locator(".date-step-label").inner_text()).strip()
+            check(f"{tag} period shown between the date arrows", len(lab) > 0, lab)
+            fh = await page.evaluate("[getComputedStyle(document.querySelector('.floor-header')).borderTopLeftRadius, Math.round(document.querySelector('.floor-header').getBoundingClientRect().height)]")
+            check(f"{tag} floating header is rounded and compact (<= 150 px)", fh[0] == "28px" and fh[1] <= 150, str(fh))
             edge = page.locator(".sidebar-edge-toggle")
             if await edge.count():
                 bb = await edge.bounding_box()
@@ -86,8 +93,6 @@ async def main():
             check(f"{tag} KPI card stays slim (<= 110 px)", ch <= 110, f"{ch:.0f} px")
             r = await page.evaluate("getComputedStyle(document.querySelector('.roster-table th')).borderTopLeftRadius")
             check(f"{tag} table header row is rounded", r == "14px", r)
-            nr = await page.evaluate("getComputedStyle(document.querySelector('.top-navbar')).borderBottomLeftRadius")
-            check(f"{tag} top bar is rounded", nr == "24px", nr)
             # --- Floor Outliers: toggle, three tiles, no scrolling of the panel
             await page.locator(".sidebar-item", has_text="Floor Outliers").click(); await page.wait_for_timeout(500)
             g = page.locator(".outliers-grid")
@@ -101,7 +106,7 @@ async def main():
             if (w, h) == (1366, 768):
                 items = page.locator(".sidebar-item")
                 n = await items.count()
-                check("9 sidebar tabs found", n == 9, str(n))
+                check("7 sidebar tabs found (the 2 AI-only tabs are hidden while AI is off)", n == 7, str(n))
                 for i in range(n):
                     await items.nth(i).click()
                     await page.wait_for_timeout(450)
@@ -109,6 +114,11 @@ async def main():
                     label = (await items.nth(i).inner_text()).strip().split("\n")[0]
                     ok = t["docH"] == t["winH"] and t["sw"] <= t["iw"] and t["ws"][0] <= t["ws"][1] + 1
                     check(f"tab '{label}' fits: no page scroll, no sideways overflow", ok, str(t))
+                    fr = await page.evaluate("(() => { const t = document.querySelector('.tab-frame .tab-title'); return t ? [!!t.querySelector('.tab-icon svg'), /\\p{Extended_Pictographic}/u.test(t.textContent)] : null })()")
+                    check(f"tab '{label}' uses the standard frame (icon, no emoji in title)", bool(fr) and fr[0] and not fr[1], str(fr))
+                    rh = await page.evaluate("(() => { const th = document.querySelector('.tab-frame table th'); return th ? getComputedStyle(th).borderTopLeftRadius : null })()")
+                    if rh is not None:
+                        check(f"tab '{label}' table header row is rounded", rh == "14px", str(rh))
             check(f"{tag} no JavaScript errors", not errs, "; ".join(errs)[:200])
             await page.screenshot(path=f"/tmp/layout_{tag}.png")
             await page.close()

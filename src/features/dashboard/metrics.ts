@@ -41,7 +41,7 @@ export const useDashboardMetrics = ({
   );
 
   // S13: the "exactly one OAM matches the search" lookup was recomputed inline
-  // in three places (here, TopNavbar, FloorRosterTab). Compute once, share.
+  // in three places (here, FloorHeader, FloorRosterTab). Compute once, share.
   const searchedOams = useMemo(
     () => [...new Set(agents.map((a) => a.oam).filter((o) => o && parsedQueries.some((q) => o.toLowerCase().includes(q))))],
     [agents, parsedQueries]
@@ -429,7 +429,7 @@ export const useDashboardMetrics = ({
     runChartData,
     sortedSupervisors,
     repeatOffenders,
-    singleSearchedOam, // S13: shared "one OAM matches search" result (TopNavbar / FloorRosterTab)
+    singleSearchedOam, // S13: shared "one OAM matches search" result (FloorHeader / FloorRosterTab)
   }), [
     mtdLeaderData, activeLeaderData, supervisorStats, paretoData,
     orgBurnoutList, dowData, allActiveDates, runChartData,

@@ -128,7 +128,7 @@ export const TimeframeMenu = ({
 type SettingsMenuProps = {
   visibleCols: Record<string, boolean>;
   toggleCol: (colKey: string) => void;
-  closeMenu?: () => void; // passed by TopNavbar; this menu stays open, so it is not used here
+  closeMenu?: () => void; // passed by HeaderTools; this menu stays open, so it is not used here
 };
 
 export const SettingsMenu = ({ visibleCols, toggleCol }: SettingsMenuProps) => (

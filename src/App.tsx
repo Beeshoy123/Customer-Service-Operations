@@ -48,7 +48,6 @@ import { FloorCorrelationTab } from './features/dashboard/views/tabs/FloorCorrel
 import { FloorBurnoutTab } from './features/dashboard/views/tabs/FloorBurnoutTab';
 import { FloorDowTab } from './features/dashboard/views/tabs/FloorDowTab';
 import { MainModal } from './features/dashboard/views/modals/MainModal';
-import { TopNavbar } from './features/dashboard/views/chrome/TopNavbar';
 import { SidebarNav } from './features/dashboard/views/chrome/SidebarNav';
 import { MainStatsRow } from './features/dashboard/views/chrome/MainStatsRow';
 import { FloorHeader } from './features/dashboard/views/chrome/FloorHeader';
@@ -70,7 +69,7 @@ var tailwind = typeof window !== 'undefined' ? window.tailwind : { config: {} };
 //   Phase 3 → src/features/dashboard/views/tabs/* (8 floor tabs)
 //   Phase 4 → src/features/dashboard/views/modals/MainModal.tsx
 //             (Ask AI content, Supervisor modal content, Main modal shell)
-//   Phase 5 → src/features/dashboard/views/chrome/* (TopNavbar,
+//   Phase 5 → src/features/dashboard/views/chrome/* (HeaderTools,
 //             MainStatsRow, FloorHeader)
 //   Phase 6 → src/features/dashboard/uiReducer.ts (MODAL_INITIAL, UI_INITIAL,
 //             modalReducer, uiReducer)
@@ -373,9 +372,6 @@ export default function App() {
 
           {/* ==== Right workspace column ==== */}
           <div className="workspace-col">
-            {/* ==== Slim utility strip (Assistant / Timeframe / Metrics / Exit) ==== */}
-            <TopNavbar />
-
             {/* ==== Dashboard body shell ==== */}
             <div className="main-workspace">
               {/* ==== Workspace header: department title + live headcount ==== */}
@@ -404,6 +400,24 @@ export default function App() {
 
           {/* ==== Detail modal / AI modal layer ==== */}
           <MainModal />
+
+          {/* ==== Add workbook: if the new file needs a question answered (unknown columns,
+               unrecognised account), the same review screen as the landing page opens on top ==== */}
+          {dashData.mappingReview.length > 0 && (
+            <div className="import-review-overlay" role="dialog" aria-modal="true" aria-label="Review the new workbook">
+              <ImportLanding
+                accountName={normalizedAccountName}
+                uploadStatus={dashData.uploadStatus}
+                onFiles={(files) => dashData.handleAutomaticImport(files)}
+                mappingReview={dashData.mappingReview}
+                onContinueImport={dashData.continueAutomaticImport}
+                onAccountSelected={handleAccountSelectedForImport}
+                onOpenSetup={() => setAccountNameInput('')}
+                rateMergeStyle={dashData.rateMergeStyle}
+                onRateMergeStyleChange={dashData.setRateMergeStyle}
+              />
+            </div>
+          )}
         </div>
       </DashboardContext.Provider>
     </ErrorBoundary>

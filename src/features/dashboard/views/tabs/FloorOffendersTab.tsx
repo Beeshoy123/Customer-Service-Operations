@@ -6,6 +6,7 @@
 // per-agent coaching actions.
 import React, { useCallback, useMemo, useState } from 'react';
 import { useDashboard } from '../../hooks';
+import { TabFrame, EmptyState } from '../chrome/TabFrame';
 import {
   REPEAT_MIN_MISSES,
   REPEAT_WINDOW_MONTHS,
@@ -88,104 +89,92 @@ export const FloorOffendersTab = React.memo(() => {
   }, [rows]);
 
   return (
-    <div className="flex flex-col gap-6 p-6 bg-slate-50 border-t border-slate-200 rounded-b-xl">
+    <TabFrame
+      icon="repeat"
+      title="Repeated offenders"
+      subtitle={`Agents who missed a KPI target in ${REPEAT_MIN_MISSES} or more of the latest ${REPEAT_WINDOW_MONTHS} months (not necessarily in a row), most misses first.`}
+      controls={
+        <>
+          <label className="cso-field-label" htmlFor="offenders-sup-filter">Supervisor</label>
+          <select
+            id="offenders-sup-filter"
+            data-testid="offenders-supervisor-filter"
+            value={supervisorFilter}
+            onChange={(e) => setSupervisorFilter(e.target.value)}
+            className="cso-select"
+          >
+            <option value="all">All supervisors</option>
+            {(summary?.supervisors ?? []).map((sup) => (
+              <option key={sup} value={sup}>{sup}</option>
+            ))}
+          </select>
+          <label className="cso-field-label" htmlFor="offenders-kpi-filter">KPI</label>
+          <select
+            id="offenders-kpi-filter"
+            data-testid="offenders-kpi-filter"
+            value={kpiFilter}
+            onChange={(e) => setKpiFilter(e.target.value)}
+            className="cso-select"
+          >
+            <option value="all">All KPIs</option>
+            {activeKpiOptions.map(({ metric, label }) => (
+              <option key={metric} value={metric}>{label}</option>
+            ))}
+          </select>
+          <button
+            type="button"
+            data-testid="offenders-sort-toggle"
+            onClick={() => setSortDir((d) => (d === 'desc' ? 'asc' : 'desc'))}
+            className="cso-btn cso-btn-line"
+            title="Toggle misses sort direction"
+          >
+            Misses {sortDir === 'desc' ? '↓ (most first)' : '↑ (fewest first)'}
+          </button>
+        </>
+      }
+    >
       {/* ── Summary KPI cards ─────────────────────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <div className="text-xs uppercase font-extrabold tracking-wide text-slate-500 mb-1">Total Repeated Offenders</div>
-          <div className="text-3xl font-black text-red-600">{summary ? summary.totalOffenders : '—'}</div>
-          <div className="text-xs text-slate-500 mt-1">Missed target in {REPEAT_MIN_MISSES}+ of the latest {REPEAT_WINDOW_MONTHS} months</div>
+      <div className="summary-tiles">
+        <div className="summary-tile">
+          <div className="summary-tile-label">Total Repeated Offenders</div>
+          <div className="summary-tile-value is-red">{summary ? summary.totalOffenders : '—'}</div>
+          <div className="summary-tile-sub">Missed target in {REPEAT_MIN_MISSES}+ of the latest {REPEAT_WINDOW_MONTHS} months</div>
         </div>
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <div className="text-xs uppercase font-extrabold tracking-wide text-slate-500 mb-1">Missed Every Month</div>
-          <div className="text-3xl font-black text-amber-600">{summary && windowLength > 0 ? summary.missedAllCount : '—'}</div>
-          <div className="text-xs text-slate-500 mt-1">Missed target in all {windowLength || REPEAT_WINDOW_MONTHS} latest months</div>
+        <div className="summary-tile">
+          <div className="summary-tile-label">Missed Every Month</div>
+          <div className="summary-tile-value is-amber">{summary && windowLength > 0 ? summary.missedAllCount : '—'}</div>
+          <div className="summary-tile-sub">Missed target in all {windowLength || REPEAT_WINDOW_MONTHS} latest months</div>
         </div>
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <div className="text-xs uppercase font-extrabold tracking-wide text-slate-500 mb-1">Primary Issue Area</div>
-          <div className="text-3xl font-black text-blue-700">{summary ? summary.topKpiLabel : '—'}</div>
-          <div className="text-xs text-slate-500 mt-1">
+        <div className="summary-tile">
+          <div className="summary-tile-label">Primary Issue Area</div>
+          <div className="summary-tile-value is-blue">{summary ? summary.topKpiLabel : '—'}</div>
+          <div className="summary-tile-sub">
             {summary && summary.topKpiCount > 0 ? `Driving ${summary.topKpiCount} repeat${summary.topKpiCount === 1 ? '' : 's'}` : 'No repeated misses detected'}
           </div>
         </div>
       </div>
 
-      {/* ── Grid card ─────────────────────────────────────── */}
-      <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
-        <div className="mb-4 border-b border-slate-100 pb-4 flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h3 className="text-xl font-extrabold flex items-center gap-2 mb-1 text-red-700"><span>🔁</span> Repeated Offenders</h3>
-            <p className="text-sm text-slate-500 m-0">
-              Agents who missed a KPI target in {REPEAT_MIN_MISSES} or more of the latest {REPEAT_WINDOW_MONTHS} months (not necessarily in a row), most misses first.
-            </p>
-          </div>
-          {/* Filters + sort */}
-          <div className="flex flex-wrap items-center gap-2">
-            <label className="text-xs font-bold text-slate-500 uppercase" htmlFor="offenders-sup-filter">Supervisor</label>
-            <select
-              id="offenders-sup-filter"
-              data-testid="offenders-supervisor-filter"
-              value={supervisorFilter}
-              onChange={(e) => setSupervisorFilter(e.target.value)}
-              className="border border-slate-300 rounded-md px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-red-500"
-            >
-              <option value="all">All supervisors</option>
-              {(summary?.supervisors ?? []).map((sup) => (
-                <option key={sup} value={sup}>{sup}</option>
-              ))}
-            </select>
-            <label className="text-xs font-bold text-slate-500 uppercase ml-2" htmlFor="offenders-kpi-filter">KPI</label>
-            <select
-              id="offenders-kpi-filter"
-              data-testid="offenders-kpi-filter"
-              value={kpiFilter}
-              onChange={(e) => setKpiFilter(e.target.value)}
-              className="border border-slate-300 rounded-md px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-red-500"
-            >
-              <option value="all">All KPIs</option>
-              {activeKpiOptions.map(({ metric, label }) => (
-                <option key={metric} value={metric}>{label}</option>
-              ))}
-            </select>
-            <button
-              type="button"
-              data-testid="offenders-sort-toggle"
-              onClick={() => setSortDir((d) => (d === 'desc' ? 'asc' : 'desc'))}
-              className="ml-2 inline-flex items-center gap-1 border border-slate-300 rounded-md px-3 py-1.5 text-sm font-semibold text-slate-700 bg-white hover:bg-slate-50"
-              title="Toggle misses sort direction"
-            >
-              Misses {sortDir === 'desc' ? '↓ (most first)' : '↑ (fewest first)'}
-            </button>
-          </div>
-        </div>
-
         {!hasUploadedData || windowLength < 2 ? (
-          <div className="text-center p-8 text-slate-500 italic">
-            Import at least two months of workbook data to detect repeated misses.
-          </div>
+          <EmptyState icon="repeat" title="Not enough months yet" hint="Import at least two months of workbook data to detect repeated misses." />
         ) : rows.length === 0 ? (
-          <div className="text-center p-8 text-slate-500 italic">
-            No agents missed a KPI target in {REPEAT_MIN_MISSES} or more of the latest {REPEAT_WINDOW_MONTHS} months. 🎉
-          </div>
+          <EmptyState icon="repeat" title="No repeated offenders" hint={`No agents missed a KPI target in ${REPEAT_MIN_MISSES} or more of the latest ${REPEAT_WINDOW_MONTHS} months.`} />
         ) : visibleRows.length === 0 ? (
-          <div className="text-center p-8 text-slate-500 italic">
-            No offenders match the current filters. Adjust the supervisor or KPI filter above.
-          </div>
+          <EmptyState icon="repeat" title="No offenders match" hint="Adjust the supervisor or KPI filter above." />
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-slate-200">
-            <table className="min-w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-100">
+          <>
+            <table className="cso-table cso-table-left">
+              <thead>
                 <tr>
-                  <th className="px-4 py-3 text-left font-extrabold text-slate-600 uppercase text-xs">Agent Name</th>
-                  <th className="px-4 py-3 text-left font-extrabold text-slate-600 uppercase text-xs">Supervisor</th>
-                  <th className="px-4 py-3 text-left font-extrabold text-slate-600 uppercase text-xs">Failed KPI Category</th>
-                  <th className="px-4 py-3 text-left font-extrabold text-slate-600 uppercase text-xs">Misses</th>
-                  <th className="px-4 py-3 text-left font-extrabold text-slate-600 uppercase text-xs">Latest Months</th>
-                  <th className="px-4 py-3 text-left font-extrabold text-slate-600 uppercase text-xs">Action Status</th>
-                  <th className="px-4 py-3 text-right font-extrabold text-slate-600 uppercase text-xs">Action</th>
+                  <th className="is-left">Agent Name</th>
+                  <th className="is-left">Supervisor</th>
+                  <th className="is-left">Failed KPI Category</th>
+                  <th className="is-left">Misses</th>
+                  <th className="is-left">Latest Months</th>
+                  <th className="is-left">Action Status</th>
+                  <th className="is-right">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 bg-white">
+              <tbody>
                 {visibleRows.map((row) => {
                   const assignedAt = coachingAssigned[row.ccms];
                   return (
@@ -226,11 +215,11 @@ export const FloorOffendersTab = React.memo(() => {
                             data-testid={`offenders-action-status-${row.ccms}`}
                             className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-100 border border-emerald-300 text-emerald-800"
                           >
-                            ✅ Coaching assigned
+                            Coaching assigned
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-slate-100 border border-slate-300 text-slate-600">
-                            ⏳ Not started
+                            Not started
                           </span>
                         )}
                       </td>
@@ -240,11 +229,7 @@ export const FloorOffendersTab = React.memo(() => {
                           data-testid={`offenders-coach-btn-${row.ccms}`}
                           disabled={Boolean(assignedAt)}
                           onClick={() => handleAssignCoaching(row)}
-                          className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${
-                            assignedAt
-                              ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
-                              : 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm'
-                          }`}
+                          className={`cso-btn cso-btn-sm ${assignedAt ? 'cso-btn-line' : 'cso-btn-fill'}`}
                         >
                           {assignedAt ? 'Coaching Assigned' : 'Assign Coaching / Intervention'}
                         </button>
@@ -254,16 +239,15 @@ export const FloorOffendersTab = React.memo(() => {
                 })}
               </tbody>
             </table>
-          </div>
+          </>
         )}
 
         {uiState.searchQuery && rows.length > 0 && (
-          <p className="text-xs text-slate-400 mt-3">
+          <p className="tab-footnote">
             Tip: combine with the global search bar to narrow this list by agent name.
           </p>
         )}
-      </div>
-    </div>
+    </TabFrame>
   );
 });
 
