@@ -18,6 +18,10 @@ const formatDay = (isoDay: string): string => {
 // ─── Workspace Header ──────────────────────────────────────────
 export const FloorHeader = React.memo(() => {
   const { dashData, metrics, uiState, uiHandlers } = useDashboard();
+  // Narrow screens: the search box is an icon that opens the box under the header.
+  const [searchOpen, setSearchOpen] = React.useState(false);
+  const searchRef = React.useRef<HTMLInputElement>(null);
+  React.useEffect(() => { if (searchOpen) searchRef.current?.focus(); }, [searchOpen]);
 
   // S13: singleSearchedOam is computed once in useDashboardMetrics and shared here.
   const headerName = metrics.singleSearchedOam || dashData.oamName;
@@ -60,18 +64,35 @@ export const FloorHeader = React.memo(() => {
         </div>
 
         <div className="workspace-controls floor-header-tools">
-          <label className="header-search">
-            <Icon name="search" size={16} />
-            <input
-              type="text"
-              className="search-input"
-              placeholder="Search agents"
-              title="Search several agents at once, separated by commas"
-              aria-label="Search agents (separate several with commas)"
-              value={uiState.inputValue}
-              onChange={(e) => uiHandlers.setInputValue(e.target.value)}
-            />
-          </label>
+          <div
+            className={`header-search-wrap${searchOpen ? ' is-open' : ''}`}
+            onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setSearchOpen(false); }}
+            onKeyDown={(e) => { if (e.key === 'Escape') setSearchOpen(false); }}
+          >
+            <button
+              type="button"
+              className={`header-icon-btn header-search-btn${searchOpen ? ' is-open' : ''}${uiState.inputValue ? ' has-value' : ''}`}
+              aria-label="Search agents"
+              aria-expanded={searchOpen}
+              title="Search agents"
+              onClick={() => setSearchOpen((v) => !v)}
+            >
+              <Icon name="search" />
+            </button>
+            <label className="header-search">
+              <Icon name="search" size={16} />
+              <input
+                ref={searchRef}
+                type="text"
+                className="search-input"
+                placeholder="Search agents"
+                title="Search several agents at once, separated by commas"
+                aria-label="Search agents (separate several with commas)"
+                value={uiState.inputValue}
+                onChange={(e) => uiHandlers.setInputValue(e.target.value)}
+              />
+            </label>
+          </div>
           <div className="workspace-date-steps">
             <button type="button" onClick={() => dashData.handleDateChange(-1)} className="date-step-btn" title="Previous Day" aria-label="Previous day">‹</button>
             <span className="date-step-label" aria-live="polite">{period}</span>

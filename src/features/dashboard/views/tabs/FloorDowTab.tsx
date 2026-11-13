@@ -65,10 +65,10 @@ export const FloorDowTab = () => {
         </tbody>
       </table>
       {aiTools.loadingDow ? (
-        <div className="mt-8 flex justify-center"><AiLoader message="Analyzing systemic day vulnerabilities..." color="#0d9488" icon="📅" /></div>
+        <div className="cso-report cso-report-loading"><AiLoader message="Analyzing systemic day vulnerabilities..." color="#0d9488" icon="📅" /></div>
       ) : aiTools.dowReport && (
-        <div className="bg-[#fff1f2] border border-[#fecdd3] rounded-xl p-8 mt-8 shadow-sm">
-          <div className="report-body text-[1.05rem] leading-relaxed text-red-950 mt-0">
+        <div className="cso-report">
+          <div className="report-body cso-report-body">
             <FormattedText text={aiTools.dowReport} linkedEntities={uiState.linkedEntities} onEntityClick={uiHandlers.handleAiLinkClick} />
           </div>
         </div>

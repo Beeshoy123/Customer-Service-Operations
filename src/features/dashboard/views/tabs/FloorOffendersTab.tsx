@@ -6,7 +6,7 @@
 // per-agent coaching actions.
 import React, { useCallback, useMemo, useState } from 'react';
 import { useDashboard } from '../../hooks';
-import { TabFrame, EmptyState } from '../chrome/TabFrame';
+import { TabFrame, EmptyState, Icon } from '../chrome/TabFrame';
 import {
   REPEAT_MIN_MISSES,
   REPEAT_WINDOW_MONTHS,
@@ -27,23 +27,17 @@ const formatValue = (value: number, format: string): string => {
 
 const TrendBadges = ({ hit }: { hit: RepeatOffenderMetricHit }) => (
   <div
-    className="flex flex-wrap items-center gap-1"
+    className="offender-months"
     title={`${hit.label}: missed target in ${hit.windowMonths.filter((m) => m.missed).map((m) => m.month).join(', ')}`}
   >
     {hit.windowMonths.map((m) =>
       m.value === null ? (
-        <span key={m.month} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-50 border border-slate-200 text-xs font-bold text-slate-400">
-          {shortMonthLabel(m.month)} <span className="font-semibold">no data</span>
-        </span>
-      ) : m.missed ? (
-        <span key={m.month} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-50 border border-red-200 text-xs font-bold text-red-700">
-          {shortMonthLabel(m.month)} <span aria-hidden="true">❌</span>
-          <span className="font-semibold text-red-600/80">{formatValue(m.value, hit.format)}</span>
-        </span>
+        <span key={m.month} className="cso-month is-none">{shortMonthLabel(m.month)} <span>no data</span></span>
       ) : (
-        <span key={m.month} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 border border-emerald-200 text-xs font-bold text-emerald-700">
-          {shortMonthLabel(m.month)} <span aria-hidden="true">✅</span>
-          <span className="font-semibold text-emerald-600/80">{formatValue(m.value, hit.format)}</span>
+        <span key={m.month} className={`cso-month ${m.missed ? 'is-miss' : 'is-hit'}`}>
+          {shortMonthLabel(m.month)}
+          <Icon name={m.missed ? 'cross' : 'check'} size={11} />
+          <span>{formatValue(m.value, hit.format)}</span>
         </span>
       )
     )}
@@ -162,68 +156,51 @@ export const FloorOffendersTab = React.memo(() => {
           <EmptyState icon="repeat" title="No offenders match" hint="Adjust the supervisor or KPI filter above." />
         ) : (
           <>
-            <table className="cso-table cso-table-left">
+            <table className="cso-table cso-table-left offenders-table">
+              <colgroup>
+                <col style={{ width: '15.2%' }} /><col style={{ width: '22.5%' }} /><col style={{ width: '7%' }} />
+                <col style={{ width: '29.5%' }} /><col style={{ width: '11%' }} /><col style={{ width: '14.8%' }} />
+              </colgroup>
               <thead>
                 <tr>
-                  <th className="is-left">Agent Name</th>
-                  <th className="is-left">Supervisor</th>
-                  <th className="is-left">Failed KPI Category</th>
+                  <th className="is-left">Agent</th>
+                  <th className="is-left">Failed KPIs</th>
                   <th className="is-left">Misses</th>
-                  <th className="is-left">Latest Months</th>
-                  <th className="is-left">Action Status</th>
+                  <th className="is-left">Latest months</th>
+                  <th className="is-left">Status</th>
                   <th className="is-right">Action</th>
                 </tr>
               </thead>
               <tbody>
                 {visibleRows.map((row) => {
                   const assignedAt = coachingAssigned[row.ccms];
+                  const orderedHits = [row.primaryHit, ...row.hits.filter((h) => h.metric !== row.primaryHit.metric)];
                   return (
-                    <tr key={row.ccms} className="hover:bg-red-50/40 transition-colors">
-                      <td className="px-4 py-3">
-                        <strong className="block text-slate-800">{row.name || row.ccms}</strong>
-                        <span className="text-xs text-slate-400">{row.ccms}</span>
+                    <tr key={row.ccms}>
+                      <td className="offender-agent">
+                        <strong title={row.name || row.ccms}>{row.name || row.ccms}</strong>
+                        <span>{row.ccms} · {row.supervisor || '—'}</span>
                       </td>
-                      <td className="px-4 py-3 text-slate-600">{row.supervisor || '—'}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-1">
-                          {row.hits.map((hit) => (
-                            <span
-                              key={hit.metric}
-                              className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold border ${
-                                hit.metric === row.primaryHit.metric
-                                  ? 'bg-red-100 border-red-300 text-red-800'
-                                  : 'bg-amber-50 border-amber-200 text-amber-700'
-                              }`}
-                            >
-                              {hit.label}
-                            </span>
+                      <td>
+                        <div className="offender-kpis">
+                          {orderedHits.slice(0, 2).map((hit) => (
+                            <span key={hit.metric} className={`cso-pill ${hit.metric === row.primaryHit.metric ? 'is-bad' : 'is-warn'}`}>{hit.label}</span>
                           ))}
+                          {orderedHits.length > 2 && (
+                            <span className="cso-pill" title={orderedHits.slice(2).map((h) => h.label).join(', ')}>+{orderedHits.length - 2}</span>
+                          )}
                         </div>
                       </td>
-                      <td className="px-4 py-3">
-                        <span className="font-extrabold text-red-700">{missLabel(row.maxMisses, windowLength)}</span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <TrendBadges hit={row.primaryHit} />
-                        {row.hits.length > 1 && (
-                          <div className="text-xs text-slate-400 mt-1">+{row.hits.length - 1} other KPI{row.hits.length - 1 === 1 ? '' : 's'}</div>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
+                      <td><span className="offender-misses">{missLabel(row.maxMisses, windowLength).replace(/ months?$/, '')}</span></td>
+                      <td><TrendBadges hit={row.primaryHit} /></td>
+                      <td>
                         {assignedAt ? (
-                          <span
-                            data-testid={`offenders-action-status-${row.ccms}`}
-                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-100 border border-emerald-300 text-emerald-800"
-                          >
-                            Coaching assigned
-                          </span>
+                          <span data-testid={`offenders-action-status-${row.ccms}`} className="cso-pill is-ok">Assigned</span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-slate-100 border border-slate-300 text-slate-600">
-                            Not started
-                          </span>
+                          <span className="cso-pill">Not started</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="text-right">
                         <button
                           type="button"
                           data-testid={`offenders-coach-btn-${row.ccms}`}
@@ -231,7 +208,7 @@ export const FloorOffendersTab = React.memo(() => {
                           onClick={() => handleAssignCoaching(row)}
                           className={`cso-btn cso-btn-sm ${assignedAt ? 'cso-btn-line' : 'cso-btn-fill'}`}
                         >
-                          {assignedAt ? 'Coaching Assigned' : 'Assign Coaching / Intervention'}
+                          {assignedAt ? 'Assigned' : 'Assign coaching'}
                         </button>
                       </td>
                     </tr>

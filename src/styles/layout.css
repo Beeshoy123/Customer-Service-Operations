@@ -682,7 +682,15 @@ button, input, select, textarea { font-family: inherit; }
 .header-icon-btn.is-primary { background: var(--cso-mint); color: var(--cso-forest-deep); }
 .header-icon-btn.is-primary:hover { background: #a3ecc8; color: var(--cso-forest-deep); }
 .header-icon-btn:focus-visible, .floor-header .date-step-btn:focus-visible { outline: 2px solid var(--cso-mint); outline-offset: 2px; }
-@media (max-width: 1100px) { .header-search { width: 130px; } }
+/* Search: a box on wide screens, an icon that opens the box under the header on narrow ones */
+.header-search-wrap { display: flex; }
+.header-search-btn { display: none; }
+@media (max-width: 1320px) {
+  .header-search-btn { display: grid; }
+  .header-search-btn.has-value::after { content: ''; position: absolute; top: 7px; right: 7px; width: 8px; height: 8px; border-radius: 50%; background: var(--cso-mint); }
+  .floor-header .header-search { display: none; position: absolute; top: calc(100% + 8px); right: 20px; z-index: 30; width: 300px; background: var(--cso-forest); box-shadow: 0 10px 30px rgba(31, 77, 63, .35); }
+  .header-search-wrap.is-open .header-search { display: flex; }
+}
 
 /* If a new workbook needs a question answered, the landing review screen opens on top */
 .import-review-overlay { position: fixed; inset: 0; z-index: 300; overflow: auto; box-sizing: border-box; padding: 24px; background: #0b0b0a; }
@@ -791,3 +799,52 @@ button, input, select, textarea { font-family: inherit; }
 .pareto-bar i { display: block; height: 100%; border-radius: 9px; background: var(--pareto-color); }
 .pareto-value { color: var(--pareto-color); font-size: .8rem; font-weight: 800; text-align: right; white-space: nowrap; }
 .pareto-tile .empty-state { min-height: 0; padding: 12px; }
+
+/* ─── Roster: compact rows (name, badges and agent count on one line) ── */
+.roster-table tbody td { padding-top: 12px; padding-bottom: 12px; }
+.roster-table tbody td:first-child > div { white-space: nowrap; }
+.roster-agent-count { margin-left: 4px; color: #64748b; font-size: .75rem; font-weight: 400; white-space: nowrap; }
+
+/* ─── Pills and month chips (one look: tinted, no borders) ─────────────── */
+.cso-pill { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px; background: #eef2f5; color: #475569; font-size: .72rem; font-weight: 700; white-space: nowrap; }
+.cso-pill.is-bad { background: var(--cso-tint-peach); color: var(--cso-bad-ink); }
+.cso-pill.is-warn { background: #fef3c7; color: #92400e; }
+.cso-pill.is-ok { background: var(--cso-tint-mint); color: #14513a; }
+.cso-month { display: inline-flex; align-items: center; gap: 4px; padding: 3px 6px; border-radius: 8px; font-size: .74rem; font-weight: 700; white-space: nowrap; }
+.cso-month.is-miss { background: #fee2e2; color: #991b1b; }
+.cso-month.is-hit { background: var(--cso-tint-mint); color: #14513a; }
+.cso-month.is-none { background: #eef2f5; color: #94a3b8; }
+
+/* ─── Repeated Offenders table: one-line rows that fit the panel ─────── */
+.offenders-table { table-layout: fixed; min-width: 960px; }
+.offenders-table th { padding: 0 6px; }
+.offenders-table td { padding: 6px; line-height: 1.25; }
+.offender-agent strong { display: block; overflow: hidden; color: var(--cso-forest-deep); font-size: .86rem; text-overflow: ellipsis; white-space: nowrap; }
+.offender-agent span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--cso-ink-muted); font-size: .72rem; }
+.offender-kpis { display: flex; gap: 5px; overflow: hidden; }
+.offender-misses { color: #b91c1c; font-weight: 800; white-space: nowrap; }
+.offender-months { display: flex; flex-wrap: wrap; gap: 3px; }
+
+/* ─── Behavioral Scan: cards in two columns, tap to open the metric tiles ── */
+.scan-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 900px) { .scan-grid { grid-template-columns: 1fr; } }
+.scan-card { overflow: hidden; border-radius: 20px; background: #fff; box-shadow: 0 6px 20px rgba(31, 77, 63, .10); }
+.scan-card.is-open { grid-column: 1 / -1; }
+.scan-head { display: flex; align-items: center; gap: 12px; padding: 14px 16px; cursor: pointer; }
+.scan-head:hover { background: #f6faf8; }
+.scan-head:focus-visible { outline: 2px solid var(--cso-mint); outline-offset: -2px; }
+.scan-rank { display: grid; flex: none; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: var(--cso-tint-peach); color: var(--cso-bad-ink); font-size: .9rem; font-weight: 900; }
+.scan-name { flex: 1; min-width: 0; }
+.scan-name strong { display: block; color: var(--cso-forest-deep); }
+.scan-name small { color: var(--cso-ink-muted); font-size: .72rem; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; }
+.scan-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; padding: 4px 16px 16px; }
+.scan-tile { padding: 8px; border-radius: 14px; background: #eef6f1; text-align: center; }
+.scan-tile small { display: block; color: #35574b; font-size: .65rem; font-weight: 800; text-transform: uppercase; }
+.scan-tile b { font-size: 1.1rem; }
+
+/* ─── AI report boxes (Apprentice, Day of Week): same soft card ────── */
+.cso-report { margin-top: 16px; overflow: hidden; border-radius: 20px; background: #fff; box-shadow: 0 6px 20px rgba(31, 77, 63, .10); }
+.cso-report-loading { display: flex; justify-content: center; padding: 24px; }
+.cso-report-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; background: var(--cso-tint-mint); }
+.cso-report-head h3 { margin: 0; color: var(--cso-forest-deep); font-size: .95rem; font-weight: 800; }
+.cso-report-body { margin: 0; padding: 16px 22px; font-size: 1rem; line-height: 1.6; }

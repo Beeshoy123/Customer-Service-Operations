@@ -128,16 +128,16 @@ export const FloorApprenticeTab = () => {
         </tbody>
       </table>
       {aiTools.loadingApprentice ? (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-8 flex justify-center mt-6">
+        <div className="cso-report cso-report-loading">
           <AiLoader message="Analyzing track performance..." color="#8b5cf6" icon="🧠" />
         </div>
       ) : aiTools.apprenticeReport && (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mt-6">
-          <div className="p-5 px-6 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
-            <h3 className="text-lg font-extrabold m-0 text-slate-900">AI impact analysis</h3>
+        <div className="cso-report">
+          <div className="cso-report-head">
+            <h3>AI impact analysis</h3>
             <CopyReportButton text={aiTools.apprenticeReport} />
           </div>
-          <div className="report-body text-[1.05rem] leading-relaxed m-0 p-6 px-8">
+          <div className="report-body cso-report-body">
             <FormattedText text={aiTools.apprenticeReport} linkedEntities={uiState.linkedEntities} onEntityClick={uiHandlers.handleAiLinkClick} />
           </div>
         </div>

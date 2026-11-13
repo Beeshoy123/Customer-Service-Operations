@@ -99,7 +99,7 @@ export const FloorRosterTab = () => {
                           }
                       }}
                     >
-                      <td className="font-semibold p-3 px-6">
+                      <td className="font-semibold py-2 px-6">
                         <div className="flex items-center gap-1">
                           <span>{supObj.name}</span>
                           {supObj.isHighRisk && !isOffToday && (
@@ -118,13 +118,11 @@ export const FloorRosterTab = () => {
                               </span>
                             );
                           })()}
+                          <span className="roster-agent-count">· {supObj.agentCount} Agents</span>
                         </div>
-                        <span className="block text-xs text-slate-500 font-normal">
-                          {supObj.agentCount} Agents
-                        </span>
                       </td>
                       {COL_DEFINITIONS.map(col => uiState.visibleCols[col.stateKey] && (
-                         <td key={col.key} className="p-3 px-6 text-center">
+                         <td key={col.key} className="py-2 px-6 text-center">
                            <MetricCell value={supData[col.key]} target={getDynamicTarget(col.stateKey, supObj.agentCount)} reverse={col.reverse} isOff={isOffToday} isInteger={col.isInteger} />
                          </td>
                       ))}
