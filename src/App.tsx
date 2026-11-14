@@ -10,7 +10,6 @@ import {
 } from './features/dashboard/config';
 import {
   agentMatchesSearch,
-  calculateBonus,
   aggregateRecords,
   aggregateTeamMetrics,
   calculateWeightedVSF,

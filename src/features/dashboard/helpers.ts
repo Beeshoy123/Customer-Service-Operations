@@ -1,7 +1,6 @@
 // ============================================================================
 // FILE STRUCTURE:
 // ├── Agent Search Filter
-// ├── Bonus Score Calculation
 // ├── Record Aggregation
 // ├── Team Metric Aggregation
 // ├── Weighted Metric Calculation
@@ -21,7 +20,7 @@
 // options selected by AccountProfile. Preserve existing branches for other accounts;
 // never replace or delete an existing calculation unless explicitly requested.
 
-import { getMetricConfig, TARGETS } from './config';
+import { getMetricConfig } from './config';
 import { parseDateText } from './import/dateText';
 
 // ─── Types ──────────────────────────────────────────────────────────
@@ -61,7 +60,6 @@ export interface MetricRecord {
   vhi?: Num;
   ncw?: Num;
   ncwCount?: number;
-  bonus?: Num;
 }
 
 export interface SearchableAgent {
@@ -99,15 +97,6 @@ export const agentMatchesSearch = (a: SearchableAgent, queries: readonly string[
     (a.coding && a.coding.toLowerCase().includes(q)) ||
     (a.phase && a.phase.toLowerCase().includes(q))
   );
-};
-
-// ─── Bonus Score Calculation ──────────────────────────────────────
-export const calculateBonus = (vxs: Num, r3d: Num, handoffs: Num): number | null => {
-  if (vxs == null || r3d == null || handoffs == null) return null;
-  const vxsAttain = Math.min(1.2, vxs / TARGETS.vxs);
-  const r3dAttain = Math.min(1.2, r3d / TARGETS.resolve3d);
-  const handoffsAttain = handoffs === 0 ? 1.2 : Math.min(1.2, TARGETS.handoffs / handoffs);
-  return vxsAttain * 50 + r3dAttain * 20 + handoffsAttain * 20 + 10;
 };
 
 // ─── Record Aggregation ──────────────────────────────────────
@@ -174,7 +163,7 @@ export const aggregateRecords = (records: ReadonlyArray<MetricRecord | null | un
     return {
       isOff: true, activeAgentCount: 0, calls: 0, vxs: null, resolve3d: null, handoffs: null, resolve2hr: null,
       aht: null, hold: null, dpc: null, viewTogether: null, vtt: null, netOcc: null, creditFreq: null,
-      phoneAdds: sumPhoneAdds, vhi: sumVhi, ncw: null, ncwCount: 0, bonus: null,
+      phoneAdds: sumPhoneAdds, vhi: sumVhi, ncw: null, ncwCount: 0,
     };
   }
 
@@ -199,7 +188,7 @@ export const aggregateRecords = (records: ReadonlyArray<MetricRecord | null | un
     aht: callsWithAht > 0 ? sumTalkTime / callsWithAht : null, vxs, resolve3d, resolve2hr, handoffs,
     hold: callsWithHold > 0 ? sumHoldTime / callsWithHold : null, dpc: callsWithDpc > 0 ? sumDpcTime / callsWithDpc : null,
     viewTogether, vtt: viewTogether, vttSent: sumVttSent, vttTransacted: sumVttTransacted, netOcc: callsWithNetOcc > 0 ? sumNetOcc / callsWithNetOcc : null,
-    creditFreq: callsWithCreditFreq > 0 ? sumCreditFreq / callsWithCreditFreq : null, phoneAdds: sumPhoneAdds, vhi: sumVhi, ncw: ncwPct, ncwCount, bonus: calculateBonus(vxs, resolve3d, handoffs),
+    creditFreq: callsWithCreditFreq > 0 ? sumCreditFreq / callsWithCreditFreq : null, phoneAdds: sumPhoneAdds, vhi: sumVhi, ncw: ncwPct, ncwCount,
   };
 };
 
@@ -264,7 +253,7 @@ export const aggregateTeamMetrics = (agentDatas: ReadonlyArray<MetricRecord | nu
   });
 
   if (validCount === 0) {
-    return { isOff: true, activeAgentCount: 0, calls: null, resolveTotalContacts: null, vxs: null, resolve3d: null, handoffs: null, resolve2hr: null, aht: null, hold: null, dpc: null, viewTogether: null, vtt: null, netOcc: null, creditFreq: null, phoneAdds: totalPhoneAdds, vhi: totalVhi, ncw: null, ncwCount: 0, bonus: null };
+    return { isOff: true, activeAgentCount: 0, calls: null, resolveTotalContacts: null, vxs: null, resolve3d: null, handoffs: null, resolve2hr: null, aht: null, hold: null, dpc: null, viewTogether: null, vtt: null, netOcc: null, creditFreq: null, phoneAdds: totalPhoneAdds, vhi: totalVhi, ncw: null, ncwCount: 0  };
   }
 
   const vxs = totalSurveys > 0 ? (totalPromoters / totalSurveys) * 100 : null;
@@ -287,7 +276,7 @@ export const aggregateTeamMetrics = (agentDatas: ReadonlyArray<MetricRecord | nu
     handoffsCount: totalHandoffsCount, resolveTotalContacts: totalResolveContacts, resolveTotalContacts3d: totalResContacts3d,
     aht: totalCallsAht > 0 ? totalTalkTime / totalCallsAht : null, vxs, resolve3d, resolve2hr, handoffs, hold: countHold > 0 ? sumHold / countHold : null,
     dpc: countDpc > 0 ? sumDpc / countDpc : null, viewTogether, vtt: viewTogether, vttSent: sumVttSent, vttTransacted: sumVttTransacted, netOcc: countNetOcc > 0 ? sumNetOcc / countNetOcc : null,
-    creditFreq: countCreditFreq > 0 ? sumCreditFreq / countCreditFreq : null, phoneAdds: totalPhoneAdds, vhi: totalVhi, ncw: ncwPct, ncwCount: totalNcwCount, bonus: calculateBonus(vxs, resolve3d, handoffs),
+    creditFreq: countCreditFreq > 0 ? sumCreditFreq / countCreditFreq : null, phoneAdds: totalPhoneAdds, vhi: totalVhi, ncw: ncwPct, ncwCount: totalNcwCount,
   };
 };
 

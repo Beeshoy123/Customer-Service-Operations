@@ -23,7 +23,7 @@ describe('initial state shape', () => {
   it('UI_INITIAL carries exactly the 12 documented display fields', () => {
     assert.deepEqual(Object.keys(UI_INITIAL).sort(), [...UI_KEYS].sort());
     assert.equal(UI_INITIAL.mainTab, 'roster');
-    assert.equal(UI_INITIAL.runChartMetric, 'bonus');
+    assert.equal(UI_INITIAL.runChartMetric, 'vxs');
     assert.equal(UI_INITIAL.isCumulative, false);
   });
 

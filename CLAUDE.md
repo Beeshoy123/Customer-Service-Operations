@@ -18,7 +18,7 @@ The owner (Beeshoy) is a call-center team leader and a **beginner at coding**.
 3. Edit existing code. Do not rebuild.
 4. UI: follow `docs/frontend-design.md` (light mint look, chosen 2026-11-09), keep color-coding. Show an HTML mock-up and get confirmation before building any design.
 5. Mapping and alias fixes go **only** in `src/features/dashboard/import/importPolicy.ts`.
-6. Before every commit run: `npx tsc -b`, `npm test`, `npm run lint`, `npm run build`. Baseline 2026-11-09 (after the Repeated rule, X6): tsc clean, 460/460 tests pass, lint 0 errors.
+6. Before every commit run: `npx tsc -b`, `npm test`, `npm run lint`, `npm run build`. Baseline 2026-11-14 (after removing the Bonus Score): tsc clean, 468/468 tests pass, lint 0 errors.
 7. **Commit straight to `main`. No branches, no pull requests.** One commit per step.
 
 ## Run the checks (copy and paste)

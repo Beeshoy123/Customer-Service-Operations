@@ -52,7 +52,7 @@ export const MainStatsRow = React.memo(() => {
     const allKeys = Object.keys(uiState.visibleCols);
     const metricKeys = allKeys.filter(key => uiState.visibleCols[key] && (METRIC_CONFIG as Record<string, any>)[key]);
     const gaugeKeys = ['vxs', 'resolve2hr', 'handoffs', 'resolve3d'].filter(key => uiState.visibleCols[key]);
-    const tileKeys = metricKeys.filter(key => !['bonus', 'vxs', 'resolve3d', 'resolve2hr', 'handoffs', 'trajectory'].includes(key));
+    const tileKeys = metricKeys.filter(key => !['vxs', 'resolve3d', 'resolve2hr', 'handoffs', 'trajectory'].includes(key));
     return { itemKeys: [...gaugeKeys, ...tileKeys], anyMetricVisible: metricKeys.length > 0 };
   }, [uiState.visibleCols]);
 

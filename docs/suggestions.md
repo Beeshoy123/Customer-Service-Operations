@@ -29,7 +29,7 @@ The owner (Beeshoy) is a call-center team leader and a **beginner at coding**. H
 3. **Edit the existing code. Do not rebuild.** No rewrites he didn't ask for.
 4. **UI:** follow `docs/frontend-design.md` (light mint look, his choice on 2026-11-09), keep color-coding. Never design without confirmation: show an HTML mock-up first.
 5. **Mapping and alias fixes go only in `importPolicy.ts`** (the repo's standing rule, full text in the Reference section below).
-6. **Before every commit run** `tsc -b`, `npm test`, `npm run lint` and `npm run build`. Baseline on 2026-11-09 (after the Repeated rule, X6): tsc clean, 460/460 tests pass, lint 0 errors (105 warnings).
+6. **Before every commit run** `tsc -b`, `npm test`, `npm run lint` and `npm run build`. Baseline on 2026-11-14 (after removing the Bonus Score): tsc clean, 468/468 tests pass, lint 0 errors (104 warnings).
 7. **Commit straight to `main`. No branches, no pull requests** (his decision). One commit per step. Tick that step's `[ ]` box in this file in the same commit.
 8. If a step changes the plan, update this file and say so.
 
@@ -77,7 +77,7 @@ The owner (Beeshoy) is a call-center team leader and a **beginner at coding**. H
 
 | Rank | Level | Work | Why this position |
 |---|---|---|---|
-| 1 | ⛔ P0 | **Step 0**: tests around bonus, weighted-satisfaction and trend math | Nothing guards the numbers that decide bonuses. Tests only, no behavior change. Must exist before steps 1–2 touch the math. |
+| 1 | ⛔ P0 | **Step 0**: tests around weighted-satisfaction and trend math | Nothing guards these numbers. Tests only, no behavior change. Must exist before steps 1–2 touch the math. |
 | 2 | ✅ done | **Step 1** (2026-11-08): counts stay counts | Wrong numbers on screen today |
 | 3 | ✅ done | **Step 2** (2026-11-09): merge without losing data | A second upload erases the first; rows don't merge |
 | 4 | ✅ done | **Step 3** (2026-11-09): dates | `September 2026` becomes Aug 31 in Cairo |
@@ -95,7 +95,7 @@ Most critical first. Codes in bold are the old item numbers; the checklist below
 
 | # | Code | What | Why it matters | Fix | Size | Step |
 |---|---|---|---|---|---|---|
-| 1 | **C3** | No tests on the bonus, weighted-satisfaction and trend math | These numbers decide bonuses. `helpers.test.ts` covers only hand-offs. (ran) | Tests only. Compute expected values by hand. Change no formula. If the code disagrees, report a bug. | S | 0 |
+| 1 | **C3** | No tests on the weighted-satisfaction and trend math | These numbers feed the dashboard figures. `helpers.test.ts` covers only hand-offs. (ran) | Tests only. Compute expected values by hand. Change no formula. If the code disagrees, report a bug. | S | 0 |
 | 2 | **C1** | AI sends dashboard data out | `hooks.ts` posts the roster, supervisors and series to `api.anthropic.com` from the browser. `FloorAnalysisTab`, `FloorCorrelationTab` and `FloorDowTab` each fire it when opened. It fails today only because there is no key. (read) | AI off by default behind a visible switch. Remove the three auto-calls and the browser call. Or delete the AI code if it is not used. | M | 4 **Frozen 2026-11-09 (interim):** switched off, features show "Under construction"; see Step 4. |
 
 **🟡 Medium: real risks, small to fix**
@@ -142,11 +142,11 @@ Suggested sequence: 1 → 2 → 3, then 4–7 as one small cleanup, then everyth
 Format: `[ ]` open · `[x]` done. Codes in brackets point to sections below: **B** = blocker (Backend scorecard), **K** = known bug, **X** = extra finding, **F** = frontend, **C** = AI/safety item, **U** = usability item.
 
 ### Bugs found during work (fix when he approves)
+- [x] **Bonus Score removed** (his decision 2026-11-14: no bonus calculation and no bonus ranking in the dashboard). Done: `calculateBonus`, the `bonus` field on every aggregate, the `bonus` entry in `METRIC_CONFIG` and its imports and comments are gone. The Trends tab now starts on C-Sat (`vxs`) instead of Bonus Score, and the dropdown no longer lists it. **Behavior change, approved:** Repeated Offenders used to include Bonus Score as a metric (target 100), so an agent with C-Sat, 3DR and hand-offs below target could be flagged on it; now it is not (ran: the new test fails on the old code). Unchanged: no roster column, KPI tile or ranking ever used bonus (the only ranking code is the AHT/Hold/DPC/Net OCC burnout list), and saved data had no bonus field. 4 new tests in `noBonus.test.ts`. Checks (ran): tsc clean, 468/468 tests, lint 0 errors (104 warnings), build OK, `tools/e2e_repeated_offenders.py` 24/25 (X9 only), throwaway Trends check on fake data: starts on C-Sat, no Bonus option, no JavaScript errors. Note: on that fake seed the Trends heatmap shows only the OAM row with no values, the same before and after this change, so bonus was not the cause of the empty heatmap.
 - [ ] **X9** Repeated Offenders (tab was called Chronic) coaching-plan button crashes: `setUploadStatus is not a function` (`FloorOffendersTab.tsx:80`). Make the hook return `setUploadStatus` and `scheduleStatusClear`, add a test, then re-check every tab for the same kind of missing member. Details in "Also found". **Status 2026-11-10: still open. He chose "not now" (deferred); do not fix until he asks.** Small fix: about one function hand-out in the hook plus a test. The browser test `tools/e2e_repeated_offenders.py` shows it as its 1 failing check (23/24) until then.
 - [ ] **X10 (found 2026-11-10, not fixed)** The Timeframe menu (the calendar button in the top bar) opens underneath the page header card: its top part, with the Monthly / Weekly / Daily / Day of Week buttons, is blurred and cannot be clicked with the mouse; only the month box at the bottom works. Same result before and after the menu.tsx change, so it is older (ran, Chromium 1366x768, fake data: the point at the menu's top edge belongs to `.workspace-header`). Probe: the top bar is `position: static` with z-index 40, the menu has z-index 100 (read from computed styles). Likely cause is the stacking order from the glass header (step 9); not diagnosed. The Metrics menu (gear button) is probably covered the same way: a mouse click on its first tick box timed out in the same test. Needs a fix in CSS only, with his OK. Update 2026-11-13 (ran, 1366x768): the menu now opens on top and is clickable (the element at its top edge is the menu itself); the Monthly / Weekly / Daily / Day of Week buttons look washed out (screenshot). Still not fixed.
 
 ### Step 0: Safety net for the math (tests only)
-- [ ] Tests for `calculateBonus`: every tier boundary, missing and partial inputs [C3]
 - [ ] Tests for `calculateWeightedVSF`: weighting math, zero denominator [C3]
 - [ ] Tests for `calculateTrend`: flat, rising, falling, single point [C3]
 - [ ] Tests for `agentMatchesSearch`, `formatName`, `shortenManagerName` [C3]
@@ -305,7 +305,7 @@ Test used: 2 agents × 10 calls per file.
 | 🔴 | File System Access API, IndexedDB, `lastModified` polling, recipes | 0 hits in the repo (ran) |
 | 🔴 | Sales, absenteeism, AUX, floor-level VOC | `Sales`, `Absent Days`, `AUX Break`, `Login Hours` map to nothing (ran) |
 | 🔴 | Floor or month-keyed rows | the model is agent × day only (read) |
-| 🟡 | Bonus, weighted satisfaction, trend math | untested (see step 0) (read) |
+| 🟡 | Weighted satisfaction, trend math | untested (see step 0) (read) |
 | 🟡 | Month selector | derived from `YYYY-MM-DD` keys; no monthly-only rows (read) |
 | 🟡 | `mappingMemory` | stores header→field only. No sheet, header row, date format or filename detection, so it is not a recipe (read) |
 | 🟡 | Account profile | closest thing to a recipe, but per account, not per file type (read) |
@@ -409,7 +409,7 @@ Foundation first. Recipes on a model that overwrites and divides wrongly would a
 
 | # | One idea | Fixes | Size |
 |---|---|---|---|
-| 0 | Tests around bonus, weighted-satisfaction, trend math (no behavior change) | C3 | S |
+| 0 | Tests around weighted-satisfaction, trend math (no behavior change) | C3 | S |
 | 1 | Count fields stay counts, not divided by rows | bug 1, bug 2 (part), B5 | S |
 | 2 | Merge key = agent ID or name + date only. `calls` not summed across files. Merge into the existing day instead of replacing. Missing stays null. | bug 2, B1, B3, missing = 0 | M |
 | 3 | Fix month-label dates. Add a per-file date-format setting. | date bugs | S |
@@ -479,7 +479,7 @@ When a dashboard metric (handoffs, 2HR, 3DR, CSAT, AHT, or any other field) show
 | `dashboard/timeframe.ts` | Month/week/day/DOW selectors and the agent-data cache |
 | `dashboard/uploadFlow.ts` | Drag/drop, multi-file, automatic import routing |
 | `dashboard/batchImport.ts` | `applyBatchImport`, `confirmImportPreview`, `processFile` (owns the replace-on-upload code, step 2) |
-| `dashboard/metrics.ts`, `helpers.ts`, `config.ts`, `emptyColumns.ts` | Floor metrics, rollups, bonus/VSF math, column definitions |
+| `dashboard/metrics.ts`, `helpers.ts`, `config.ts`, `emptyColumns.ts` | Floor metrics, rollups, VSF math, column definitions |
 | `dashboard/repeatOffenders.ts` | The one offender rule: 2 of the latest 3 months (X6, done) |
 | `dashboard/uiReducer.ts` | Modal and UI reducers |
 | `dashboard/views/{chrome,tabs,modals}` | The 9 tabs, navbar, header, stats row, main modal |

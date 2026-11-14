@@ -105,7 +105,6 @@ export type MetricConfigEntry = {
 };
 
 export const METRIC_CONFIG = {
-  bonus: { label: 'Bonus Score', target: 100, format: '', reverse: false, max: 120 },
   vxs: { label: 'C-Sat', target: TARGETS.vxs, format: '', reverse: false, max: 100 },
   resolve2hr: { label: '2HR', target: TARGETS.resolve2hr, format: '', reverse: false, max: 100 },
   phoneAdds: { label: 'Phone Lines', target: TARGETS.phoneAdds, format: '', reverse: false, max: 20, isInteger: true },

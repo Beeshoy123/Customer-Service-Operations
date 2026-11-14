@@ -40,7 +40,7 @@ export const UI_INITIAL: UiState = {
   showColMenu: false,
   showModalColMenu: false,
   showTimeframeMenu: false,
-  runChartMetric: 'bonus',
+  runChartMetric: 'vxs',
   isCumulative: false,
   heatmapViewType: 'weekly',
   outlierMode: 'offenders',

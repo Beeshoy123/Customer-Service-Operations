@@ -14,7 +14,7 @@
 //   3. Already-hidden columns are never re-enabled, manual Settings toggles
 //      made after the import are respected (this runs once per import), and
 //      non-metric toggles (e.g. `trajectory`) and derived metrics that never
-//      appear on rows (e.g. `ncw`, `bonus`) are untouched.
+//      appear on rows (e.g. `ncw`) are untouched.
 // ============================================================================
 
 /**
@@ -27,7 +27,7 @@
  *  - `vtt` renders from `viewTogether` / `vttSent` / `vttTransacted` / `vtt`
  *
  * Fields that are computed by helpers.aggregateRecords rather than read off
- * rows (e.g. `ncw` from calls, `bonus`, `calls`) are intentionally absent, so
+ * rows (e.g. `ncw` from calls, `calls`) are intentionally absent, so
  * those columns are never auto-hidden.
  */
 export const METRIC_COLUMN_SOURCES = {
