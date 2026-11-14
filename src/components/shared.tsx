@@ -11,7 +11,8 @@
 // └── Performance Heatmap Grid
 // ============================================================================
 
-import { EmptyState } from '../features/dashboard/views/chrome/TabFrame';
+import { EmptyState, Icon } from '../features/dashboard/views/chrome/TabFrame';
+import type { IconName } from '../features/dashboard/views/chrome/TabFrame';
 import React, { useState, useEffect, useRef } from 'react';
 import { getDynamicTarget, METRIC_CONFIG } from '../features/dashboard/config';
 
@@ -47,24 +48,24 @@ export const CopyReportButton = ({ text, label = 'Copy', className = 'cso-btn cs
       onClick={handleCopy}
       title={copyState === 'error' ? 'Clipboard unavailable — select the text manually' : label}
     >
-      {copyState === 'copied' ? 'Copied ✓' : copyState === 'error' ? 'Copy failed — select the text manually' : label}
+      {copyState === 'copied' ? <span className="copied-label"><Icon name="check" size={14} /> Copied</span> : copyState === 'error' ? 'Copy failed — select the text manually' : label}
     </button>
   );
 };
 
+export const TrendChipText = ({ trend }: { trend: { direction: string; label: string; diffStr: string } }) => (
+  <>
+    {trend.label !== 'OFF' && <Icon name={trend.direction === 'up' ? 'arrowUp' : trend.direction === 'down' ? 'arrowDown' : 'minus'} size={12} />}
+    {trend.label} ({trend.diffStr})
+  </>
+);
+
 // ─── Loading Spinner Component ──────────────────────────────────────
-export const AiLoader = ({ message = 'Cooking it up...', color = '#3b82f6', icon = '✨' }) => (
+export const AiLoader = ({ message = 'Cooking it up...', color = '#3b82f6', icon = 'sparkle' }: { message?: string; color?: string; icon?: IconName }) => (
   <div className="flex flex-col items-center justify-center p-8 gap-4">
-    <div className="flex items-center justify-center">
-      <div
-        className="loader-spin rounded-full w-12 h-12 relative flex items-center justify-center"
-        style={{
-          border: `4px solid ${color}33`,
-          borderTop: `4px solid ${color}`,
-        }}
-      >
-        <span className="absolute text-sm" style={{ animation: 'none' }}>{icon}</span>
-      </div>
+    <div className="ai-loader-ring">
+      <div className="loader-spin ai-loader-spinner" style={{ border: `4px solid ${color}33`, borderTop: `4px solid ${color}` }} />
+      <span className="ai-loader-icon" style={{ color }}><Icon name={icon} size={18} /></span>
     </div>
     <span className="font-bold text-lg tracking-wide" style={{ color }}>{message}</span>
   </div>

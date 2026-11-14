@@ -1,6 +1,8 @@
 // Extracted from App.tsx (Phase 1 move-only refactor) — behavior must stay identical.
 
 // ─── Upload Status Toast ──────────────────────────────────────
+import { Icon } from '../features/dashboard/views/chrome/TabFrame';
+
 export type UploadStatusPayload = {
   type?: 'error' | 'info' | 'success';
   message?: string;
@@ -16,7 +18,11 @@ export const UploadStatus = ({ uploadStatus }: { uploadStatus: UploadStatusPaylo
   return (
     <div className="fixed top-24 left-1-2 -translate-x-1-2 z-1000 p-3 px-6 rounded-lg shadow-lg flex items-center gap-3 font-bold animate-slide-down" style={{ background: uploadStatus.type === 'error' ? '#fef2f2' : uploadStatus.type === 'info' ? '#eff6ff' : '#ecfdf5', color: uploadStatus.type === 'error' ? '#991b1b' : uploadStatus.type === 'info' ? '#1e40af' : '#065f46', border: `1px solid ${uploadStatus.type === 'error' ? '#fecaca' : uploadStatus.type === 'info' ? '#bfdbfe' : '#a7f3d0'}` }}>
       <div className="flex items-center gap-3">
-        {uploadStatus.type === 'error' ? '❌' : uploadStatus.type === 'info' ? '🔄' : '✅'}
+        <Icon
+          name={uploadStatus.type === 'error' ? 'cross' : uploadStatus.type === 'info' ? 'refresh' : 'check'}
+          size={20}
+          className={uploadStatus.type === 'info' ? 'icon-spin' : ''}
+        />
         <div className="flex flex-col gap-2">
           <span>{uploadStatus.message}</span>
           {progress !== null && (

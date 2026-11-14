@@ -5,7 +5,8 @@ import React from 'react';
 
 export type IconName =
   | 'add' | 'calendar' | 'metrics' | 'exit' | 'search' | 'roster' | 'outliers' | 'repeat'
-  | 'trends' | 'apprentice' | 'dow' | 'analysis' | 'match' | 'pulse' | 'copy' | 'check' | 'cross';
+  | 'trends' | 'apprentice' | 'dow' | 'analysis' | 'match' | 'pulse' | 'copy' | 'check' | 'cross'
+  | 'arrowUp' | 'arrowDown' | 'minus' | 'refresh' | 'sparkle';
 
 const PATHS: Record<IconName, React.ReactNode> = {
   add: (<><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5" /><path d="M12 11v6M9 14h6" /></>),
@@ -22,13 +23,18 @@ const PATHS: Record<IconName, React.ReactNode> = {
   analysis: (<><path d="M4 20V10M10 20V4M16 20v-8M22 20H2" /></>),
   match: (<><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="4.5" /><path d="M12 12h.01" /></>),
   pulse: (<><path d="M3 12h4l3-8 4 16 3-8h4" /></>),
+  arrowUp: (<><path d="M7 17L17 7M9 7h8v8" /></>),
+  arrowDown: (<><path d="M7 7l10 10M17 9v8H9" /></>),
+  minus: (<><path d="M6 12h12" /></>),
+  refresh: (<><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5" /></>),
+  sparkle: (<><path d="M12 4l1.8 5.2L19 11l-5.2 1.8L12 18l-1.8-5.2L5 11l5.2-1.8z" /></>),
   check: (<><path d="M5 12l5 5 9-10" /></>),
   cross: (<><path d="M6 6l12 12M18 6L6 18" /></>),
   copy: (<><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V6a2 2 0 0 1 2-2h9" /></>),
 };
 
-export const Icon = ({ name, size = 20 }: { name: IconName; size?: number }) => (
-  <svg className="cso-icon" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+export const Icon = ({ name, size = 20, className = '' }: { name: IconName; size?: number; className?: string }) => (
+  <svg className={className ? `cso-icon ${className}` : 'cso-icon'} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
        strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     {PATHS[name]}
   </svg>

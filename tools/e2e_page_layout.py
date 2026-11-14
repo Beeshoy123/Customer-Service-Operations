@@ -39,7 +39,7 @@ async def main():
             page.on("pageerror", lambda e: errs.append(str(e)))
             await page.goto("http://localhost:5173", wait_until="networkidle")
             await page.evaluate("""(d) => { localStorage.setItem('customer-service-dashboard-state-v1', JSON.stringify(d));
-                localStorage.setItem('customer-service-dashboard-view-v1', JSON.stringify({selectedMonth:'all'})); }""", seed())
+                localStorage.setItem('customer-service-dashboard-view-v1', JSON.stringify({selectedMonth:'all'})); }""", seed(n_sup=20))
             await page.reload(wait_until="networkidle")
             await page.wait_for_selector(".workspace-title", timeout=60000)
             await page.wait_for_timeout(1200)

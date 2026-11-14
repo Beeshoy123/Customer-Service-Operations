@@ -1,10 +1,10 @@
 // Extracted from App.tsx (Phase 3 move-only refactor) — behavior must stay identical.
 import { DropZone } from '../../../../components/dropZone';
-import { MetricCell } from '../../../../components/shared';
+import { MetricCell, TrendChipText } from '../../../../components/shared';
 import { COL_DEFINITIONS, getDynamicTarget } from '../../config';
 import { calculateTrend } from '../../helpers';
 import { useDashboard } from '../../hooks';
-import { TabFrame } from '../chrome/TabFrame';
+import { TabFrame, Icon } from '../chrome/TabFrame';
 
 // S18: the long shared row class, named once.
 const ROSTER_ROW_BASE = 'roster-row transition-all duration-300 hover:-translate-y-1 hover:shadow-md relative z-10';
@@ -65,12 +65,12 @@ export const FloorRosterTab = () => {
                   {metrics.activeLeaderData.isOff ? (
                     <span className="text-xs text-slate-500 italic">-</span>
                   ) : (
-                    <span className="text-xs font-extrabold px-2 py-1 rounded whitespace-nowrap" 
+                    <span className="text-xs font-extrabold px-2 py-1 rounded whitespace-nowrap trend-chip" 
                           style={{ 
                             color: calculateTrend(metrics.activeLeaderData, metrics.mtdLeaderData).direction === 'up' ? '#10B981' : calculateTrend(metrics.activeLeaderData, metrics.mtdLeaderData).direction === 'down' ? '#D52B1E' : '#64748b', 
                             background: calculateTrend(metrics.activeLeaderData, metrics.mtdLeaderData).direction === 'up' ? '#ecfdf5' : calculateTrend(metrics.activeLeaderData, metrics.mtdLeaderData).direction === 'down' ? '#fef2f2' : '#f1f5f9' 
                           }}>
-                       {calculateTrend(metrics.activeLeaderData, metrics.mtdLeaderData).label} ({calculateTrend(metrics.activeLeaderData, metrics.mtdLeaderData).diffStr})
+                       <TrendChipText trend={calculateTrend(metrics.activeLeaderData, metrics.mtdLeaderData)} />
                     </span>
                   )}
                 </div>
@@ -103,18 +103,18 @@ export const FloorRosterTab = () => {
                         <div className="flex items-center gap-1">
                           <span>{supObj.name}</span>
                           {supObj.isHighRisk && !isOffToday && (
-                            <span className="text-base cursor-help" title="High Risk Trend">⚠️</span>
+                            <span className="roster-risk-icon" title="High Risk Trend"><Icon name="outliers" size={16} /></span>
                           )}
                           {(() => {
                             const roSup = metrics.repeatOffenders?.bySupervisor?.get(supObj.name);
                             if (!roSup) return null;
                             return (
                               <span
-                                className="text-xs font-extrabold px-1.5 py-0.5 rounded cursor-help"
+                                className="text-xs font-extrabold px-1.5 py-0.5 rounded cursor-help roster-ro-badge"
                                 style={{ color: '#b91c1c', background: '#fee2e2', border: '1px solid #fecaca' }}
                                 title={`Repeated Offenders (missed target in 2+ of the latest 3 months): ${roSup.agentNames.join(', ')}`}
                               >
-                                🔁 {roSup.agentCount}
+                                <Icon name="repeat" size={12} /> {roSup.agentCount}
                               </span>
                             );
                           })()}
@@ -131,8 +131,8 @@ export const FloorRosterTab = () => {
                           {isOffToday ? (
                             <span className="text-xs text-slate-400 italic">-</span>
                           ) : (
-                            <span className="text-xs font-extrabold px-2 py-1 rounded whitespace-nowrap" style={{ color: trendInfo.direction === 'up' ? '#10B981' : trendInfo.direction === 'down' ? '#D52B1E' : '#64748b', background: trendInfo.direction === 'up' ? '#ecfdf5' : trendInfo.direction === 'down' ? '#fef2f2' : '#f1f5f9' }}>
-                               {trendInfo.label} ({trendInfo.diffStr})
+                            <span className="text-xs font-extrabold px-2 py-1 rounded whitespace-nowrap trend-chip" style={{ color: trendInfo.direction === 'up' ? '#10B981' : trendInfo.direction === 'down' ? '#D52B1E' : '#64748b', background: trendInfo.direction === 'up' ? '#ecfdf5' : trendInfo.direction === 'down' ? '#fef2f2' : '#f1f5f9' }}>
+                               <TrendChipText trend={trendInfo} />
                             </span>
                           )}
                         </div>

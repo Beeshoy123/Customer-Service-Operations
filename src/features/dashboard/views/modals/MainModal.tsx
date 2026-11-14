@@ -57,7 +57,7 @@ const AskAiContent = ({ aiTools, uiState, uiHandlers }: any) => {
         </div>
         
         {aiTools.askAiLoading && (
-          <div className="flex justify-center p-6 mt-4"><AiLoader message="Analyzing dashboard data..." icon="🧠" color="#3b82f6" /></div>
+          <div className="flex justify-center p-6 mt-4"><AiLoader message="Analyzing dashboard data..." icon="pulse" color="#3b82f6" /></div>
         )}
         
         {aiTools.askAiResponse && !aiTools.askAiLoading && (

@@ -848,3 +848,13 @@ button, input, select, textarea { font-family: inherit; }
 .cso-report-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; background: var(--cso-tint-mint); }
 .cso-report-head h3 { margin: 0; color: var(--cso-forest-deep); font-size: .95rem; font-weight: 800; }
 .cso-report-body { margin: 0; padding: 16px 22px; font-size: 1rem; line-height: 1.6; }
+
+/* ─── Line icons replacing emoji: roster badges, trend chips, toast, loader, copy ─ */
+.roster-risk-icon { display: inline-flex; color: #d97706; cursor: help; }
+.roster-ro-badge { display: inline-flex; align-items: center; gap: 3px; line-height: 1.25; }
+.trend-chip { display: inline-flex; align-items: center; gap: 4px; line-height: 1.25; }
+.icon-spin { animation: spin 1s linear infinite; }
+.copied-label { display: inline-flex; align-items: center; gap: 6px; }
+.ai-loader-ring { position: relative; display: flex; align-items: center; justify-content: center; width: 48px; height: 48px; }
+.ai-loader-spinner { position: absolute; inset: 0; border-radius: 50%; }
+.ai-loader-icon { display: inline-flex; }

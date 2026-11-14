@@ -129,7 +129,7 @@ export const FloorApprenticeTab = () => {
       </table>
       {aiTools.loadingApprentice ? (
         <div className="cso-report cso-report-loading">
-          <AiLoader message="Analyzing track performance..." color="#8b5cf6" icon="🧠" />
+          <AiLoader message="Analyzing track performance..." color="#8b5cf6" icon="pulse" />
         </div>
       ) : aiTools.apprenticeReport && (
         <div className="cso-report">

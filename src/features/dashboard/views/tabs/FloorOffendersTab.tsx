@@ -72,7 +72,7 @@ export const FloorOffendersTab = React.memo(() => {
 
   const handleAssignCoaching = useCallback((row: RepeatOffenderRow) => {
     setCoachingAssigned((prev) => (prev[row.ccms] ? prev : { ...prev, [row.ccms]: new Date().toISOString() }));
-    setUploadStatus(`✅ Coaching plan assigned to ${row.name || row.ccms}.`);
+    setUploadStatus(`Coaching plan assigned to ${row.name || row.ccms}.`);
     scheduleStatusClear();
   }, [setUploadStatus, scheduleStatusClear]);
 

@@ -365,9 +365,9 @@ export const calculateTrend = (currentData: TrendInput | null | undefined, basel
   }
   const diff = currentData.vxs - baselineData.vxs;
   const diffStr = (diff >= 0 ? '+' : '') + diff.toFixed(2) + '%';
-  if (diff >= 1.0) return { direction: 'up', label: '📈 UP', diff, diffStr };
-  if (diff <= -1.0) return { direction: 'down', label: '📉 DOWN', diff, diffStr };
-  return { direction: 'stable', label: '✊ STABLE', diff, diffStr };
+  if (diff >= 1.0) return { direction: 'up', label: 'UP', diff, diffStr };
+  if (diff <= -1.0) return { direction: 'down', label: 'DOWN', diff, diffStr };
+  return { direction: 'stable', label: 'STABLE', diff, diffStr };
 };
 
 // ─── Name Formatting Helpers ──────────────────────────────────────

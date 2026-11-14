@@ -65,7 +65,7 @@ export const FloorDowTab = () => {
         </tbody>
       </table>
       {aiTools.loadingDow ? (
-        <div className="cso-report cso-report-loading"><AiLoader message="Analyzing systemic day vulnerabilities..." color="#0d9488" icon="📅" /></div>
+        <div className="cso-report cso-report-loading"><AiLoader message="Analyzing systemic day vulnerabilities..." color="#0d9488" icon="dow" /></div>
       ) : aiTools.dowReport && (
         <div className="cso-report">
           <div className="report-body cso-report-body">
